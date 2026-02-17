@@ -181,7 +181,7 @@ export default function DashboardLayout({
           </aside>
 
           <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card p-4 shadow-none md:p-6 lg:mt-0">
-            <main className="mt-16 h-full overflow-y-auto overscroll-contain pr-1 lg:mt-0">
+            <main className="mt-[5.5rem] h-full overflow-y-auto overscroll-contain pr-1 lg:mt-0">
               <div className="pb-6">{children}</div>
             </main>
           </div>

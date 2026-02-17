@@ -106,7 +106,7 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border">
+        <Card className="border-border/70">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Solde CONGÉ</CardTitle>
             <Calendar className="h-4 w-4 text-foreground/60" />
@@ -123,7 +123,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border">
+        <Card className="border-border/70">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">RÉCUPÉRATION</CardTitle>
             <TrendingUp className="h-4 w-4 text-foreground/60" />
@@ -140,7 +140,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border">
+        <Card className="border-border/70">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Demandes en attente</CardTitle>
             <Clock className="h-4 w-4 text-foreground/60" />
@@ -153,7 +153,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border">
+        <Card className="border-border/70">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Demandes approuvées</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-foreground/60" />
@@ -168,7 +168,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <Card className="border-border">
+      <Card className="border-border/70">
         <CardHeader>
           <CardTitle>Actions rapides</CardTitle>
         </CardHeader>
@@ -185,7 +185,7 @@ export default function DashboardPage() {
             </Link>
             
             <Link href="/dashboard/requests">
-              <Button variant="outline" className="h-auto w-full border-border py-6 text-foreground" size="lg">
+              <Button variant="outline" className="h-auto w-full border-border/70 py-6 text-foreground" size="lg">
                 <Clock className="mr-2 h-5 w-5" />
                 <div className="text-left">
                   <div className="font-semibold">Voir toutes les demandes</div>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
             </Link>
 
             <Link href="/dashboard/calendar">
-              <Button variant="outline" className="h-auto w-full border-border py-6 text-foreground" size="lg">
+              <Button variant="outline" className="h-auto w-full border-border/70 py-6 text-foreground" size="lg">
                 <Calendar className="mr-2 h-5 w-5" />
                 <div className="text-left">
                   <div className="font-semibold">Calendrier d&apos;équipe</div>
@@ -208,7 +208,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Recent Requests */}
-      <Card className="border-border">
+      <Card className="border-border/70">
         <CardHeader>
           <CardTitle>Demandes de congé récentes</CardTitle>
         </CardHeader>

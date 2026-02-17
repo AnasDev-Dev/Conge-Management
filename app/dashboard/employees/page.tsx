@@ -168,7 +168,7 @@ export default function EmployeesPage() {
         <Card className="border-border/70 bg-card shadow-none backdrop-blur-none">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Jours de congé pris</p>
-            <p className="mt-2 text-3xl font-semibold text-primary">{totalApprovedDays}</p>
+            <p className="mt-2 text-3xl font-semibold text-foreground">{totalApprovedDays}</p>
           </CardContent>
         </Card>
         <Card className="border-border/70 bg-card shadow-none backdrop-blur-none">
@@ -287,11 +287,11 @@ export default function EmployeesPage() {
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                          <div className="rounded-xl bg-secondary/45 p-2.5">
+                          <div className="rounded-xl bg-secondary/60 p-2.5">
                             <p className="text-xs text-muted-foreground">Congé pris</p>
                             <p className="font-semibold text-primary">{employeeSummary.approvedDays} jours</p>
                           </div>
-                          <div className="rounded-xl bg-secondary/45 p-2.5">
+                          <div className="rounded-xl bg-secondary/60 p-2.5">
                             <p className="text-xs text-muted-foreground">En attente</p>
                             <p className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</p>
                           </div>
