@@ -1,0 +1,189 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-plus-jakarta);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  --brand: #a3754a;
+  --radius: 1rem;
+  --background: oklch(0.968 0.003 95);
+  --foreground: oklch(0.29 0.008 78);
+  --card: oklch(0.992 0.002 95);
+  --card-foreground: oklch(0.29 0.008 78);
+  --popover: oklch(0.992 0.002 95);
+  --popover-foreground: oklch(0.29 0.008 78);
+  --primary: var(--brand);
+  --primary-foreground: oklch(0.985 0.003 95);
+  --secondary: oklch(0.952 0.003 95);
+  --secondary-foreground: oklch(0.33 0.01 78);
+  --muted: oklch(0.94 0.003 95);
+  --muted-foreground: oklch(0.5 0.008 78);
+  --accent: oklch(0.948 0.004 95);
+  --accent-foreground: oklch(0.34 0.008 78);
+  --destructive: oklch(0.66 0.09 25);
+  --border: oklch(0.82 0.004 85 / 92%);
+  --input: oklch(0.82 0.004 85 / 98%);
+  --ring: color-mix(in oklab, var(--brand) 38%, white);
+  --chart-1: color-mix(in oklab, var(--brand) 82%, white);
+  --chart-2: oklch(0.73 0.11 157);
+  --chart-3: oklch(0.77 0.14 81);
+  --chart-4: oklch(0.67 0.085 20);
+  --chart-5: oklch(0.63 0.07 289);
+  --sidebar: oklch(0.984 0.002 95);
+  --sidebar-foreground: oklch(0.31 0.008 78);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(0.985 0.003 95);
+  --sidebar-accent: oklch(0.952 0.003 95);
+  --sidebar-accent-foreground: oklch(0.34 0.008 78);
+  --sidebar-border: oklch(0.82 0.004 85 / 92%);
+  --sidebar-ring: color-mix(in oklab, var(--brand) 38%, white);
+  --status-alert-bg: oklch(0.94 0.025 18);
+  --status-alert-text: oklch(0.53 0.06 18);
+  --status-alert-border: oklch(0.86 0.03 18);
+  --status-success-bg: oklch(0.95 0.025 158);
+  --status-success-text: oklch(0.47 0.055 158);
+  --status-success-border: oklch(0.87 0.03 158);
+  --status-pending-bg: oklch(0.95 0.04 83);
+  --status-pending-text: oklch(0.55 0.08 83);
+  --status-pending-border: oklch(0.89 0.04 83);
+  --status-progress-bg: color-mix(in oklab, var(--brand) 13%, white);
+  --status-progress-text: color-mix(in oklab, var(--brand) 78%, black);
+  --status-progress-border: color-mix(in oklab, var(--brand) 29%, white);
+  --status-draft-bg: oklch(0.945 0.014 72);
+  --status-draft-text: oklch(0.47 0.03 72);
+  --status-draft-border: oklch(0.87 0.02 72);
+  --shell-bg: oklch(0.95 0.003 95);
+  --surface-shadow: 0 8px 22px oklch(0.32 0.01 78 / 6%);
+}
+
+.dark {
+  --background: oklch(0.2 0.01 72);
+  --foreground: oklch(0.94 0.006 86);
+  --card: oklch(0.25 0.01 72);
+  --card-foreground: oklch(0.94 0.006 86);
+  --popover: oklch(0.25 0.01 72);
+  --popover-foreground: oklch(0.94 0.006 86);
+  --primary: color-mix(in oklab, var(--brand) 72%, white);
+  --primary-foreground: oklch(0.2 0.01 72);
+  --secondary: oklch(0.3 0.008 72);
+  --secondary-foreground: oklch(0.94 0.006 86);
+  --muted: oklch(0.29 0.008 72);
+  --muted-foreground: oklch(0.73 0.012 86);
+  --accent: oklch(0.31 0.01 72);
+  --accent-foreground: oklch(0.94 0.006 86);
+  --destructive: oklch(0.68 0.11 25);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: color-mix(in oklab, var(--brand) 44%, black);
+  --sidebar: oklch(0.24 0.01 72);
+  --sidebar-foreground: oklch(0.94 0.006 86);
+  --sidebar-primary: color-mix(in oklab, var(--brand) 72%, white);
+  --sidebar-primary-foreground: oklch(0.2 0.01 72);
+  --sidebar-accent: oklch(0.31 0.01 72);
+  --sidebar-accent-foreground: oklch(0.94 0.006 86);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: color-mix(in oklab, var(--brand) 44%, black);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image: linear-gradient(180deg, oklch(0.968 0.003 95) 0%, oklch(0.955 0.003 95) 100%);
+    min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .surface-shell {
+    background: var(--shell-bg);
+    border: 1px solid color-mix(in oklab, var(--border) 95%, white);
+    box-shadow: var(--surface-shadow);
+  }
+
+  .status-pending {
+    background: var(--status-pending-bg);
+    color: var(--status-pending-text);
+    border-color: var(--status-pending-border);
+  }
+
+  .status-progress {
+    background: var(--status-progress-bg);
+    color: var(--status-progress-text);
+    border-color: var(--status-progress-border);
+  }
+
+  .status-approved {
+    background: var(--status-success-bg);
+    color: var(--status-success-text);
+    border-color: var(--status-success-border);
+  }
+
+  .status-rejected {
+    background: var(--status-alert-bg);
+    color: var(--status-alert-text);
+    border-color: var(--status-alert-border);
+  }
+
+  .status-neutral {
+    background: var(--status-draft-bg);
+    color: var(--status-draft-text);
+    border-color: var(--status-draft-border);
+  }
+
+  .soft-row {
+    border: 1px solid transparent;
+    transition: background-color 180ms ease, border-color 180ms ease;
+  }
+
+  .soft-row:hover {
+    background: color-mix(in oklab, var(--muted) 70%, white);
+    border-color: color-mix(in oklab, var(--border) 65%, white);
+  }
+}
