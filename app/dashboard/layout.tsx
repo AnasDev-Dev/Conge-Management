@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   X,
+  ClipboardCheck,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
@@ -62,9 +63,13 @@ export default function DashboardLayout({
     )
   }
 
+  const managerRoles = ['CHEF_SERVICE', 'RESPONSABLE_PERSONNEL', 'TRESORIER_GENERAL', 'DIRECTEUR_EXECUTIF', 'ADMIN']
+  const isManager = user && managerRoles.includes(user.role)
+
   const navigation = [
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Employés', href: '/dashboard/employees', icon: Users },
+    ...(isManager ? [{ name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck }] : []),
     { name: 'Mes demandes', href: '/dashboard/requests', icon: FileText },
     { name: 'Nouvelle demande', href: '/dashboard/new-request', icon: PlusCircle },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
