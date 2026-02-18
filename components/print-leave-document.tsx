@@ -37,171 +37,205 @@ export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentPro
   const balanceAfter = (request.balance_before ?? 0) - request.days_count
   const typeLabel = request.request_type === 'CONGE' ? 'Congé annuel' : 'Récupération'
   const refNumber = `FRMG-${new Date(request.created_at).getFullYear()}-${String(request.id).padStart(5, '0')}`
-  const fmtDate = (d: string) => format(new Date(d + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })
-  const fmtShort = (d: string) => format(new Date(d), 'dd/MM/yyyy', { locale: fr })
 
   const approvalSteps = [
-    { label: 'RH Personnel', name: request.approved_by_rp ? approvers[request.approved_by_rp]?.full_name : null, date: request.approved_at_rp },
-    { label: 'Chef de Service', name: request.approved_by_dc ? approvers[request.approved_by_dc]?.full_name : null, date: request.approved_at_dc },
-    { label: 'Directeur Exécutif', name: request.approved_by_de ? approvers[request.approved_by_de]?.full_name : null, date: request.approved_at_de },
+    {
+      label: 'RH Personnel',
+      name: request.approved_by_rp ? approvers[request.approved_by_rp]?.full_name : null,
+      date: request.approved_at_rp,
+    },
+    {
+      label: 'Chef de Service',
+      name: request.approved_by_dc ? approvers[request.approved_by_dc]?.full_name : null,
+      date: request.approved_at_dc,
+    },
+    {
+      label: 'Directeur Exécutif',
+      name: request.approved_by_de ? approvers[request.approved_by_de]?.full_name : null,
+      date: request.approved_at_de,
+    },
   ]
 
   return (
     <div id="print-document" className="print-document">
-      {/* ── Top accent ── */}
+      {/* ── Brand accent bar ── */}
       <div className="print-accent-bar" />
 
-      {/* ── Header row: logo + title + badge ── */}
+      {/* ── Header ── */}
       <div className="print-header">
         <div className="print-header-left">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo/imgi_55_NV_LOGO_FRMG_ANG-AR-1-removebg-preview.png" alt="FRMG" className="print-logo" />
+          <img
+            src="/logo/imgi_55_NV_LOGO_FRMG_ANG-AR-1-removebg-preview.png"
+            alt="FRMG"
+            className="print-logo"
+          />
           <div>
             <div className="print-org-name">Fédération Royale Marocaine de Golf</div>
             <div className="print-org-sub">Direction des Ressources Humaines</div>
           </div>
         </div>
         <div className="print-header-right">
+          <div className="print-ref">Réf: {refNumber}</div>
           <div className="print-badge-approved">CONGÉ APPROUVÉ</div>
-          <div className="print-ref">{refNumber}</div>
         </div>
       </div>
 
-      {/* ── Title bar ── */}
-      <div className="print-title-bar">
-        <div className="print-title">Attestation de Congé</div>
-        <div className="print-subtitle">
-          Généré le {format(new Date(), 'd MMMM yyyy', { locale: fr })}
+      <div className="print-divider" />
+
+      {/* ── Title ── */}
+      <div className="print-title">Attestation de Congé</div>
+      <div className="print-subtitle">
+        Document généré le {format(new Date(), 'd MMMM yyyy', { locale: fr })}
+      </div>
+
+      {/* ── Employee card ── */}
+      <div className="print-section">
+        <div className="print-section-label">EMPLOYÉ</div>
+        <div className="print-card">
+          <table className="print-table">
+            <tbody>
+              <tr>
+                <td className="print-td-label">Nom complet</td>
+                <td className="print-td-value">{request.user?.full_name ?? '—'}</td>
+              </tr>
+              <tr>
+                <td className="print-td-label">Poste</td>
+                <td className="print-td-value">{request.user?.job_title ?? '—'}</td>
+              </tr>
+              {request.user?.email && (
+                <tr>
+                  <td className="print-td-label">Email</td>
+                  <td className="print-td-value">{request.user.email}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* ── Row 1: Employee + Leave details side by side ── */}
-      <div className="print-row">
-        <div className="print-col">
-          <div className="print-section-label">EMPLOYÉ</div>
-          <div className="print-card">
-            <div className="print-field">
-              <span className="print-field-label">Nom complet</span>
-              <span className="print-field-value print-field-bold">{request.user?.full_name ?? '—'}</span>
-            </div>
-            <div className="print-field">
-              <span className="print-field-label">Poste</span>
-              <span className="print-field-value">{request.user?.job_title ?? '—'}</span>
-            </div>
-            {request.user?.email && (
-              <div className="print-field print-field-last">
-                <span className="print-field-label">Email</span>
-                <span className="print-field-value">{request.user.email}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="print-col">
-          <div className="print-section-label">DÉTAILS DU CONGÉ</div>
-          <div className="print-card">
-            <div className="print-field">
-              <span className="print-field-label">Type</span>
-              <span className="print-field-value">{typeLabel}</span>
-            </div>
-            <div className="print-field">
-              <span className="print-field-label">Début</span>
-              <span className="print-field-value print-capitalize">{fmtDate(request.start_date)}</span>
-            </div>
-            <div className="print-field">
-              <span className="print-field-label">Fin</span>
-              <span className="print-field-value print-capitalize">{fmtDate(request.end_date)}</span>
-            </div>
-            <div className="print-field">
-              <span className="print-field-label">Durée</span>
-              <span className="print-field-value print-field-highlight">
-                {request.days_count} jour{request.days_count > 1 ? 's' : ''} ouvrable{request.days_count > 1 ? 's' : ''}
-              </span>
-            </div>
-            {request.return_date && (
-              <div className="print-field print-field-last">
-                <span className="print-field-label">Reprise</span>
-                <span className="print-field-value print-capitalize">{fmtDate(request.return_date)}</span>
-              </div>
-            )}
-          </div>
+      {/* ── Leave details ── */}
+      <div className="print-section">
+        <div className="print-section-label">DÉTAILS DU CONGÉ</div>
+        <div className="print-card">
+          <table className="print-table">
+            <tbody>
+              <tr>
+                <td className="print-td-label">Type</td>
+                <td className="print-td-value">{typeLabel}</td>
+              </tr>
+              <tr>
+                <td className="print-td-label">Date de début</td>
+                <td className="print-td-value" style={{ textTransform: 'capitalize' }}>
+                  {format(new Date(request.start_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
+                </td>
+              </tr>
+              <tr>
+                <td className="print-td-label">Date de fin</td>
+                <td className="print-td-value" style={{ textTransform: 'capitalize' }}>
+                  {format(new Date(request.end_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
+                </td>
+              </tr>
+              <tr>
+                <td className="print-td-label">Durée</td>
+                <td className="print-td-value print-td-highlight">
+                  {request.days_count} jour{request.days_count > 1 ? 's' : ''} ouvrable{request.days_count > 1 ? 's' : ''}
+                </td>
+              </tr>
+              {request.return_date && (
+                <tr>
+                  <td className="print-td-label">Date de reprise</td>
+                  <td className="print-td-value" style={{ textTransform: 'capitalize' }}>
+                    {format(new Date(request.return_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* ── Row 2: Replacement + Motif + Balance ── */}
-      <div className="print-row print-row-3">
-        {/* Replacement */}
-        <div className="print-col">
-          <div className="print-section-label">REMPLAÇANT</div>
+      {/* ── Replacement person ── */}
+      {request.replacement_user && (
+        <div className="print-section">
+          <div className="print-section-label">PERSONNE DE REMPLACEMENT</div>
           <div className="print-card print-card-accent">
-            {request.replacement_user ? (
-              <>
-                <div className="print-field">
-                  <span className="print-field-label">Nom</span>
-                  <span className="print-field-value print-field-bold">{request.replacement_user.full_name}</span>
-                </div>
+            <table className="print-table">
+              <tbody>
+                <tr>
+                  <td className="print-td-label">Remplaçant</td>
+                  <td className="print-td-value">{request.replacement_user.full_name}</td>
+                </tr>
                 {request.replacement_user.job_title && (
-                  <div className="print-field print-field-last">
-                    <span className="print-field-label">Poste</span>
-                    <span className="print-field-value">{request.replacement_user.job_title}</span>
-                  </div>
+                  <tr>
+                    <td className="print-td-label">Poste</td>
+                    <td className="print-td-value">{request.replacement_user.job_title}</td>
+                  </tr>
                 )}
-              </>
-            ) : (
-              <div className="print-field print-field-last">
-                <span className="print-field-value print-field-muted">Non spécifié</span>
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
-        {/* Motif */}
-        <div className="print-col">
+      {/* ── Reason ── */}
+      {request.reason && (
+        <div className="print-section">
           <div className="print-section-label">MOTIF</div>
           <div className="print-card">
-            <p className="print-reason">{request.reason || 'Non spécifié'}</p>
+            <p className="print-reason">{request.reason}</p>
           </div>
         </div>
+      )}
 
+      {/* ── Balance + Validations side by side ── */}
+      <div className="print-row">
         {/* Balance */}
-        <div className="print-col">
-          <div className="print-section-label">IMPACT SUR LE SOLDE</div>
+        <div className="print-section print-col">
+          <div className="print-section-label">SOLDE</div>
           <div className="print-card">
-            <div className="print-field">
-              <span className="print-field-label">Avant</span>
-              <span className="print-field-value">{request.balance_before ?? '—'} j</span>
-            </div>
-            <div className="print-field">
-              <span className="print-field-label">Demandé</span>
-              <span className="print-field-value" style={{ color: '#dc2626' }}>-{request.days_count} j</span>
-            </div>
-            <div className="print-field print-field-last print-field-total">
-              <span className="print-field-label">Reste</span>
-              <span className="print-field-value" style={{ fontWeight: 700, color: balanceAfter >= 0 ? '#16a34a' : '#dc2626' }}>
-                {request.balance_before != null ? `${balanceAfter} j` : '—'}
-              </span>
-            </div>
+            <table className="print-table">
+              <tbody>
+                <tr>
+                  <td className="print-td-label">Avant demande</td>
+                  <td className="print-td-value">{request.balance_before ?? '—'} jours</td>
+                </tr>
+                <tr>
+                  <td className="print-td-label">Jours demandés</td>
+                  <td className="print-td-value" style={{ color: '#dc2626' }}>
+                    -{request.days_count} jours
+                  </td>
+                </tr>
+                <tr className="print-tr-total">
+                  <td className="print-td-label" style={{ fontWeight: 600 }}>Solde restant</td>
+                  <td className="print-td-value" style={{ fontWeight: 700, color: balanceAfter >= 0 ? '#16a34a' : '#dc2626' }}>
+                    {request.balance_before != null ? `${balanceAfter} jours` : '—'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Validation chain */}
+        <div className="print-section print-col">
+          <div className="print-section-label">CHAÎNE DE VALIDATION</div>
+          <div className="print-card">
+            {approvalSteps.map((step, i) => (
+              <div key={i} className="print-approval-step">
+                <span className="print-check">&#10003;</span>
+                <span className="print-approval-label">{step.label}</span>
+                <span className="print-approval-name">{step.name ?? '—'}</span>
+                <span className="print-approval-date">
+                  {step.date ? format(new Date(step.date), 'dd/MM/yyyy', { locale: fr }) : '—'}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* ── Validation chain (full width) ── */}
-      <div className="print-section-label">CHAÎNE DE VALIDATION</div>
-      <div className="print-card print-validation-card">
-        <div className="print-validation-row">
-          {approvalSteps.map((step, i) => (
-            <div key={i} className="print-validation-item">
-              <div className="print-validation-check">&#10003;</div>
-              <div className="print-validation-info">
-                <div className="print-validation-label">{step.label}</div>
-                <div className="print-validation-name">{step.name ?? '—'}</div>
-                <div className="print-validation-date">{step.date ? fmtShort(step.date) : '—'}</div>
-              </div>
-              {i < approvalSteps.length - 1 && <div className="print-validation-arrow">→</div>}
-            </div>
-          ))}
-        </div>
-      </div>
+      <div className="print-divider" />
 
       {/* ── Signatures ── */}
       <div className="print-signatures">
