@@ -243,27 +243,32 @@
    Print-only document styles
    ══════════════════════════════════════════ */
 
+/* Hide print document on screen */
 .print-document {
   display: none;
 }
 
 @media print {
-  /* Reset: hide app, show only print document */
-  body > * { display: none !important; }
+  /* Hide everything except the print document */
+  body > * {
+    display: none !important;
+  }
   body > .print-document,
-  body .print-document { display: block !important; }
+  body .print-document {
+    display: block !important;
+  }
 
   @page {
     size: A4;
-    margin: 14mm 18mm;
+    margin: 0;
   }
 
   body {
     background: white !important;
     color: #1a1a1a !important;
     font-family: var(--font-plus-jakarta), system-ui, sans-serif;
-    font-size: 9.5pt;
-    line-height: 1.4;
+    font-size: 11pt;
+    line-height: 1.5;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -271,60 +276,62 @@
   .print-document {
     max-width: 100%;
     margin: 0;
-    padding: 0;
+    padding: 14mm 18mm;
+    color: #1a1a1a;
+    box-sizing: border-box;
   }
 
-  /* ── Accent bar ── */
+  /* Accent bar (top and bottom) */
   .print-accent-bar {
     height: 3px;
-    background: linear-gradient(90deg, #a3754a, #c99b6d);
+    background: linear-gradient(90deg, #a3754a, #c99b6d, #a3754a);
     border-radius: 2px;
-    margin-bottom: 10px;
+    margin-bottom: 14px;
   }
   .print-accent-bar:last-of-type {
-    margin-top: 12px;
+    margin-top: 16px;
     margin-bottom: 6px;
   }
 
-  /* ── Header ── */
+  /* Header */
   .print-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
+    align-items: flex-start;
+    margin-bottom: 12px;
   }
   .print-header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
   .print-logo {
-    width: 44px;
-    height: 44px;
+    width: 56px;
+    height: 56px;
     object-fit: contain;
   }
   .print-org-name {
-    font-size: 11pt;
+    font-size: 13pt;
     font-weight: 700;
     color: #1a1a1a;
     letter-spacing: -0.02em;
   }
   .print-org-sub {
-    font-size: 8pt;
-    color: #888;
-    margin-top: 1px;
+    font-size: 9pt;
+    color: #666;
+    margin-top: 2px;
   }
   .print-header-right {
     text-align: right;
   }
   .print-ref {
-    font-size: 7.5pt;
-    color: #aaa;
+    font-size: 9pt;
+    color: #888;
     font-family: var(--font-geist-mono), monospace;
-    margin-top: 4px;
   }
   .print-badge-approved {
     display: inline-block;
+    margin-top: 4px;
     padding: 3px 12px;
     background: #f0fdf4;
     border: 1.5px solid #86efac;
@@ -335,179 +342,169 @@
     letter-spacing: 0.05em;
   }
 
-  /* ── Title bar ── */
-  .print-title-bar {
-    text-align: center;
-    background: #faf8f6;
-    border: 1px solid #ece6df;
-    border-radius: 8px;
-    padding: 8px 0 6px;
-    margin-bottom: 10px;
+  /* Divider */
+  .print-divider {
+    border: none;
+    border-top: 1.5px solid #e5e5e5;
+    margin: 14px 0;
   }
+
+  /* Title */
   .print-title {
-    font-size: 15pt;
+    font-size: 16pt;
     font-weight: 700;
+    text-align: center;
     color: #1a1a1a;
     letter-spacing: -0.02em;
     margin: 0;
+    padding: 10px 0 4px;
+    background: #faf8f5;
+    border: 1px solid #ece6df;
+    border-radius: 8px 8px 0 0;
   }
   .print-subtitle {
-    font-size: 7.5pt;
+    font-size: 8pt;
+    text-align: center;
     color: #aaa;
-    margin-top: 2px;
+    padding-bottom: 8px;
+    background: #faf8f5;
+    border: 1px solid #ece6df;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    margin-bottom: 14px;
   }
 
-  /* ── Section label ── */
+  /* Section */
+  .print-section {
+    margin-bottom: 12px;
+  }
   .print-section-label {
-    font-size: 6.5pt;
+    font-size: 7pt;
     font-weight: 700;
     color: #a3754a;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     margin-bottom: 4px;
+    padding-left: 2px;
   }
 
-  /* ── Card ── */
+  /* Card */
   .print-card {
-    border: 1px solid #eae8e5;
+    border: 1px solid #eae7e3;
     border-radius: 8px;
-    padding: 0;
+    padding: 8px 12px;
     background: #fdfcfb;
-    overflow: hidden;
   }
   .print-card-accent {
     border-left: 3px solid #a3754a;
     background: #fdf9f5;
   }
 
-  /* ── Field rows (replaces tables) ── */
-  .print-field {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 4px 10px;
-    border-bottom: 1px solid #f3f1ef;
-    gap: 8px;
+  /* Table rows */
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
   }
-  .print-field-last,
-  .print-field:last-child {
+  .print-table tr {
+    border-bottom: 1px solid #f2f0ed;
+  }
+  .print-table tr:last-child {
     border-bottom: none;
   }
-  .print-field-label {
-    font-size: 8pt;
-    color: #999;
-    flex-shrink: 0;
-  }
-  .print-field-value {
+  .print-td-label {
+    padding: 4px 0;
+    width: 38%;
     font-size: 8.5pt;
+    color: #999;
+    vertical-align: top;
+  }
+  .print-td-value {
+    padding: 4px 0;
+    font-size: 9pt;
     font-weight: 500;
     color: #1a1a1a;
-    text-align: right;
+    vertical-align: top;
   }
-  .print-field-bold {
-    font-weight: 700;
-  }
-  .print-field-highlight {
+  .print-td-highlight {
     font-weight: 700;
     color: #a3754a;
   }
-  .print-field-muted {
-    color: #bbb;
-    font-style: italic;
-  }
-  .print-field-total {
-    border-top: 1.5px solid #e5e0da;
-    padding-top: 5px;
-  }
-  .print-capitalize {
-    text-transform: capitalize;
+
+  /* Total row */
+  .print-tr-total td {
+    border-top: 1.5px solid #ddd;
+    padding-top: 8px;
   }
 
-  /* ── Rows ── */
+  /* Reason text */
+  .print-reason {
+    font-size: 10pt;
+    color: #333;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* Two-column row */
   .print-row {
     display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
-  .print-row-3 {
-    gap: 8px;
+    gap: 14px;
   }
   .print-col {
     flex: 1;
     min-width: 0;
   }
 
-  /* ── Reason ── */
-  .print-reason {
+  /* Approval steps */
+  .print-approval-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid #f2f0ed;
     font-size: 8.5pt;
-    color: #444;
-    line-height: 1.5;
-    margin: 0;
-    padding: 6px 10px;
   }
-
-  /* ── Validation chain (horizontal) ── */
-  .print-validation-card {
-    padding: 8px 12px;
-    margin-bottom: 10px;
+  .print-approval-step:last-child {
+    border-bottom: none;
   }
-  .print-validation-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-  }
-  .print-validation-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .print-validation-check {
-    width: 18px;
-    height: 18px;
+  .print-check {
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     background: #f0fdf4;
     border: 1.5px solid #86efac;
     color: #16a34a;
-    font-size: 9pt;
     font-weight: 700;
+    font-size: 8pt;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
-  .print-validation-info {
-    text-align: center;
-  }
-  .print-validation-label {
-    font-size: 7pt;
+  .print-approval-label {
     font-weight: 600;
-    color: #777;
-    letter-spacing: 0.02em;
-  }
-  .print-validation-name {
+    color: #666;
+    width: 105px;
+    flex-shrink: 0;
     font-size: 8pt;
-    font-weight: 600;
-    color: #1a1a1a;
   }
-  .print-validation-date {
-    font-size: 7pt;
+  .print-approval-name {
+    flex: 1;
+    color: #1a1a1a;
+    font-weight: 500;
+  }
+  .print-approval-date {
     color: #aaa;
     font-family: var(--font-geist-mono), monospace;
-  }
-  .print-validation-arrow {
-    font-size: 10pt;
-    color: #ccc;
-    margin: 0 10px;
+    font-size: 7.5pt;
     flex-shrink: 0;
   }
 
-  /* ── Signatures ── */
+  /* Signatures */
   .print-signatures {
     display: flex;
     justify-content: space-between;
     gap: 16px;
-    margin-top: 14px;
+    margin-top: 16px;
     margin-bottom: 10px;
   }
   .print-signature-block {
@@ -518,10 +515,10 @@
     font-size: 8pt;
     font-weight: 600;
     color: #666;
-    margin-bottom: 28px;
+    margin-bottom: 30px;
   }
   .print-signature-line {
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid #d4d0cc;
     margin: 0 8px;
   }
   .print-signature-sub {
@@ -530,11 +527,11 @@
     margin-top: 3px;
   }
 
-  /* ── Footer ── */
+  /* Footer */
   .print-footer {
     text-align: center;
     font-size: 7pt;
     color: #bbb;
-    margin-top: 3px;
+    margin-top: 4px;
   }
 }
