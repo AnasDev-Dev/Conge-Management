@@ -73,7 +73,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 AS $$
-  SELECT role IN ('CHEF_SERVICE', 'RESPONSABLE_PERSONNEL', 'TRESORIER_GENERAL', 'DIRECTEUR_EXECUTIF', 'ADMIN')
+  SELECT role IN ('CHEF_SERVICE', 'RH', 'TRESORIER_GENERAL', 'DIRECTEUR_EXECUTIF', 'ADMIN')
   FROM public.utilisateurs
   WHERE id = auth.uid();
 $$;
@@ -132,11 +132,14 @@ CREATE POLICY "leave_requests_select"
     OR public.is_manager()
   );
 
--- Employees can insert requests for themselves only
-CREATE POLICY "leave_requests_insert_own"
+-- Employees can insert requests for themselves; managers can insert for anyone
+CREATE POLICY "leave_requests_insert"
   ON public.leave_requests FOR INSERT
   TO authenticated
-  WITH CHECK (user_id = auth.uid());
+  WITH CHECK (
+    user_id = auth.uid()
+    OR public.is_manager()
+  );
 
 -- Managers can update any request (approve, reject, edit dates)
 -- Employees can update only their own PENDING requests (cancel)

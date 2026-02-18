@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { LeaveRequest, Utilisateur } from '@/lib/types/database'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ChevronRight, Search, Users } from 'lucide-react'
 
 type EmployeeRow = Pick<
@@ -24,13 +25,12 @@ type EmployeeSummary = {
 }
 
 const approvedStatuses = new Set(['APPROVED', 'VALIDATED_DE'])
-const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'VALIDATED_TG'])
+const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 const roleKeywords: Record<string, string[]> = {
   EMPLOYEE: ['employe', 'employee', 'collaborateur', 'staff'],
   CHEF_SERVICE: ['chef', 'manager', 'service', 'responsable'],
-  RESPONSABLE_PERSONNEL: ['rh', 'hr', 'personnel', 'ressources', 'humaines'],
-  TRESORIER_GENERAL: ['tresorier', 'tresorerie', 'finance', 'compta'],
+  RH: ['rh', 'hr', 'personnel', 'ressources', 'humaines'],
   DIRECTEUR_EXECUTIF: ['directeur', 'executif', 'direction'],
   ADMIN: ['admin', 'administrateur', 'administration'],
 }
@@ -38,8 +38,7 @@ const roleKeywords: Record<string, string[]> = {
 const roleChipClass: Partial<Record<Utilisateur['role'], string>> = {
   EMPLOYEE: 'border-[#cfdacb] bg-[#ecf3e8] text-[#46604a]',
   CHEF_SERVICE: 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]',
-  RESPONSABLE_PERSONNEL: 'border-[#cde1d8] bg-[#e8f3ee] text-[#3e6756]',
-  TRESORIER_GENERAL: 'border-[#e6d3b7] bg-[#f9efdf] text-[#7e6037]',
+  RH: 'border-[#cde1d8] bg-[#e8f3ee] text-[#3e6756]',
   DIRECTEUR_EXECUTIF: 'border-[#e4d3c8] bg-[#f6ebe4] text-[#6b4c3b]',
   ADMIN: 'border-[#d8dade] bg-[#eff1f3] text-[#4e5661]',
 }
@@ -199,9 +198,19 @@ export default function EmployeesPage() {
         </CardHeader>
         <CardContent className="min-h-0 flex-1 pt-4">
           {loading ? (
-            <div className="py-12 text-center">
-              <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="mt-4 text-muted-foreground">Chargement des employés...</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="rounded-2xl border border-border/70 p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              ))}
             </div>
           ) : filteredEmployees.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">Aucun employé trouvé.</div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Bell, CheckCircle2, XCircle, Info, AlertCircle } from 'lucide-react'
 import { Notification } from '@/lib/types/database'
 import { format } from 'date-fns'
@@ -117,9 +118,17 @@ export default function NotificationsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-12">
-              <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="mt-4 text-muted-foreground">Chargement...</p>
+            <div className="space-y-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-2xl px-5 py-4 flex items-start gap-3">
+                  <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : notifications.length === 0 ? (
             <div className="text-center py-12">

@@ -11,6 +11,7 @@ import { LeaveRequest, Utilisateur } from '@/lib/types/database'
 import { ArrowLeft, Calendar, Clock, FileText, User } from 'lucide-react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { getStatusClass, getStatusLabel } from '@/lib/constants'
 
 type EmployeeDetails = Pick<
   Utilisateur,
@@ -23,7 +24,7 @@ type RequestDetails = Pick<
 >
 
 const approvedStatuses = new Set(['APPROVED', 'VALIDATED_DE'])
-const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'VALIDATED_TG'])
+const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 export default function EmployeeDetailsPage() {
   const params = useParams<{ id: string }>()
@@ -83,47 +84,6 @@ export default function EmployeeDetailsPage() {
       rejectedRequests,
     }
   }, [requests])
-
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'status-pending'
-      case 'VALIDATED_DC':
-      case 'VALIDATED_RP':
-      case 'VALIDATED_TG':
-      case 'VALIDATED_DE':
-        return 'status-progress'
-      case 'APPROVED':
-        return 'status-approved'
-      case 'REJECTED':
-        return 'status-rejected'
-      default:
-        return 'status-neutral'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'En attente'
-      case 'VALIDATED_DC':
-        return 'Validé CS'
-      case 'VALIDATED_RP':
-        return 'Validé RH'
-      case 'VALIDATED_TG':
-        return 'Validé TG'
-      case 'VALIDATED_DE':
-        return 'Validé DE'
-      case 'APPROVED':
-        return 'Approuvé'
-      case 'REJECTED':
-        return 'Rejeté'
-      case 'CANCELLED':
-        return 'Annulé'
-      default:
-        return status
-    }
-  }
 
   if (loading) {
     return (

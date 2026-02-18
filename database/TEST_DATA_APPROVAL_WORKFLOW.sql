@@ -64,56 +64,56 @@ BEGIN
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_salma, 'authenticated', 'authenticated', 'salma.berrada@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Salma Berrada"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_salma, jsonb_build_object('sub', uid_salma::text, 'email', 'salma.berrada@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_salma, jsonb_build_object('sub', uid_salma::text, 'email', 'salma.berrada@ath.ma'), 'email', uid_salma::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- 2) Youssef Amrani - EMPLOYEE (Communication)
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_youssef, 'authenticated', 'authenticated', 'youssef.amrani@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Youssef Amrani"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_youssef, jsonb_build_object('sub', uid_youssef::text, 'email', 'youssef.amrani@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_youssef, jsonb_build_object('sub', uid_youssef::text, 'email', 'youssef.amrani@ath.ma'), 'email', uid_youssef::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- 3) Nadia Fassi - RESPONSABLE_PERSONNEL (RH)
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_nadia, 'authenticated', 'authenticated', 'nadia.fassi@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Nadia Fassi"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_nadia, jsonb_build_object('sub', uid_nadia::text, 'email', 'nadia.fassi@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_nadia, jsonb_build_object('sub', uid_nadia::text, 'email', 'nadia.fassi@ath.ma'), 'email', uid_nadia::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- 4) Karim Bennani - CHEF_SERVICE
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_karim, 'authenticated', 'authenticated', 'karim.bennani@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Karim Bennani"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_karim, jsonb_build_object('sub', uid_karim::text, 'email', 'karim.bennani@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_karim, jsonb_build_object('sub', uid_karim::text, 'email', 'karim.bennani@ath.ma'), 'email', uid_karim::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- 5) Ahmed Tazi - TRESORIER_GENERAL
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_ahmed, 'authenticated', 'authenticated', 'ahmed.tazi@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Ahmed Tazi"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_ahmed, jsonb_build_object('sub', uid_ahmed::text, 'email', 'ahmed.tazi@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_ahmed, jsonb_build_object('sub', uid_ahmed::text, 'email', 'ahmed.tazi@ath.ma'), 'email', uid_ahmed::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- 6) Fatima Alaoui - DIRECTEUR_EXECUTIF
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_fatima, 'authenticated', 'authenticated', 'fatima.alaoui@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Fatima Alaoui"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_fatima, jsonb_build_object('sub', uid_fatima::text, 'email', 'fatima.alaoui@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_fatima, jsonb_build_object('sub', uid_fatima::text, 'email', 'fatima.alaoui@ath.ma'), 'email', uid_fatima::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- 7) Admin Test - ADMIN
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_admin, 'authenticated', 'authenticated', 'admin.test@ath.ma', v_encrypted, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Admin Test"}', NOW(), NOW(), '', '', FALSE)
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO auth.identities (id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-  VALUES (gen_random_uuid(), uid_admin, jsonb_build_object('sub', uid_admin::text, 'email', 'admin.test@ath.ma'), 'email', NOW(), NOW(), NOW())
+  INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+  VALUES (gen_random_uuid(), uid_admin, jsonb_build_object('sub', uid_admin::text, 'email', 'admin.test@ath.ma'), 'email', uid_admin::text, NOW(), NOW(), NOW())
   ON CONFLICT DO NOTHING;
 
   -- ========================================================================

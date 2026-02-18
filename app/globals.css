@@ -81,21 +81,21 @@
   --sidebar-accent-foreground: oklch(0.34 0.008 78);
   --sidebar-border: oklch(0.82 0.004 85 / 92%);
   --sidebar-ring: color-mix(in oklab, var(--brand) 38%, white);
-  --status-alert-bg: oklch(0.94 0.025 18);
-  --status-alert-text: oklch(0.53 0.06 18);
-  --status-alert-border: oklch(0.86 0.03 18);
-  --status-success-bg: oklch(0.95 0.025 158);
-  --status-success-text: oklch(0.47 0.055 158);
-  --status-success-border: oklch(0.87 0.03 158);
-  --status-pending-bg: oklch(0.95 0.04 83);
-  --status-pending-text: oklch(0.55 0.08 83);
-  --status-pending-border: oklch(0.89 0.04 83);
-  --status-progress-bg: color-mix(in oklab, var(--brand) 13%, white);
-  --status-progress-text: color-mix(in oklab, var(--brand) 78%, black);
-  --status-progress-border: color-mix(in oklab, var(--brand) 29%, white);
-  --status-draft-bg: oklch(0.945 0.014 72);
-  --status-draft-text: oklch(0.47 0.03 72);
-  --status-draft-border: oklch(0.87 0.02 72);
+  --status-alert-bg: oklch(0.936 0.06 25);
+  --status-alert-text: oklch(0.45 0.14 25);
+  --status-alert-border: oklch(0.84 0.08 25);
+  --status-success-bg: oklch(0.945 0.06 155);
+  --status-success-text: oklch(0.40 0.1 155);
+  --status-success-border: oklch(0.84 0.08 155);
+  --status-pending-bg: oklch(0.95 0.055 80);
+  --status-pending-text: oklch(0.48 0.12 80);
+  --status-pending-border: oklch(0.87 0.07 80);
+  --status-progress-bg: oklch(0.94 0.06 295);
+  --status-progress-text: oklch(0.42 0.16 295);
+  --status-progress-border: oklch(0.84 0.09 295);
+  --status-draft-bg: oklch(0.95 0.015 250);
+  --status-draft-text: oklch(0.48 0.04 250);
+  --status-draft-border: oklch(0.88 0.025 250);
   --shell-bg: oklch(0.95 0.003 95);
   --surface-shadow: 0 8px 22px oklch(0.32 0.01 78 / 6%);
 }
@@ -137,6 +137,36 @@
     @apply bg-background text-foreground antialiased;
     background-image: linear-gradient(180deg, oklch(0.968 0.003 95) 0%, oklch(0.955 0.003 95) 100%);
     min-height: 100vh;
+  }
+
+  /* Override native form control accent (date pickers, checkboxes, range sliders) */
+  input, select, textarea {
+    accent-color: var(--brand);
+  }
+
+  /* Style native date/time picker to match theme */
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    color-scheme: light;
+  }
+  .dark input[type="date"],
+  .dark input[type="time"],
+  .dark input[type="datetime-local"] {
+    color-scheme: dark;
+  }
+
+  /* Webkit date picker indicator */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    opacity: 0.5;
+    cursor: pointer;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 0.8;
   }
 }
 

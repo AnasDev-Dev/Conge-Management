@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback, DragEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -15,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import Link from 'next/link'
 import {
   CheckCircle2,
@@ -23,40 +23,52 @@ import {
   Clock,
   ClipboardCheck,
   Edit3,
-  User,
+  Search,
   ChevronDown,
   ChevronUp,
+  ArrowRight,
+  Undo2,
+  GripVertical,
+  MessageSquare,
+  RotateCcw,
+  User as UserIcon,
+  UserRound,
+  X,
 } from 'lucide-react'
-import { LeaveRequest, Utilisateur, UserRole } from '@/lib/types/database'
-import { format } from 'date-fns'
+import { LeaveRequest, Utilisateur } from '@/lib/types/database'
+import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
 interface RequestWithUser extends LeaveRequest {
-  user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'balance_conge' | 'balance_recuperation'>
+  user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'balance_conge' | 'balance_recuperation' | 'gender'>
 }
 
-const APPROVAL_CHAIN: Record<string, { canActOn: string; setsTo: string; field: string; label: string }> = {
-  RESPONSABLE_PERSONNEL: { canActOn: 'PENDING', setsTo: 'VALIDATED_RP', field: 'rp', label: 'Responsable Personnel (RH)' },
-  CHEF_SERVICE: { canActOn: 'VALIDATED_RP', setsTo: 'VALIDATED_DC', field: 'dc', label: 'Chef de Service' },
-  TRESORIER_GENERAL: { canActOn: 'VALIDATED_DC', setsTo: 'VALIDATED_TG', field: 'tg', label: 'Trésorier Général' },
-  DIRECTEUR_EXECUTIF: { canActOn: 'VALIDATED_TG', setsTo: 'APPROVED', field: 'de', label: 'Directeur Exécutif' },
+// Pipeline stage definitions
+const PIPELINE_STAGES = [
+  { status: 'PENDING', label: 'RH Personnel', shortLabel: 'RH', role: 'RH', setsTo: 'VALIDATED_RP', field: 'rp', color: 'pending' },
+  { status: 'VALIDATED_RP', label: 'Chef de Service', shortLabel: 'Chef', role: 'CHEF_SERVICE', setsTo: 'VALIDATED_DC', field: 'dc', color: 'progress' },
+  { status: 'VALIDATED_DC', label: 'Directeur Executif', shortLabel: 'Dir.', role: 'DIRECTEUR_EXECUTIF', setsTo: 'APPROVED', field: 'de', color: 'approved' },
+] as const
+
+const ALL_KANBAN_STATUSES = PIPELINE_STAGES.map(s => s.status)
+
+// Map a status to its previous stage (for undo)
+function getPreviousStage(status: string) {
+  const idx = PIPELINE_STAGES.findIndex(s => s.status === status)
+  return idx > 0 ? PIPELINE_STAGES[idx - 1] : null
 }
 
-const ADMIN_VISIBLE_STATUSES = ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'VALIDATED_TG']
-
-function getStepLabel(status: string): string {
-  switch (status) {
-    case 'PENDING': return 'En attente (RH)'
-    case 'VALIDATED_RP': return 'Validé RH → Chef de Service'
-    case 'VALIDATED_DC': return 'Validé Chef → Trésorier'
-    case 'VALIDATED_TG': return 'Validé Trésorier → Directeur'
-    default: return status
-  }
+// Infer what status a rejected request was at before rejection
+function inferPreRejectStatus(r: RequestWithUser): string {
+  if (r.approved_by_dc) return 'VALIDATED_DC'
+  if (r.approved_by_rp) return 'VALIDATED_RP'
+  return 'PENDING'
 }
 
 export default function ValidationsPage() {
   const [user, setUser] = useState<Utilisateur | null>(null)
-  const [requests, setRequests] = useState<RequestWithUser[]>([])
+  const [allRequests, setAllRequests] = useState<RequestWithUser[]>([])
+  const [rejectedRequests, setRejectedRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
@@ -64,6 +76,16 @@ export default function ValidationsPage() {
   const [rejectingRequest, setRejectingRequest] = useState<RequestWithUser | null>(null)
   const [expandedDateEdit, setExpandedDateEdit] = useState<number | null>(null)
   const [editedDates, setEditedDates] = useState<Record<number, { start_date: string; end_date: string; days_count: number }>>({})
+  const [searchTerm, setSearchTerm] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string>('ALL')
+  const [mobileTab, setMobileTab] = useState(0)
+  const [showRejected, setShowRejected] = useState(false)
+
+
+  // Drag and drop state
+  const [draggedId, setDraggedId] = useState<number | null>(null)
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null)
+
   const supabase = createClient()
 
   useEffect(() => {
@@ -71,37 +93,24 @@ export default function ValidationsPage() {
     if (userStr) {
       const userData = JSON.parse(userStr) as Utilisateur
       setUser(userData)
-      loadRequests(userData)
+      loadAllRequests()
+      loadRejectedRequests()
     }
   }, [])
 
-  const loadRequests = async (currentUser: Utilisateur) => {
+  const loadAllRequests = async () => {
     try {
-      const chainEntry = APPROVAL_CHAIN[currentUser.role]
-      const isAdmin = currentUser.role === 'ADMIN'
-
-      if (!chainEntry && !isAdmin) {
-        setLoading(false)
-        return
-      }
-
-      let query = supabase
+      const { data, error } = await supabase
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title, email, balance_conge, balance_recuperation)
+          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title, email, balance_conge, balance_recuperation, gender)
         `)
+        .in('status', ALL_KANBAN_STATUSES)
         .order('created_at', { ascending: false })
 
-      if (isAdmin) {
-        query = query.in('status', ADMIN_VISIBLE_STATUSES)
-      } else {
-        query = query.eq('status', chainEntry.canActOn)
-      }
-
-      const { data, error } = await query
       if (error) throw error
-      setRequests(data || [])
+      setAllRequests(data || [])
     } catch (error) {
       console.error('Error loading requests:', error)
     } finally {
@@ -109,17 +118,73 @@ export default function ValidationsPage() {
     }
   }
 
+  const loadRejectedRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select(`
+          *,
+          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title, email, balance_conge, balance_recuperation, gender)
+        `)
+        .eq('status', 'REJECTED')
+        .order('rejected_at', { ascending: false })
+        .limit(20)
+
+      if (error) throw error
+      setRejectedRequests(data || [])
+    } catch (error) {
+      console.error('Error loading rejected requests:', error)
+    }
+  }
+
+  // Filter requests
+  const filteredRequests = useMemo(() => {
+    return allRequests.filter(r => {
+      if (typeFilter !== 'ALL' && r.request_type !== typeFilter) return false
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase()
+        const matchesName = r.user?.full_name?.toLowerCase().includes(term)
+        const matchesJob = r.user?.job_title?.toLowerCase().includes(term)
+        const matchesReason = r.reason?.toLowerCase().includes(term)
+        if (!matchesName && !matchesJob && !matchesReason) return false
+      }
+      return true
+    })
+  }, [allRequests, searchTerm, typeFilter])
+
+  // Group requests by pipeline stage
+  const requestsByStage = useMemo(() => {
+    const grouped: Record<string, RequestWithUser[]> = {}
+    for (const stage of PIPELINE_STAGES) {
+      grouped[stage.status] = filteredRequests.filter(r => r.status === stage.status)
+    }
+    return grouped
+  }, [filteredRequests])
+
+  // Determine which stage the current user can act on
+  const userActiveStage = useMemo(() => {
+    if (!user) return null
+    if (user.role === 'ADMIN') return 'ALL'
+    return PIPELINE_STAGES.find(s => s.role === user.role) || null
+  }, [user])
+
+  const canActOnStage = useCallback((stageStatus: string): boolean => {
+    if (!userActiveStage) return false
+    if (userActiveStage === 'ALL') return true
+    return userActiveStage.status === stageStatus
+  }, [userActiveStage])
+
+  const getStageForStatus = (status: string) => {
+    return PIPELINE_STAGES.find(s => s.status === status)
+  }
+
+  // ──────────────────────────────────────────────
+  // Approve
+  // ──────────────────────────────────────────────
   const handleApprove = async (request: RequestWithUser) => {
     if (!user) return
-    const chainEntry = APPROVAL_CHAIN[user.role]
-    if (!chainEntry && user.role !== 'ADMIN') return
-
-    // For admin, determine which step this request is at
-    const effectiveChain = user.role === 'ADMIN'
-      ? Object.values(APPROVAL_CHAIN).find(c => c.canActOn === request.status)
-      : chainEntry
-
-    if (!effectiveChain) return
+    const stage = getStageForStatus(request.status)
+    if (!stage) return
 
     setActionLoading(request.id)
     try {
@@ -127,13 +192,12 @@ export default function ValidationsPage() {
       const isRhStep = request.status === 'PENDING'
 
       const updateData: Record<string, unknown> = {
-        status: effectiveChain.setsTo,
-        [`approved_by_${effectiveChain.field}`]: user.id,
-        [`approved_at_${effectiveChain.field}`]: new Date().toISOString(),
+        status: stage.setsTo,
+        [`approved_by_${stage.field}`]: user.id,
+        [`approved_at_${stage.field}`]: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
 
-      // RH can edit dates
       if (isRhStep && edited) {
         updateData.start_date = edited.start_date
         updateData.end_date = edited.end_date
@@ -148,7 +212,7 @@ export default function ValidationsPage() {
       if (error) throw error
 
       // On final approval, deduct balance
-      if (effectiveChain.setsTo === 'APPROVED' && request.user) {
+      if (stage.setsTo === 'APPROVED' && request.user) {
         const daysCount = edited?.days_count ?? request.days_count
         const balanceField = request.request_type === 'CONGE' ? 'balance_conge' : 'balance_recuperation'
         const currentBalance = request.request_type === 'CONGE'
@@ -161,8 +225,17 @@ export default function ValidationsPage() {
           .eq('id', request.user_id)
       }
 
-      // Remove from list
-      setRequests(prev => prev.filter(r => r.id !== request.id))
+      // Move card to next stage or remove if fully approved
+      setAllRequests(prev => {
+        if (stage.setsTo === 'APPROVED') {
+          return prev.filter(r => r.id !== request.id)
+        }
+        return prev.map(r =>
+          r.id === request.id
+            ? { ...r, status: stage.setsTo as RequestWithUser['status'], [`approved_by_${stage.field}`]: user.id, [`approved_at_${stage.field}`]: new Date().toISOString() }
+            : r
+        )
+      })
       setExpandedDateEdit(null)
       delete editedDates[request.id]
     } catch (error) {
@@ -172,6 +245,9 @@ export default function ValidationsPage() {
     }
   }
 
+  // ──────────────────────────────────────────────
+  // Reject
+  // ──────────────────────────────────────────────
   const openRejectDialog = (request: RequestWithUser) => {
     setRejectingRequest(request)
     setRejectReason('')
@@ -196,7 +272,14 @@ export default function ValidationsPage() {
 
       if (error) throw error
 
-      setRequests(prev => prev.filter(r => r.id !== rejectingRequest.id))
+      const rejected = allRequests.find(r => r.id === rejectingRequest.id)
+      setAllRequests(prev => prev.filter(r => r.id !== rejectingRequest.id))
+      if (rejected) {
+        setRejectedRequests(prev => [
+          { ...rejected, status: 'REJECTED' as RequestWithUser['status'], rejected_by: user.id, rejected_at: new Date().toISOString(), rejection_reason: rejectReason.trim() },
+          ...prev,
+        ])
+      }
       setRejectDialogOpen(false)
       setRejectingRequest(null)
       setRejectReason('')
@@ -207,6 +290,87 @@ export default function ValidationsPage() {
     }
   }
 
+  // ──────────────────────────────────────────────
+  // Undo approve — move card back one stage
+  // ──────────────────────────────────────────────
+  const handleUndoApprove = async (request: RequestWithUser) => {
+    if (!user) return
+    const prevStage = getPreviousStage(request.status)
+    if (!prevStage) return
+
+    // Only the approver who moved it here (or admin) can undo
+    const approverField = `approved_by_${prevStage.field}` as keyof RequestWithUser
+    if (!isAdmin && (request[approverField] as string) !== user.id) return
+
+    setActionLoading(request.id)
+    try {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          status: prevStage.status,
+          [`approved_by_${prevStage.field}`]: null,
+          [`approved_at_${prevStage.field}`]: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', request.id)
+
+      if (error) throw error
+
+      setAllRequests(prev =>
+        prev.map(r =>
+          r.id === request.id
+            ? { ...r, status: prevStage.status as RequestWithUser['status'], [`approved_by_${prevStage.field}`]: null, [`approved_at_${prevStage.field}`]: null }
+            : r
+        )
+      )
+    } catch (error) {
+      console.error('Error undoing approval:', error)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // Undo reject — restore card to its pre-rejection status
+  // ──────────────────────────────────────────────
+  const handleUndoReject = async (request: RequestWithUser) => {
+    if (!user) return
+
+    // Only the rejector (or admin) can undo
+    if (!isAdmin && request.rejected_by !== user.id) return
+
+    const restoreStatus = inferPreRejectStatus(request)
+
+    setActionLoading(request.id)
+    try {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          status: restoreStatus,
+          rejected_by: null,
+          rejected_at: null,
+          rejection_reason: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', request.id)
+
+      if (error) throw error
+
+      setRejectedRequests(prev => prev.filter(r => r.id !== request.id))
+      setAllRequests(prev => [
+        { ...request, status: restoreStatus as RequestWithUser['status'], rejected_by: null, rejected_at: null, rejection_reason: null },
+        ...prev,
+      ])
+    } catch (error) {
+      console.error('Error undoing rejection:', error)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // Date editing
+  // ──────────────────────────────────────────────
   const toggleDateEdit = (requestId: number, request: RequestWithUser) => {
     if (expandedDateEdit === requestId) {
       setExpandedDateEdit(null)
@@ -231,16 +395,15 @@ export default function ValidationsPage() {
       if (!current) return prev
       const updated = { ...current, [field]: value }
 
-      // Recalculate business days (simple: exclude weekends)
       if (updated.start_date && updated.end_date) {
         const start = new Date(updated.start_date)
         const end = new Date(updated.end_date)
         let count = 0
-        const current = new Date(start)
-        while (current <= end) {
-          const day = current.getDay()
+        const d = new Date(start)
+        while (d <= end) {
+          const day = d.getDay()
           if (day !== 0 && day !== 6) count++
-          current.setDate(current.getDate() + 1)
+          d.setDate(d.getDate() + 1)
         }
         updated.days_count = count
       }
@@ -249,263 +412,588 @@ export default function ValidationsPage() {
     })
   }
 
+  // ──────────────────────────────────────────────
+  // Drag and drop handlers
+  // ──────────────────────────────────────────────
+  const handleDragStart = (e: DragEvent<HTMLDivElement>, requestId: number) => {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(requestId))
+    setDraggedId(requestId)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedId(null)
+    setDragOverStage(null)
+  }
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>, targetStatus: string) => {
+    if (draggedId === null) return
+
+    // Find dragged request
+    const draggedRequest = allRequests.find(r => r.id === draggedId)
+    if (!draggedRequest) return
+
+    // Only allow forward movement to the NEXT stage
+    const currentStage = getStageForStatus(draggedRequest.status)
+    if (!currentStage || currentStage.setsTo !== targetStatus) return
+
+    // Check role permission
+    if (!canActOnStage(draggedRequest.status)) return
+
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverStage(targetStatus)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverStage(null)
+  }
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetStatus: string) => {
+    e.preventDefault()
+    setDragOverStage(null)
+    setDraggedId(null)
+
+    const requestId = parseInt(e.dataTransfer.getData('text/plain'), 10)
+    if (isNaN(requestId)) return
+
+    const request = allRequests.find(r => r.id === requestId)
+    if (!request) return
+
+    // Validate: target must be the next stage
+    const currentStage = getStageForStatus(request.status)
+    if (!currentStage || currentStage.setsTo !== targetStatus) return
+
+    // Validate role
+    if (!canActOnStage(request.status)) return
+
+    await handleApprove(request)
+  }
+
   if (!user) return null
 
-  const chainEntry = APPROVAL_CHAIN[user.role]
   const isAdmin = user.role === 'ADMIN'
-  const isRh = user.role === 'RESPONSABLE_PERSONNEL'
-  const canValidate = !!chainEntry || isAdmin
+  const isRh = user.role === 'RH'
+  const canValidate = !!PIPELINE_STAGES.find(s => s.role === user.role) || isAdmin
 
   if (!canValidate) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-center">
           <ClipboardCheck className="mx-auto mb-4 h-16 w-16 text-muted-foreground/45" />
-          <h3 className="mb-2 text-lg font-medium text-foreground">Accès non autorisé</h3>
+          <h3 className="mb-2 text-lg font-medium text-foreground">Acces non autorise</h3>
           <p className="text-muted-foreground">Vous n&apos;avez pas les permissions pour valider des demandes.</p>
         </div>
       </div>
     )
   }
 
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const getTypeLabel = (type: string) => type === 'CONGE' ? 'Conge' : 'Recuperation'
+  const getTypeBadgeClass = (type: string) => type === 'CONGE'
+    ? 'border-[#cde1d8] bg-[#e8f3ee] text-[#3e6756]'
+    : 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]'
 
-  const stats = {
-    pending: requests.length,
-    approvedThisMonth: 0, // We'd need a separate query for this; keeping simple
-    rejectedThisMonth: 0,
+  // Check if the current user can undo the approval that put this card in its current column
+  const canUndoApprove = (request: RequestWithUser): boolean => {
+    const prev = getPreviousStage(request.status)
+    if (!prev) return false
+    const approverField = `approved_by_${prev.field}` as keyof RequestWithUser
+    return isAdmin || (request[approverField] as string) === user.id
   }
 
-  const getTypeLabel = (type: string) => {
-    return type === 'CONGE' ? 'Congé' : 'Récupération'
+  const canUndoReject = (request: RequestWithUser): boolean => {
+    return isAdmin || request.rejected_by === user.id
   }
 
-  const getTypeBadgeClass = (type: string) => {
-    return type === 'CONGE'
-      ? 'border-[#cde1d8] bg-[#e8f3ee] text-[#3e6756]'
-      : 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]'
-  }
+  // ──────────────────────────────────────────────
+  // Card renderer
+  // ──────────────────────────────────────────────
+  const renderRequestCard = (request: RequestWithUser, isActive: boolean, options?: { compact?: boolean; rejected?: boolean; draggable?: boolean }) => {
+    const { compact, rejected, draggable } = options || {}
+    const edited = editedDates[request.id]
+    const isDateEditExpanded = expandedDateEdit === request.id
+    const isProcessing = actionLoading === request.id
+    const canEditDates = (isRh || isAdmin) && request.status === 'PENDING'
+    const balance = request.request_type === 'CONGE'
+      ? request.user?.balance_conge
+      : request.user?.balance_recuperation
+    const isDragged = draggedId === request.id
+    const showUndo = !rejected && canUndoApprove(request) && !isActive
 
-  return (
-    <div className="space-y-7">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Validations</h1>
-        <p className="mt-2 text-muted-foreground">
-          {isAdmin
-            ? 'Toutes les demandes en attente de validation'
-            : `Demandes en attente de votre validation (${chainEntry?.label})`
-          }
-        </p>
-      </div>
+    return (
+      <Link
+        key={request.id}
+        href={`/dashboard/requests/${request.id}`}
+        draggable={draggable && isActive}
+        onDragStart={draggable && isActive ? (e) => handleDragStart(e as unknown as DragEvent<HTMLDivElement>, request.id) : undefined}
+        onDragEnd={draggable ? handleDragEnd : undefined}
+        className={`block rounded-xl border bg-card transition-all ${
+          isActive ? 'border-border/70 hover:border-primary/30' : 'border-border/50'
+        } ${compact ? 'p-3' : 'p-3.5'} ${
+          isDragged ? 'opacity-40 scale-95 rotate-1' : 'hover:shadow-md'
+        } ${draggable && isActive ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      >
+        {/* Employee info */}
+        <div className={`flex items-start gap-2.5 ${compact ? 'mb-2' : 'mb-3'}`}>
+          {draggable && isActive && (
+            <GripVertical className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/40" />
+          )}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            {request.user?.gender === 'F' ? (
+              <UserRound className="h-4.5 w-4.5" />
+            ) : (
+              <UserIcon className="h-4.5 w-4.5" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="text-sm font-semibold text-foreground leading-tight block truncate text-left">
+              {request.user?.full_name || 'Inconnu'}
+            </span>
+            {request.user?.job_title && (
+              <p className="text-xs text-muted-foreground truncate">{request.user.job_title}</p>
+            )}
+          </div>
+          {compact && !rejected && (
+            <Badge variant="secondary" className="shrink-0 text-[10px]">
+              {getStageForStatus(request.status)?.shortLabel}
+            </Badge>
+          )}
+        </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--status-pending-bg)]">
-                <Clock className="h-5 w-5 text-[var(--status-pending-text)]" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-[var(--status-pending-text)]">{stats.pending}</div>
-                <p className="text-sm text-muted-foreground">En attente</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--status-success-bg)]">
-                <CheckCircle2 className="h-5 w-5 text-[var(--status-success-text)]" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-[var(--status-success-text)]">-</div>
-                <p className="text-sm text-muted-foreground">Approuvés ce mois</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--status-alert-bg,rgba(239,68,68,0.1))]">
-                <XCircle className="h-5 w-5 text-[var(--status-alert-text)]" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-[var(--status-alert-text)]">-</div>
-                <p className="text-sm text-muted-foreground">Rejetés ce mois</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        {/* Request details */}
+        <div className={`space-y-1.5 ${isActive || rejected || showUndo ? 'mb-3' : 'mb-1'}`}>
+          <div className="flex items-center gap-1.5 text-xs">
+            <Calendar className="h-3 w-3 text-muted-foreground shrink-0" />
+            <span className="font-medium text-foreground">
+              {format(new Date(request.start_date), 'dd MMM', { locale: fr })} – {format(new Date(request.end_date), 'dd MMM', { locale: fr })}
+            </span>
+          </div>
 
-      {/* Requests list */}
-      <Card className="border-border/70">
-        <CardHeader>
-          <CardTitle>Demandes à traiter ({requests.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="py-12 text-center">
-              <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="mt-4 text-muted-foreground">Chargement des demandes...</p>
-            </div>
-          ) : requests.length === 0 ? (
-            <div className="py-12 text-center">
-              <ClipboardCheck className="mx-auto mb-4 h-16 w-16 text-muted-foreground/45" />
-              <h3 className="mb-2 text-lg font-medium text-foreground">Aucune demande en attente</h3>
-              <p className="text-muted-foreground">
-                Toutes les demandes ont été traitées.
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className={`text-[10px] px-1.5 py-0 ${getTypeBadgeClass(request.request_type)}`}>
+              {getTypeLabel(request.request_type)}
+            </Badge>
+            <span className="text-xs font-medium text-foreground">
+              {request.days_count}j
+            </span>
+            {balance !== undefined && (
+              <span className={`text-[10px] ${
+                balance < request.days_count ? 'text-[var(--status-alert-text)] font-semibold' : 'text-muted-foreground'
+              }`}>
+                Solde: {balance}j
+              </span>
+            )}
+          </div>
+
+          {request.reason && (
+            <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+              {request.reason}
+            </p>
+          )}
+
+          {/* Rejection reason */}
+          {rejected && request.rejection_reason && (
+            <div className="mt-1.5 flex gap-1.5 rounded-lg border border-[var(--status-alert-text)]/20 bg-[var(--status-alert-text)]/5 px-2 py-1.5">
+              <MessageSquare className="mt-0.5 h-3 w-3 shrink-0 text-[var(--status-alert-text)]" />
+              <p className="text-[11px] leading-relaxed text-[var(--status-alert-text)]">
+                {request.rejection_reason}
               </p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {requests.map((request) => {
-                const edited = editedDates[request.id]
-                const isDateEditExpanded = expandedDateEdit === request.id
-                const isProcessing = actionLoading === request.id
-                const canEditDates = isRh && request.status === 'PENDING'
+          )}
 
-                return (
-                  <div
-                    key={request.id}
-                    className="rounded-2xl border border-border/70 bg-background p-5 transition-colors hover:bg-accent/30"
-                  >
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      {/* Left: Employee info */}
-                      <div className="flex items-start gap-3 min-w-0 flex-1">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                          {request.user?.full_name?.charAt(0).toUpperCase() || '?'}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Link
-                              href={`/dashboard/requests/${request.id}`}
-                              className="font-semibold text-foreground hover:underline"
-                            >
-                              {request.user?.full_name || 'Utilisateur inconnu'}
-                            </Link>
-                            {isAdmin && (
-                              <Badge className="status-progress text-xs">
-                                {getStepLabel(request.status)}
-                              </Badge>
-                            )}
-                          </div>
-                          {request.user?.job_title && (
-                            <p className="text-sm text-muted-foreground">{request.user.job_title}</p>
-                          )}
+          <div className="text-[10px] text-muted-foreground/60">
+            <Clock className="inline h-2.5 w-2.5 mr-0.5" />
+            {rejected && request.rejected_at
+              ? `Rejeté ${formatDistanceToNow(new Date(request.rejected_at), { addSuffix: true, locale: fr })}`
+              : formatDistanceToNow(new Date(request.created_at), { addSuffix: true, locale: fr })
+            }
+          </div>
+        </div>
 
-                          {/* Date range & type */}
-                          <div className="mt-2 flex items-center gap-3 flex-wrap">
-                            <div className="flex items-center gap-1.5 text-sm">
-                              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="font-medium text-foreground">
-                                {format(new Date(request.start_date), 'dd MMM', { locale: fr })} - {format(new Date(request.end_date), 'dd MMM yyyy', { locale: fr })}
-                              </span>
-                            </div>
-                            <Badge className={`text-xs ${getTypeBadgeClass(request.request_type)}`}>
-                              {getTypeLabel(request.request_type)}
-                            </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {request.days_count} jour{request.days_count > 1 ? 's' : ''}
-                            </span>
-                          </div>
+        {/* RH Date Edit */}
+        {canEditDates && isDateEditExpanded && edited && (
+          <div className="mb-3 rounded-lg border border-border/70 bg-muted/30 p-2.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+            <p className="mb-2 text-[11px] font-medium text-foreground">Modifier dates</p>
+            <div className="space-y-1.5">
+              <div>
+                <label className="block text-[10px] text-muted-foreground mb-0.5">Debut</label>
+                <Input
+                  type="date"
+                  value={edited.start_date}
+                  onChange={(e) => updateEditedDate(request.id, 'start_date', e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-muted-foreground mb-0.5">Fin</label>
+                <Input
+                  type="date"
+                  value={edited.end_date}
+                  onChange={(e) => updateEditedDate(request.id, 'end_date', e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="text-muted-foreground">Jours:</span>
+                <span className="font-semibold text-foreground">{edited.days_count}</span>
+              </div>
+            </div>
+            {(edited.start_date !== request.start_date || edited.end_date !== request.end_date) && (
+              <p className="mt-1.5 text-[10px] text-[var(--status-pending-text)]">
+                Dates modifiees a l&apos;approbation
+              </p>
+            )}
+          </div>
+        )}
 
-                          {request.reason && (
-                            <p className="mt-1.5 line-clamp-1 text-sm text-muted-foreground">{request.reason}</p>
-                          )}
-                        </div>
-                      </div>
+        {/* Actions: approve/reject on active stage */}
+        {isActive && !rejected && (
+          <div className="flex items-center gap-1.5 pt-2 border-t border-border/50" onClick={(e) => e.preventDefault()}>
+            {canEditDates && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleDateEdit(request.id, request); }}
+                className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+              >
+                <Edit3 className="h-3 w-3" />
+                {isDateEditExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
+            )}
+            <div className="flex-1" />
+            <Button
+              size="sm"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleApprove(request); }}
+              disabled={isProcessing}
+              className="h-7 px-3 text-xs gap-1 bg-[var(--status-success-text)] text-white hover:bg-[var(--status-success-text)]/90"
+            >
+              {isProcessing ? (
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <CheckCircle2 className="h-3 w-3" />
+              )}
+              Valider
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openRejectDialog(request); }}
+              disabled={isProcessing}
+              className="h-7 px-3 text-xs gap-1 border-[var(--status-alert-text)]/30 text-[var(--status-alert-text)] hover:bg-[var(--status-alert-text)]/10"
+            >
+              <XCircle className="h-3 w-3" />
+              Rejeter
+            </Button>
+          </div>
+        )}
 
-                      {/* Right: Actions */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {canEditDates && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleDateEdit(request.id, request)}
-                            className="gap-1.5"
-                          >
-                            <Edit3 className="h-3.5 w-3.5" />
-                            Modifier dates
-                            {isDateEditExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          onClick={() => handleApprove(request)}
-                          disabled={isProcessing}
-                          className="gap-1.5 bg-[var(--status-success-text)] text-white hover:bg-[var(--status-success-text)]/90"
-                        >
-                          {isProcessing ? (
-                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          )}
-                          Approuver
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openRejectDialog(request)}
-                          disabled={isProcessing}
-                          className="gap-1.5 border-[var(--status-alert-text)]/30 text-[var(--status-alert-text)] hover:bg-[var(--status-alert-text)]/10"
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                          Rejeter
-                        </Button>
-                      </div>
+        {/* Undo approve — appears on cards the user already validated (now in next column) */}
+        {showUndo && (
+          <div className="flex items-center pt-2 border-t border-border/50" onClick={(e) => e.preventDefault()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUndoApprove(request); }}
+              disabled={isProcessing}
+              className="h-8 w-full px-3 text-xs gap-1.5 border-amber-400/50 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-400 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-400 dark:hover:bg-amber-950/50"
+            >
+              {isProcessing ? (
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-600" />
+              ) : (
+                <Undo2 className="h-3.5 w-3.5" />
+              )}
+              Annuler la validation
+            </Button>
+          </div>
+        )}
+
+        {/* Undo reject */}
+        {rejected && canUndoReject(request) && (
+          <div className="flex items-center pt-2 border-t border-border/50" onClick={(e) => e.preventDefault()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUndoReject(request); }}
+              disabled={isProcessing}
+              className="h-8 w-full px-3 text-xs gap-1.5 border-blue-400/50 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 hover:border-blue-400 dark:border-blue-500/30 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50"
+            >
+              {isProcessing ? (
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400/30 border-t-blue-600" />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" />
+              )}
+              Restaurer la demande
+            </Button>
+          </div>
+        )}
+      </Link>
+    )
+  }
+
+  // Mobile: current tab (stages + rejected)
+  const MOBILE_TABS = [
+    ...PIPELINE_STAGES.map(s => ({ status: s.status, label: s.shortLabel })),
+    { status: 'REJECTED', label: 'Rejeté' },
+  ]
+  const mobileCurrentTab = MOBILE_TABS[mobileTab]
+  const mobileRequests = mobileCurrentTab.status === 'REJECTED'
+    ? rejectedRequests
+    : requestsByStage[mobileCurrentTab.status] || []
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Compact header row */}
+      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Validations</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {allRequests.length} demande{allRequests.length > 1 ? 's' : ''} en cours
+            {rejectedRequests.length > 0 && (
+              <span className="text-[var(--status-alert-text)]"> · {rejectedRequests.length} rejetée{rejectedRequests.length > 1 ? 's' : ''}</span>
+            )}
+          </p>
+        </div>
+
+        {/* Inline pipeline mini-stats — desktop only */}
+        <div className="hidden lg:flex items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/40 px-1.5 py-1.5">
+          {PIPELINE_STAGES.map((stage, idx) => {
+            const count = requestsByStage[stage.status]?.length || 0
+            const isActive = canActOnStage(stage.status)
+            return (
+              <div key={stage.status} className="flex items-center gap-1.5">
+                <div className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                  isActive
+                    ? 'bg-primary/12 text-primary border border-primary/25'
+                    : 'text-muted-foreground'
+                }`}>
+                  {isActive && <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />}
+                  <span>{stage.shortLabel}</span>
+                  <span className={`font-bold ${isActive ? 'text-primary' : ''}`}>{count}</span>
+                </div>
+                {idx < PIPELINE_STAGES.length - 1 && (
+                  <ArrowRight className="h-3 w-3 text-muted-foreground/30 shrink-0" />
+                )}
+              </div>
+            )
+          })}
+
+          {/* Rejected counter in pill bar */}
+          {rejectedRequests.length > 0 && (
+            <>
+              <div className="mx-1 h-4 w-px bg-border/60" />
+              <button
+                onClick={() => setShowRejected(!showRejected)}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                  showRejected
+                    ? 'bg-[var(--status-alert-text)]/10 text-[var(--status-alert-text)] border border-[var(--status-alert-text)]/25'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <XCircle className="h-3 w-3" />
+                <span className="font-bold">{rejectedRequests.length}</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Search + Filters */}
+      <div className="mb-4 flex shrink-0 flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+          <Input
+            placeholder="Rechercher par nom, poste, motif..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-11 h-10"
+          />
+        </div>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="h-10 rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60"
+        >
+          <option value="ALL">Tous les types</option>
+          <option value="CONGE">Conge</option>
+          <option value="RECUPERATION">Recuperation</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[...Array(3)].map((_, col) => (
+            <div key={col} className="rounded-2xl border border-border/60 bg-muted/20 p-3 space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-5 rounded-full" />
+              </div>
+              {[...Array(2)].map((_, row) => (
+                <div key={row} className="rounded-xl border border-border/50 bg-card p-3.5 space-y-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <Skeleton className="h-9 w-9 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
+                  </div>
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* ─── DESKTOP: Kanban columns ─── */}
+          <div className={`hidden lg:grid lg:gap-4 lg:flex-1 lg:min-h-0 lg:overflow-hidden ${
+            showRejected ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+          }`}>
+            {PIPELINE_STAGES.map((stage) => {
+              const stageRequests = requestsByStage[stage.status] || []
+              const isActive = canActOnStage(stage.status)
+              const isDropTarget = dragOverStage === stage.setsTo
 
-                    {/* RH Date Edit Section */}
-                    {canEditDates && isDateEditExpanded && edited && (
-                      <div className="mt-4 rounded-xl border border-border/70 bg-muted/30 p-4">
-                        <p className="mb-3 text-sm font-medium text-foreground">Modifier les dates avant approbation</p>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                          <div>
-                            <label className="mb-1 block text-xs text-muted-foreground">Date de début</label>
-                            <Input
-                              type="date"
-                              value={edited.start_date}
-                              onChange={(e) => updateEditedDate(request.id, 'start_date', e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs text-muted-foreground">Date de fin</label>
-                            <Input
-                              type="date"
-                              value={edited.end_date}
-                              onChange={(e) => updateEditedDate(request.id, 'end_date', e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs text-muted-foreground">Jours ouvrables</label>
-                            <Input
-                              type="number"
-                              value={edited.days_count}
-                              readOnly
-                              className="bg-muted/50"
-                            />
-                          </div>
-                        </div>
-                        {(edited.start_date !== request.start_date || edited.end_date !== request.end_date) && (
-                          <p className="mt-2 text-xs text-[var(--status-pending-text)]">
-                            Les dates seront modifiées lors de l&apos;approbation.
-                          </p>
-                        )}
+              return (
+                <div key={stage.status} className="flex flex-col min-h-0">
+                  {/* Column header */}
+                  <div className={`flex items-center justify-between rounded-t-2xl px-4 py-2.5 ${
+                    isActive
+                      ? 'bg-primary/10 border-2 border-b-0 border-primary/25'
+                      : 'bg-muted/60 border border-b-0 border-border/60'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${
+                        isActive ? 'bg-primary animate-pulse' : 'bg-muted-foreground/30'
+                      }`} />
+                      <span className={`text-sm font-semibold ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {stage.label}
+                      </span>
+                    </div>
+                    <Badge variant="secondary" className={`text-xs font-bold ${
+                      isActive ? 'bg-primary/15 text-primary' : ''
+                    }`}>
+                      {stageRequests.length}
+                    </Badge>
+                  </div>
+
+                  {/* Column body — scrollable + drop zone */}
+                  <div
+                    onDragOver={(e) => handleDragOver(e, stage.status)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, stage.status)}
+                    className={`flex-1 overflow-y-auto overscroll-contain rounded-b-2xl p-2.5 space-y-2.5 transition-colors ${
+                      isDropTarget
+                        ? 'bg-primary/8 border-2 border-t-0 border-primary/40 ring-2 ring-primary/15'
+                        : isActive
+                          ? 'bg-primary/[0.03] border-2 border-t-0 border-primary/25'
+                          : 'bg-muted/20 border border-t-0 border-border/60'
+                    }`}
+                  >
+                    {stageRequests.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-center">
+                        <ClipboardCheck className="h-7 w-7 text-muted-foreground/25 mb-1.5" />
+                        <p className="text-xs text-muted-foreground/60">
+                          {isDropTarget ? 'Deposer ici pour valider' : 'Aucune demande'}
+                        </p>
                       </div>
+                    ) : (
+                      stageRequests.map((request) =>
+                        renderRequestCard(request, isActive, { draggable: true })
+                      )
                     )}
                   </div>
+                </div>
+              )
+            })}
+
+            {/* Rejected column (visible when toggled) */}
+            {showRejected && (
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center justify-between rounded-t-2xl px-4 py-2.5 bg-[var(--status-alert-text)]/8 border border-b-0 border-[var(--status-alert-text)]/25">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-3.5 w-3.5 text-[var(--status-alert-text)]" />
+                    <span className="text-sm font-semibold text-[var(--status-alert-text)]">Rejetees</span>
+                  </div>
+                  <Badge variant="secondary" className="text-xs font-bold bg-[var(--status-alert-text)]/12 text-[var(--status-alert-text)]">
+                    {rejectedRequests.length}
+                  </Badge>
+                </div>
+                <div className="flex-1 overflow-y-auto overscroll-contain rounded-b-2xl p-2.5 space-y-2.5 bg-[var(--status-alert-text)]/[0.02] border border-t-0 border-[var(--status-alert-text)]/25">
+                  {rejectedRequests.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <CheckCircle2 className="h-7 w-7 text-muted-foreground/25 mb-1.5" />
+                      <p className="text-xs text-muted-foreground/60">Aucune demande rejetee</p>
+                    </div>
+                  ) : (
+                    rejectedRequests.map((request) =>
+                      renderRequestCard(request, false, { rejected: true })
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ─── MOBILE / TABLET: Tabbed list view ─── */}
+          <div className="lg:hidden flex flex-col flex-1 min-h-0">
+            {/* Stage tabs */}
+            <div className="flex gap-1 rounded-2xl border border-border/60 bg-muted/40 p-1 mb-3">
+              {MOBILE_TABS.map((tab, idx) => {
+                const count = tab.status === 'REJECTED'
+                  ? rejectedRequests.length
+                  : requestsByStage[tab.status]?.length || 0
+                const isActive = tab.status !== 'REJECTED' && canActOnStage(tab.status)
+                const isSelected = mobileTab === idx
+                const isRejectedTab = tab.status === 'REJECTED'
+                return (
+                  <button
+                    key={tab.status}
+                    onClick={() => setMobileTab(idx)}
+                    className={`flex-1 flex items-center justify-center gap-1 rounded-xl px-1.5 py-2.5 text-xs font-medium transition-all ${
+                      isSelected
+                        ? isRejectedTab
+                          ? 'bg-[var(--status-alert-text)]/8 border border-[var(--status-alert-text)]/25 text-[var(--status-alert-text)]'
+                          : 'bg-background border border-border/70 shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {isActive && <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0" />}
+                    <span>{tab.label}</span>
+                    {count > 0 && (
+                      <span className={`rounded-md px-1 py-0.5 text-[10px] font-bold ${
+                        isSelected
+                          ? isRejectedTab
+                            ? 'bg-[var(--status-alert-text)]/12 text-[var(--status-alert-text)]'
+                            : isActive ? 'bg-primary/12 text-primary' : 'bg-muted text-muted-foreground'
+                          : 'text-muted-foreground/70'
+                      }`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
                 )
               })}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {/* List of cards */}
+            <div className="flex-1 overflow-y-auto overscroll-contain space-y-2.5 pr-0.5">
+              {mobileRequests.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-14 text-center">
+                  <ClipboardCheck className="h-10 w-10 text-muted-foreground/25 mb-2" />
+                  <p className="text-sm text-muted-foreground/60">Aucune demande a cette etape</p>
+                </div>
+              ) : (
+                mobileRequests.map((request) =>
+                  mobileCurrentTab.status === 'REJECTED'
+                    ? renderRequestCard(request, false, { compact: true, rejected: true })
+                    : renderRequestCard(request, canActOnStage(mobileCurrentTab.status), { compact: true })
+                )
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Reject Dialog */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
@@ -513,7 +1001,7 @@ export default function ValidationsPage() {
           <DialogHeader>
             <DialogTitle>Rejeter la demande</DialogTitle>
             <DialogDescription>
-              Demande de {rejectingRequest?.user?.full_name} -{' '}
+              Demande de {rejectingRequest?.user?.full_name} —{' '}
               {rejectingRequest && format(new Date(rejectingRequest.start_date), 'dd MMM', { locale: fr })} au{' '}
               {rejectingRequest && format(new Date(rejectingRequest.end_date), 'dd MMM yyyy', { locale: fr })}
             </DialogDescription>
@@ -548,6 +1036,7 @@ export default function ValidationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   )
 }

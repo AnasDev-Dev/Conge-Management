@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SMARTFLOW - Leave Management System",
-  description: "Modern leave management system for efficient workforce planning",
+  title: "FRMG - Gestion des Conges",
+  description: "Systeme de gestion des conges - Federation Royale Marocaine de Golf",
 };
 
 export default function RootLayout({

@@ -1,18 +1,21 @@
 -- ============================================================
--- APPROVAL WORKFLOW RPC FUNCTIONS
--- Recommended migration for production hardening.
--- These functions enforce the approval chain server-side.
+-- REMOVE TRESORIER GENERAL FROM APPROVAL PIPELINE
+-- ============================================================
+-- New 3-stage approval chain:
+--   PENDING -> RH (RH) -> VALIDATED_RP
+--   VALIDATED_RP -> Chef de Service (CHEF_SERVICE) -> VALIDATED_DC
+--   VALIDATED_DC -> Directeur Executif (DIRECTEUR_EXECUTIF) -> APPROVED
+--
+-- VALIDATED_TG status is no longer used in the active pipeline.
+-- The enum value and DB columns are kept for backward compatibility
+-- with any historical records that used the old 4-stage flow.
 -- ============================================================
 
--- Approval chain:
---   PENDING → RH (RH) → VALIDATED_RP
---   VALIDATED_RP → Chef de Service (CHEF_SERVICE) → VALIDATED_DC
---   VALIDATED_DC → Trésorier Général (TRESORIER_GENERAL) → VALIDATED_TG
---   VALIDATED_TG → Directeur Exécutif (DIRECTEUR_EXECUTIF) → APPROVED (final, deducts balance)
---   At any step: can be REJECTED with reason.
 
 -- ============================================================
--- 1. approve_leave_request
+-- 1. UPDATE approve_leave_request RPC FUNCTION
+--    Remove VALIDATED_DC -> TRESORIER -> VALIDATED_TG step
+--    Now: VALIDATED_DC -> DIRECTEUR_EXECUTIF -> APPROVED
 -- ============================================================
 CREATE OR REPLACE FUNCTION approve_leave_request(
   p_request_id   BIGINT,
@@ -33,7 +36,6 @@ DECLARE
   v_field         TEXT;
   v_days          FLOAT;
   v_balance_field TEXT;
-  v_current_balance FLOAT;
 BEGIN
   -- Fetch the request
   SELECT * INTO v_request FROM leave_requests WHERE id = p_request_id;
@@ -47,7 +49,7 @@ BEGIN
     RAISE EXCEPTION 'Approver % not found', p_approver_id;
   END IF;
 
-  -- Determine expected role and next status based on current status
+  -- 3-stage approval chain (Tresorier removed)
   CASE v_request.status
     WHEN 'PENDING' THEN
       v_expected_role := 'RH';
@@ -58,10 +60,6 @@ BEGIN
       v_next_status := 'VALIDATED_DC';
       v_field := 'dc';
     WHEN 'VALIDATED_DC' THEN
-      v_expected_role := 'TRESORIER_GENERAL';
-      v_next_status := 'VALIDATED_TG';
-      v_field := 'tg';
-    WHEN 'VALIDATED_TG' THEN
       v_expected_role := 'DIRECTEUR_EXECUTIF';
       v_next_status := 'APPROVED';
       v_field := 'de';
@@ -110,14 +108,14 @@ BEGIN
   END IF;
 
   -- Return the updated request
-  SELECT to_jsonb(lr.*) INTO v_request FROM leave_requests lr WHERE lr.id = p_request_id;
   RETURN (SELECT to_jsonb(lr.*) FROM leave_requests lr WHERE lr.id = p_request_id);
 END;
 $$;
 
 
 -- ============================================================
--- 2. reject_leave_request
+-- 2. UPDATE reject_leave_request RPC FUNCTION
+--    Remove VALIDATED_TG from allowed statuses
 -- ============================================================
 CREATE OR REPLACE FUNCTION reject_leave_request(
   p_request_id  BIGINT,
@@ -138,8 +136,8 @@ BEGIN
     RAISE EXCEPTION 'Leave request % not found', p_request_id;
   END IF;
 
-  -- Verify request is in an approvable status
-  IF v_request.status NOT IN ('PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'VALIDATED_TG') THEN
+  -- Verify request is in an approvable status (3-stage chain only)
+  IF v_request.status NOT IN ('PENDING', 'VALIDATED_RP', 'VALIDATED_DC') THEN
     RAISE EXCEPTION 'Request % is in status %, cannot be rejected', p_request_id, v_request.status;
   END IF;
 
@@ -163,14 +161,38 @@ BEGIN
     updated_at = NOW()
   WHERE id = p_request_id;
 
-  -- Return the updated request (no balance deduction)
+  -- Return the updated request
   RETURN (SELECT to_jsonb(lr.*) FROM leave_requests lr WHERE lr.id = p_request_id);
 END;
 $$;
 
 
 -- ============================================================
--- Grant execute permissions (adjust roles as needed)
+-- 3. MIGRATE ANY EXISTING VALIDATED_TG REQUESTS
+--    Move them forward to VALIDATED_DC so the Director can act
+-- ============================================================
+-- If there are any requests stuck at VALIDATED_TG from the old
+-- 4-stage flow, move them to VALIDATED_DC so the Directeur
+-- Executif can pick them up in the new 3-stage flow.
+UPDATE leave_requests
+SET status = 'VALIDATED_DC',
+    updated_at = NOW()
+WHERE status = 'VALIDATED_TG';
+
+
+-- ============================================================
+-- 4. GRANT RPC ACCESS (uncomment if not already done)
 -- ============================================================
 -- GRANT EXECUTE ON FUNCTION approve_leave_request TO authenticated;
 -- GRANT EXECUTE ON FUNCTION reject_leave_request TO authenticated;
+
+
+-- ============================================================
+-- VERIFICATION
+-- ============================================================
+-- Check no requests are stuck at VALIDATED_TG
+SELECT status, COUNT(*)
+FROM leave_requests
+WHERE status IN ('PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'VALIDATED_TG', 'APPROVED', 'REJECTED')
+GROUP BY status
+ORDER BY status;

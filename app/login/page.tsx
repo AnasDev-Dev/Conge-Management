@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, User } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -103,23 +103,6 @@ export default function LoginPage() {
               </path>
             </svg>
 
-            {/* Golf flag */}
-            <svg className="absolute bottom-[32%] right-[25%] w-14 origin-bottom" viewBox="0 0 60 120" fill="none">
-              <line x1="10" y1="8" x2="10" y2="120" stroke="#a3754a" strokeWidth="1.2" opacity="0.3" />
-              <path d="M10 8 L40 20 L10 32Z" fill="#a3754a" opacity="0.25">
-                <animateTransform attributeName="transform" type="rotate" values="-2 10 20;2 10 20;-2 10 20" dur="3s" repeatCount="indefinite" />
-              </path>
-              <circle cx="10" cy="120" r="2.5" fill="#a3754a" opacity="0.1" />
-            </svg>
-
-            {/* Golf ball */}
-            <div className="absolute bottom-[22%] left-[24%] animate-[golf-bounce_4s_ease-in-out_infinite]">
-              <div className="absolute -bottom-1 left-1/2 h-1.5 w-5 -translate-x-1/2 rounded-full bg-[#a3754a]/10 blur-sm animate-[golf-shadow_4s_ease-in-out_infinite]" />
-              <div className="relative h-5 w-5 rounded-full bg-white shadow-[0_1px_6px_rgba(163,117,74,0.15),inset_-1px_-1px_3px_rgba(0,0,0,0.06)]">
-                <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#a3754a]/15" />
-              </div>
-            </div>
-
             {/* Floating dots */}
             <div className="absolute left-[18%] top-[35%] h-1.5 w-1.5 rounded-full bg-[#a3754a]/12 animate-[float-up_6s_ease-in-out_infinite]" />
             <div className="absolute left-[50%] top-[50%] h-1 w-1 rounded-full bg-[#a3754a]/10 animate-[float-up_8s_ease-in-out_2s_infinite]" />
@@ -158,20 +141,83 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Bottom stats strip */}
-            <div className="flex gap-3">
-              <div className="flex-1 rounded-2xl border border-[#a3754a]/10 bg-white/50 p-3.5 backdrop-blur-sm">
-                <p className="text-2xl font-semibold text-foreground">18</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Jours de congé</p>
-              </div>
-              <div className="flex-1 rounded-2xl border border-[#a3754a]/10 bg-white/50 p-3.5 backdrop-blur-sm">
-                <p className="text-2xl font-semibold text-[#a3754a]">Par</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Validation rapide</p>
-              </div>
-              <div className="flex-1 rounded-2xl border border-[#a3754a]/10 bg-white/50 p-3.5 backdrop-blur-sm">
-                <p className="text-2xl font-semibold text-foreground">4</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Étapes</p>
-              </div>
+            {/* Golf illustration scene */}
+            <div className="relative mt-auto">
+              <svg viewBox="0 0 420 180" fill="none" className="w-full" xmlns="http://www.w3.org/2000/svg">
+                {/* Putting green surface */}
+                <ellipse cx="210" cy="160" rx="190" ry="18" fill="#a3754a" opacity="0.06" />
+                <ellipse cx="210" cy="160" rx="140" ry="12" fill="#a3754a" opacity="0.04" />
+
+                {/* Golf hole with shadow */}
+                <ellipse cx="280" cy="155" rx="10" ry="4" fill="#a3754a" opacity="0.25" />
+                <ellipse cx="280" cy="154" rx="7" ry="2.8" fill="#a3754a" opacity="0.12" />
+
+                {/* Flag pole in hole */}
+                <line x1="280" y1="60" x2="280" y2="155" stroke="#a3754a" strokeWidth="1.5" opacity="0.35" />
+                {/* Flag */}
+                <path d="M280 60 L310 72 L280 84Z" fill="#a3754a" opacity="0.22">
+                  <animateTransform attributeName="transform" type="rotate" values="-3 280 72;3 280 72;-3 280 72" dur="3.5s" repeatCount="indefinite" />
+                </path>
+                {/* Flag pole ball top */}
+                <circle cx="280" cy="58" r="2.5" fill="#a3754a" opacity="0.3" />
+
+                {/* Golf club (iron) */}
+                <g transform="translate(120, 45) rotate(15)">
+                  {/* Shaft */}
+                  <line x1="30" y1="0" x2="30" y2="105" stroke="#a3754a" strokeWidth="2" opacity="0.25" />
+                  {/* Grip wrapping */}
+                  <line x1="28" y1="4" x2="32" y2="8" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
+                  <line x1="28" y1="10" x2="32" y2="14" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
+                  <line x1="28" y1="16" x2="32" y2="20" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
+                  <line x1="28" y1="22" x2="32" y2="26" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
+                  {/* Club head (iron) */}
+                  <path d="M24 105 Q18 108 16 116 Q15 122 20 124 L36 118 Q34 110 30 105Z" fill="#a3754a" opacity="0.2" stroke="#a3754a" strokeWidth="0.8" strokeOpacity="0.15" />
+                  {/* Club head groove lines */}
+                  <line x1="20" y1="112" x2="30" y2="109" stroke="#a3754a" strokeWidth="0.5" opacity="0.12" />
+                  <line x1="19" y1="115" x2="31" y2="112" stroke="#a3754a" strokeWidth="0.5" opacity="0.12" />
+                  <line x1="19" y1="118" x2="32" y2="115" stroke="#a3754a" strokeWidth="0.5" opacity="0.12" />
+                </g>
+
+                {/* Golf ball on tee */}
+                <g className="animate-[golf-bounce_5s_ease-in-out_infinite]">
+                  {/* Tee */}
+                  <path d="M96 155 L100 140 L104 155" fill="#a3754a" opacity="0.18" />
+                  {/* Ball shadow */}
+                  <ellipse cx="100" cy="156" rx="8" ry="2.5" fill="#a3754a" opacity="0.08" />
+                  {/* Ball */}
+                  <circle cx="100" cy="132" r="9" fill="white" opacity="0.9" stroke="#a3754a" strokeWidth="0.5" strokeOpacity="0.15" />
+                  {/* Ball dimple pattern */}
+                  <circle cx="97" cy="129" r="1.2" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.12" />
+                  <circle cx="103" cy="129" r="1.2" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.12" />
+                  <circle cx="100" cy="134" r="1.2" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.12" />
+                  <circle cx="95" cy="133" r="1" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.1" />
+                  <circle cx="105" cy="133" r="1" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.1" />
+                  <circle cx="100" cy="127" r="1" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.1" />
+                  {/* Ball highlight */}
+                  <ellipse cx="97" cy="128" rx="3" ry="2" fill="white" opacity="0.5" />
+                </g>
+
+                {/* Second golf ball rolling toward hole */}
+                <g>
+                  <ellipse cx="200" cy="157" rx="5" ry="1.8" fill="#a3754a" opacity="0.06" />
+                  <circle cx="200" cy="150" r="6" fill="white" opacity="0.85" stroke="#a3754a" strokeWidth="0.5" strokeOpacity="0.12" />
+                  <circle cx="198" cy="148" r="0.8" fill="none" stroke="#a3754a" strokeWidth="0.3" opacity="0.1" />
+                  <circle cx="202" cy="148" r="0.8" fill="none" stroke="#a3754a" strokeWidth="0.3" opacity="0.1" />
+                  <circle cx="200" cy="152" r="0.8" fill="none" stroke="#a3754a" strokeWidth="0.3" opacity="0.1" />
+                  {/* Dotted path line toward hole */}
+                  <line x1="210" y1="153" x2="268" y2="155" stroke="#a3754a" strokeWidth="0.8" strokeDasharray="3 4" opacity="0.1" />
+                </g>
+
+                {/* Small grass tufts */}
+                <g opacity="0.12">
+                  <path d="M50 158 Q52 148 54 158" stroke="#a3754a" strokeWidth="0.8" fill="none" />
+                  <path d="M52 158 Q55 146 58 158" stroke="#a3754a" strokeWidth="0.8" fill="none" />
+                  <path d="M340 156 Q342 147 344 156" stroke="#a3754a" strokeWidth="0.8" fill="none" />
+                  <path d="M342 156 Q345 145 348 156" stroke="#a3754a" strokeWidth="0.8" fill="none" />
+                  <path d="M370 158 Q371 150 373 158" stroke="#a3754a" strokeWidth="0.8" fill="none" />
+                  <path d="M160 157 Q162 149 164 157" stroke="#a3754a" strokeWidth="0.8" fill="none" />
+                </g>
+              </svg>
             </div>
           </div>
         </section>
@@ -179,11 +225,11 @@ export default function LoginPage() {
         {/* ─── Right: Sign-in Form ─── */}
         <Card className="justify-center rounded-none border-0 border-l border-border/50 bg-background/95 py-0 shadow-none lg:rounded-r-[1.85rem]">
           <CardHeader className="px-8 pt-10 pb-4 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-primary text-2xl font-bold text-primary-foreground shadow-[0_14px_36px_color-mix(in_oklab,var(--primary)_33%,transparent)]">
-              SF
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-[0_14px_36px_color-mix(in_oklab,var(--primary)_33%,transparent)]">
+              <User className="h-7 w-7" />
             </div>
             <CardTitle className="text-2xl font-semibold tracking-tight">Connexion</CardTitle>
-            <CardDescription className="text-sm">Accédez à votre espace SMARTFLOW</CardDescription>
+            <CardDescription className="text-sm">Accedez a votre espace FRMG</CardDescription>
           </CardHeader>
 
           <CardContent className="px-8 pb-10">
@@ -193,7 +239,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="john.doe@frmg.ma"
+                  placeholder="email@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
