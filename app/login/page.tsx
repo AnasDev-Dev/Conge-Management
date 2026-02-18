@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -83,87 +84,93 @@ export default function LoginPage() {
       <div className="surface-shell relative z-10 grid w-full max-w-5xl gap-0 overflow-hidden rounded-[2rem] lg:grid-cols-[1.15fr_0.95fr]">
 
         {/* ─── Left: Golf Illustration Panel ─── */}
-        <section className="relative hidden overflow-hidden rounded-l-[1.85rem] bg-gradient-to-br from-[#2d5a3d] via-[#3a7a52] to-[#2d5a3d] lg:flex lg:flex-col lg:justify-between">
+        <section className="relative hidden overflow-hidden rounded-l-[1.85rem] bg-gradient-to-b from-[#f8f3ed] via-[#f3ece3] to-[#ede4d8] lg:flex lg:flex-col">
 
           {/* Animated background shapes */}
           <div className="pointer-events-none absolute inset-0">
-            {/* Sky gradient overlay */}
-            <div className="absolute inset-x-0 top-0 h-[45%] bg-gradient-to-b from-[#1a3a28]/60 to-transparent" />
+            {/* Warm radial glow top-right */}
+            <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-[#a3754a]/8 blur-3xl" />
+            {/* Warm radial glow bottom-left */}
+            <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-[#a3754a]/6 blur-3xl" />
 
-            {/* Rolling hills */}
-            <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 600 200" fill="none" preserveAspectRatio="none" style={{ height: '45%' }}>
-              <path d="M0 120 C100 60 200 100 300 80 S500 50 600 90 L600 200 L0 200Z" fill="#245a38" opacity="0.5">
-                <animate attributeName="d" dur="8s" repeatCount="indefinite" values="M0 120 C100 60 200 100 300 80 S500 50 600 90 L600 200 L0 200Z;M0 110 C100 80 200 60 300 90 S500 70 600 80 L600 200 L0 200Z;M0 120 C100 60 200 100 300 80 S500 50 600 90 L600 200 L0 200Z" />
+            {/* Subtle golf course landscape - warm tones */}
+            <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 600 180" fill="none" preserveAspectRatio="none" style={{ height: '35%' }}>
+              <path d="M0 110 C100 70 200 100 300 80 S500 55 600 85 L600 180 L0 180Z" fill="#a3754a" opacity="0.06">
+                <animate attributeName="d" dur="8s" repeatCount="indefinite" values="M0 110 C100 70 200 100 300 80 S500 55 600 85 L600 180 L0 180Z;M0 100 C100 85 200 65 300 90 S500 70 600 80 L600 180 L0 180Z;M0 110 C100 70 200 100 300 80 S500 55 600 85 L600 180 L0 180Z" />
               </path>
-              <path d="M0 150 C150 100 250 140 350 110 S500 130 600 120 L600 200 L0 200Z" fill="#1e4d30" opacity="0.4">
-                <animate attributeName="d" dur="10s" repeatCount="indefinite" values="M0 150 C150 100 250 140 350 110 S500 130 600 120 L600 200 L0 200Z;M0 140 C150 130 250 100 350 130 S500 110 600 140 L600 200 L0 200Z;M0 150 C150 100 250 140 350 110 S500 130 600 120 L600 200 L0 200Z" />
+              <path d="M0 130 C150 90 250 130 350 105 S500 120 600 110 L600 180 L0 180Z" fill="#a3754a" opacity="0.04">
+                <animate attributeName="d" dur="10s" repeatCount="indefinite" values="M0 130 C150 90 250 130 350 105 S500 120 600 110 L600 180 L0 180Z;M0 125 C150 115 250 90 350 115 S500 100 600 130 L600 180 L0 180Z;M0 130 C150 90 250 130 350 105 S500 120 600 110 L600 180 L0 180Z" />
               </path>
             </svg>
 
-            {/* Golf flag with gentle sway */}
-            <svg className="absolute bottom-[38%] right-[28%] w-16 origin-bottom" viewBox="0 0 60 120" fill="none">
-              <line x1="10" y1="0" x2="10" y2="120" stroke="white" strokeWidth="1.5" opacity="0.8" />
-              <path d="M10 0 L45 15 L10 30Z" fill="#a3754a" opacity="0.9">
-                <animateTransform attributeName="transform" type="rotate" values="-2 10 15;2 10 15;-2 10 15" dur="3s" repeatCount="indefinite" />
+            {/* Golf flag */}
+            <svg className="absolute bottom-[32%] right-[25%] w-14 origin-bottom" viewBox="0 0 60 120" fill="none">
+              <line x1="10" y1="8" x2="10" y2="120" stroke="#a3754a" strokeWidth="1.2" opacity="0.3" />
+              <path d="M10 8 L40 20 L10 32Z" fill="#a3754a" opacity="0.25">
+                <animateTransform attributeName="transform" type="rotate" values="-2 10 20;2 10 20;-2 10 20" dur="3s" repeatCount="indefinite" />
               </path>
-              <circle cx="10" cy="120" r="3" fill="white" opacity="0.3" />
+              <circle cx="10" cy="120" r="2.5" fill="#a3754a" opacity="0.1" />
             </svg>
 
-            {/* Golf ball with shadow */}
-            <div className="absolute bottom-[26%] left-[22%] animate-[golf-bounce_4s_ease-in-out_infinite]">
-              {/* Shadow */}
-              <div className="absolute -bottom-1 left-1/2 h-2 w-6 -translate-x-1/2 rounded-full bg-black/15 blur-sm animate-[golf-shadow_4s_ease-in-out_infinite]" />
-              {/* Ball */}
-              <div className="relative h-6 w-6 rounded-full bg-white shadow-[inset_-2px_-2px_4px_rgba(0,0,0,0.1),0_2px_8px_rgba(0,0,0,0.2)]">
-                <div className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/40" />
+            {/* Golf ball */}
+            <div className="absolute bottom-[22%] left-[24%] animate-[golf-bounce_4s_ease-in-out_infinite]">
+              <div className="absolute -bottom-1 left-1/2 h-1.5 w-5 -translate-x-1/2 rounded-full bg-[#a3754a]/10 blur-sm animate-[golf-shadow_4s_ease-in-out_infinite]" />
+              <div className="relative h-5 w-5 rounded-full bg-white shadow-[0_1px_6px_rgba(163,117,74,0.15),inset_-1px_-1px_3px_rgba(0,0,0,0.06)]">
+                <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#a3754a]/15" />
               </div>
             </div>
 
-            {/* Floating particles (like grass/leaves) */}
-            <div className="absolute left-[15%] top-[30%] h-1.5 w-1.5 rounded-full bg-white/20 animate-[float-up_6s_ease-in-out_infinite]" />
-            <div className="absolute left-[45%] top-[50%] h-1 w-1 rounded-full bg-white/15 animate-[float-up_8s_ease-in-out_2s_infinite]" />
-            <div className="absolute left-[70%] top-[40%] h-1.5 w-1.5 rounded-full bg-white/20 animate-[float-up_7s_ease-in-out_4s_infinite]" />
-            <div className="absolute left-[30%] top-[60%] h-1 w-1 rounded-full bg-white/10 animate-[float-up_9s_ease-in-out_1s_infinite]" />
+            {/* Floating dots */}
+            <div className="absolute left-[18%] top-[35%] h-1.5 w-1.5 rounded-full bg-[#a3754a]/12 animate-[float-up_6s_ease-in-out_infinite]" />
+            <div className="absolute left-[50%] top-[50%] h-1 w-1 rounded-full bg-[#a3754a]/10 animate-[float-up_8s_ease-in-out_2s_infinite]" />
+            <div className="absolute left-[72%] top-[38%] h-1.5 w-1.5 rounded-full bg-[#a3754a]/12 animate-[float-up_7s_ease-in-out_4s_infinite]" />
+            <div className="absolute left-[35%] top-[62%] h-1 w-1 rounded-full bg-[#a3754a]/8 animate-[float-up_9s_ease-in-out_1s_infinite]" />
 
-            {/* Tee and ground detail */}
-            <svg className="absolute bottom-[22%] left-[18%] w-20" viewBox="0 0 80 30" fill="none">
-              <ellipse cx="40" cy="25" rx="35" ry="5" fill="#1a4d2e" opacity="0.4" />
-            </svg>
+            {/* Decorative ring lines */}
+            <div className="absolute right-8 top-[15%] h-32 w-32 rounded-full border border-[#a3754a]/6 animate-[gentle-spin_30s_linear_infinite]" />
+            <div className="absolute right-12 top-[17%] h-24 w-24 rounded-full border border-dashed border-[#a3754a]/5 animate-[gentle-spin_20s_linear_reverse_infinite]" />
           </div>
 
           {/* Content overlay */}
           <div className="relative z-10 flex flex-1 flex-col justify-between p-10">
+            {/* Top: Logo */}
             <div>
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-medium tracking-wide text-white/80 backdrop-blur-sm">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#a3754a] animate-pulse" />
-                SMARTFLOW CONGE
+              <div className="mb-8">
+                <Image
+                  src="/logo-frmg.png"
+                  alt="Fédération Royale Marocaine de Golf"
+                  width={220}
+                  height={80}
+                  className="h-auto w-[200px]"
+                  priority
+                />
               </div>
 
-              <h1 className="max-w-[280px] text-[2.5rem] font-semibold leading-[1.1] tracking-[-0.03em] text-white">
-                Where work meets
-                <span className="mt-1 block bg-gradient-to-r from-[#a3754a] to-[#d4a574] bg-clip-text text-transparent">
-                  the green.
+              <h1 className="max-w-[300px] text-[2.4rem] font-semibold leading-[1.1] tracking-[-0.03em] text-foreground">
+                Gestion des
+                <span className="mt-1 block bg-gradient-to-r from-[#a3754a] to-[#c99b6d] bg-clip-text text-transparent">
+                  congés.
                 </span>
               </h1>
 
-              <p className="mt-5 max-w-[260px] text-sm leading-relaxed text-white/55">
-                Gérez vos congés avec la précision d&apos;un putt parfait. Simple, fluide, élégant.
+              <p className="mt-5 max-w-[280px] text-sm leading-relaxed text-muted-foreground">
+                Plateforme de gestion des congés de la Fédération Royale Marocaine de Golf. Simple, fluide, élégant.
               </p>
             </div>
 
             {/* Bottom stats strip */}
             <div className="flex gap-3">
-              <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-sm">
-                <p className="text-2xl font-semibold text-white">18</p>
-                <p className="mt-0.5 text-[11px] text-white/45">Jours de congé</p>
+              <div className="flex-1 rounded-2xl border border-[#a3754a]/10 bg-white/50 p-3.5 backdrop-blur-sm">
+                <p className="text-2xl font-semibold text-foreground">18</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Jours de congé</p>
               </div>
-              <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-sm">
+              <div className="flex-1 rounded-2xl border border-[#a3754a]/10 bg-white/50 p-3.5 backdrop-blur-sm">
                 <p className="text-2xl font-semibold text-[#a3754a]">Par</p>
-                <p className="mt-0.5 text-[11px] text-white/45">Validation rapide</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Validation rapide</p>
               </div>
-              <div className="flex-1 rounded-2xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-sm">
-                <p className="text-2xl font-semibold text-white">4</p>
-                <p className="mt-0.5 text-[11px] text-white/45">Étapes d&apos;approbation</p>
+              <div className="flex-1 rounded-2xl border border-[#a3754a]/10 bg-white/50 p-3.5 backdrop-blur-sm">
+                <p className="text-2xl font-semibold text-foreground">4</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Étapes</p>
               </div>
             </div>
           </div>
@@ -186,7 +193,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="john.doe@ath.ma"
+                  placeholder="john.doe@frmg.ma"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required

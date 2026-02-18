@@ -203,3 +203,8 @@
   0%, 100% { transform: translateY(0) scale(1); opacity: 0.2; }
   50% { transform: translateY(-20px) scale(1.2); opacity: 0.35; }
 }
+
+@keyframes gentle-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
