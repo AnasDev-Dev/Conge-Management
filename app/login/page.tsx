@@ -77,11 +77,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-8">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-0 sm:p-8">
       {/* Background */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_12%,color-mix(in_oklab,var(--primary)_20%,white)_0,transparent_36%),radial-gradient(circle_at_90%_88%,color-mix(in_oklab,var(--status-draft-bg)_65%,white)_0,transparent_42%)]" />
 
-      <div className="surface-shell relative z-10 grid w-full max-w-5xl gap-0 overflow-hidden rounded-[2rem] lg:grid-cols-[1.15fr_0.95fr]">
+      <div className="surface-shell relative z-10 grid w-full max-w-5xl gap-0 overflow-hidden rounded-none sm:rounded-[2rem] lg:grid-cols-[1.15fr_0.95fr]">
 
         {/* ─── Left: Golf Illustration Panel ─── */}
         <section className="relative hidden overflow-hidden rounded-l-[1.85rem] bg-gradient-to-b from-[#f8f3ed] via-[#f3ece3] to-[#ede4d8] lg:flex lg:flex-col">

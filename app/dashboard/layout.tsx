@@ -108,8 +108,8 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[var(--shell-bg)] p-4">
-        <div className="surface-shell mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1440px] items-center justify-center rounded-[2rem] p-8">
+      <div className="min-h-screen bg-[var(--shell-bg)] p-0 md:p-4">
+        <div className="surface-shell mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1440px] items-center justify-center rounded-none p-8 md:rounded-[2rem]">
           <div className="text-center">
             <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
             <p className="mt-4 text-sm text-muted-foreground">Chargement de votre espace...</p>
@@ -138,11 +138,11 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="h-[100dvh] overflow-hidden bg-[var(--shell-bg)] p-3 md:p-5">
-      <div className="surface-shell mx-auto h-[calc(100dvh-1.5rem)] max-w-[1600px] overflow-hidden rounded-[2rem] p-2 md:p-3">
-        <div className="flex h-full gap-3 overflow-hidden">
-          <header className="fixed inset-x-6 top-6 z-40 lg:hidden">
-            <div className="rounded-3xl border border-border bg-background px-4 py-3 shadow-none">
+    <div className="h-[100dvh] overflow-hidden bg-[var(--shell-bg)] p-0 md:p-5">
+      <div className="surface-shell mx-auto h-[100dvh] max-w-[1600px] overflow-hidden rounded-none p-0 md:h-[calc(100dvh-2.5rem)] md:rounded-[2rem] md:p-3">
+        <div className="flex h-full gap-0 overflow-hidden md:gap-3">
+          <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 lg:hidden">
+            <div className="rounded-2xl border border-border bg-background/95 px-4 py-3 shadow-sm backdrop-blur-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <button
@@ -250,8 +250,8 @@ export default function DashboardLayout({
             </div>
           </aside>
 
-          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-border bg-card p-4 shadow-none md:p-6 lg:mt-0">
-            <main className="mt-[5.5rem] flex min-h-0 flex-1 flex-col overflow-hidden lg:mt-0">
+          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card p-3 shadow-none md:rounded-[1.75rem] md:border md:border-border md:p-6 lg:mt-0">
+            <main className="mt-[4.5rem] flex min-h-0 flex-1 flex-col overflow-hidden lg:mt-0">
               <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pr-1 pb-6">
                 {children}
               </div>
