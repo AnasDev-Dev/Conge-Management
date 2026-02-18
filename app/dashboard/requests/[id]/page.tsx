@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,6 +19,7 @@ import {
   Hash,
   UserCheck,
   MessageSquare,
+  Printer,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import Link from 'next/link'
@@ -26,6 +28,7 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
+import { PrintLeaveDocument } from '@/components/print-leave-document'
 
 interface RequestDetail {
   id: number
@@ -220,6 +223,17 @@ export default function RequestDetailPage() {
               Soumise le {format(new Date(request.created_at), 'd MMMM yyyy à HH:mm', { locale: fr })}
             </p>
           </div>
+          {request.status === 'APPROVED' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.print()}
+              className="gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              Imprimer
+            </Button>
+          )}
         </div>
       </div>
 
@@ -475,6 +489,12 @@ export default function RequestDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Print document — rendered in body via portal, hidden on screen */}
+      {request.status === 'APPROVED' && createPortal(
+        <PrintLeaveDocument request={request} approvers={approvers} />,
+        document.body
+      )}
     </div>
   )
 }
