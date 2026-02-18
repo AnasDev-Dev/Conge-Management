@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { DatePicker } from '@/components/ui/date-picker'
 import Link from 'next/link'
 import {
   CheckCircle2,
@@ -617,20 +618,20 @@ export default function ValidationsPage() {
             <div className="space-y-1.5">
               <div>
                 <label className="block text-[10px] text-muted-foreground mb-0.5">Debut</label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={edited.start_date}
-                  onChange={(e) => updateEditedDate(request.id, 'start_date', e.target.value)}
-                  className="h-8 text-xs"
+                  onChange={(v) => updateEditedDate(request.id, 'start_date', v)}
+                  compact
+                  placeholder="Debut"
                 />
               </div>
               <div>
                 <label className="block text-[10px] text-muted-foreground mb-0.5">Fin</label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={edited.end_date}
-                  onChange={(e) => updateEditedDate(request.id, 'end_date', e.target.value)}
-                  className="h-8 text-xs"
+                  onChange={(v) => updateEditedDate(request.id, 'end_date', v)}
+                  compact
+                  placeholder="Fin"
                 />
               </div>
               <div className="flex items-center gap-1 text-[11px]">

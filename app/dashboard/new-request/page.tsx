@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search } from 'lucide-react'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur } from '@/lib/types/database'
 import { MANAGER_ROLES } from '@/lib/constants'
 import { format, addDays } from 'date-fns'
@@ -533,34 +534,24 @@ export default function NewRequestPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="startDate">Date de debut</Label>
-                    <div className="relative">
-                      <Input
-                        id="startDate"
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        required
-                        min={format(new Date(), 'yyyy-MM-dd')}
-                        className="pl-10"
-                      />
-                      <Calendar className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    </div>
+                    <DatePicker
+                      id="startDate"
+                      value={startDate}
+                      onChange={setStartDate}
+                      min={format(new Date(), 'yyyy-MM-dd')}
+                      placeholder="Date de debut"
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="endDate">Date de fin</Label>
-                    <div className="relative">
-                      <Input
-                        id="endDate"
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        required
-                        min={startDate || format(new Date(), 'yyyy-MM-dd')}
-                        className="pl-10"
-                      />
-                      <Calendar className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    </div>
+                    <DatePicker
+                      id="endDate"
+                      value={endDate}
+                      onChange={setEndDate}
+                      min={startDate || format(new Date(), 'yyyy-MM-dd')}
+                      placeholder="Date de fin"
+                    />
                   </div>
                 </div>
 
