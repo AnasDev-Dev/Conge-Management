@@ -378,7 +378,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Day cells */}
-        <div className="grid grid-cols-7 gap-px bg-border/40">
+        <div className="grid grid-cols-7 gap-1.5 bg-muted/5 p-1.5 sm:gap-2 sm:p-2">
           {calendarDays.map((day) => {
             const key = format(day, "yyyy-MM-dd");
             const inMonth = isSameMonth(day, calendarMonth);
@@ -390,33 +390,34 @@ export default function DashboardPage() {
               <div
                 key={key}
                 className={cn(
-                  "group relative min-h-[60px] bg-background p-1 transition-colors hover:bg-muted/30 sm:min-h-[100px] sm:p-1.5",
-                  !inMonth && "bg-muted/10 opacity-70",
-                  isWeekend && inMonth && "bg-muted/5",
-                  today && "bg-primary/5"
+                  "group relative flex min-h-[70px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background shadow-sm transition-all sm:min-h-[110px]",
+                  !inMonth && "border-transparent bg-transparent opacity-40 shadow-none hover:bg-transparent",
+                  isWeekend && inMonth && "bg-muted/20 text-muted-foreground shadow-none",
+                  today && "border-primary/40 bg-primary/5 ring-1 ring-primary/20",
+                  "hover:border-border/80 hover:shadow-md hover:bg-muted/10"
                 )}
               >
                 {/* Day number */}
-                <div className="mb-1 flex items-start justify-between">
+                <div className="m-1.5 flex items-start justify-between sm:m-2">
                   <span
                     className={cn(
-                      "inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full text-[11px] sm:text-xs font-semibold tracking-tight transition-colors",
+                      "inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold tracking-tight transition-colors sm:h-7 sm:w-7 sm:text-xs",
                       !inMonth ? "text-muted-foreground/50" : "text-muted-foreground",
                       inMonth && !today && "text-foreground group-hover:bg-muted",
-                      today && "bg-primary text-primary-foreground shadow-md shadow-primary/20",
+                      today && "bg-primary text-primary-foreground shadow-md shadow-primary/20"
                     )}
                   >
                     {format(day, "d")}
                   </span>
                   {dayRequests.length > 2 && (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground sm:h-6 sm:w-6 sm:text-[10px]">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted/40 text-[9px] font-bold text-muted-foreground/80 sm:h-6 sm:w-6 sm:text-[10px]">
                       +{dayRequests.length - 2}
                     </span>
                   )}
                 </div>
 
                 {/* Request bars (max 2 visible) */}
-                <div className="space-y-[2px]">
+                <div className="flex flex-1 flex-col gap-[2px] pb-1.5 sm:pb-2">
                   {dayRequests.slice(0, 2).map((req) => {
                     const isStart = isSameDay(day, parseISO(req.start_date));
                     const isEnd = isSameDay(day, parseISO(req.end_date));
@@ -430,13 +431,12 @@ export default function DashboardPage() {
                         key={req.id}
                         href={`/dashboard/requests/${req.id}`}
                         className={cn(
-                          "relative z-10 block truncate px-1.5 py-0.5 sm:py-1 text-[9px] sm:text-[10px] font-bold tracking-wide transition-all hover:brightness-110 hover:shadow-md",
+                          "relative z-10 block truncate py-0.5 text-[9px] font-bold tracking-wide transition-all hover:brightness-110 sm:py-1 sm:text-[10px]",
                           barColor,
-                          isStart && isEnd && "rounded-md",
-                          isStart && !isEnd && "rounded-l-md",
-                          !isStart && isEnd && "rounded-r-md",
-                          !isStart && !isEnd && "rounded-none",
-                          !isEnd && "w-[calc(100%+1px)]"
+                          isStart && isEnd && "mx-1.5 w-[calc(100%-12px)] rounded-md px-1.5 sm:mx-2 sm:w-[calc(100%-16px)] sm:px-2",
+                          isStart && !isEnd && "ml-1.5 mr-0 w-[calc(100%-6px)] rounded-l-md rounded-r-none px-1.5 sm:ml-2 sm:w-[calc(100%-8px)] sm:px-2",
+                          !isStart && isEnd && "ml-0 mr-1.5 w-[calc(100%-6px)] rounded-l-none rounded-r-md px-1.5 sm:mr-2 sm:w-[calc(100%-8px)] sm:px-2",
+                          !isStart && !isEnd && "mx-0 w-full rounded-none px-1.5 sm:px-2"
                         )}
                         title={`${req.user?.full_name || ""} — ${format(parseISO(req.start_date), "d MMM", { locale: fr })} au ${format(parseISO(req.end_date), "d MMM", { locale: fr })} (${getStatusLabel(req.status)})`}
                       >
