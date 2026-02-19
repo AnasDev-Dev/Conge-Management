@@ -14,6 +14,7 @@ import { Utilisateur } from '@/lib/types/database'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import Image from 'next/image'
+import { calculateSeniority } from '@/lib/leave-utils'
 
 export default function ProfilePage() {
   const [user, setUser] = useState<Utilisateur | null>(null)
@@ -179,6 +180,23 @@ export default function ProfilePage() {
                   </p>
                 </div>
               )}
+              {user.hire_date && (() => {
+                const seniority = calculateSeniority(user.hire_date)
+                return (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Ancienneté</p>
+                    <p className="font-medium mt-1">
+                      {Math.floor(seniority.yearsOfService)} an(s)
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Droit annuel: {seniority.totalEntitlement} jours
+                      {seniority.bonusDays > 0 && (
+                        <span> (dont {seniority.bonusDays} bonus ancienneté)</span>
+                      )}
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
 
             {(user.cin || user.cnss || user.rib) && (

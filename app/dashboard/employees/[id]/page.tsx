@@ -12,10 +12,11 @@ import { ArrowLeft, Calendar, Clock, FileText, User } from 'lucide-react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
+import { calculateSeniority } from '@/lib/leave-utils'
 
 type EmployeeDetails = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation'
+  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date'
 >
 
 type RequestDetails = Pick<
@@ -39,7 +40,7 @@ export default function EmployeeDetailsPage() {
         await Promise.all([
           supabase
             .from('utilisateurs')
-            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation')
+            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date')
             .eq('id', employeeId)
             .single(),
           supabase
@@ -186,6 +187,17 @@ export default function EmployeeDetailsPage() {
                 {employee.balance_conge} congé / {employee.balance_recuperation} récupération
               </p>
             </div>
+            {employee.hire_date && (() => {
+              const seniority = calculateSeniority(employee.hire_date)
+              return (
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Ancienneté</p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {Math.floor(seniority.yearsOfService)} an(s) — {seniority.totalEntitlement} j/an
+                  </p>
+                </div>
+              )
+            })()}
           </div>
         </CardContent>
       </Card>

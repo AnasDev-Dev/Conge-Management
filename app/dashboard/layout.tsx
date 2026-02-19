@@ -20,6 +20,7 @@ import {
   X,
   ClipboardCheck,
   Briefcase,
+  Settings,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
@@ -130,6 +131,7 @@ export default function DashboardLayout({
     { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
     { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
+    ...(isManager ? [{ name: 'Paramètres', href: '/dashboard/settings', icon: Settings }] : []),
     { name: 'Profil', href: '/dashboard/profile', icon: User },
     { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   ]

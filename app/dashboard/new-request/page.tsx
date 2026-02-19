@@ -12,28 +12,22 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
-import { Utilisateur, MissionScope } from '@/lib/types/database'
+import { Utilisateur, Holiday, WorkingDays, MissionScope } from '@/lib/types/database'
 import { MANAGER_ROLES, TRANSPORT_OPTIONS } from '@/lib/constants'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import {
+  countWorkingDays as countWorkingDaysUtil,
+  fetchHolidays,
+  fetchWorkingDays,
+  getHolidaysInRange,
+  nextWorkingDay,
+} from '@/lib/leave-utils'
 
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation'>
 type Colleague = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'department_id'>
 type Tab = 'conge' | 'mission'
-
-function countWorkingDays(start: string, end: string): number {
-  if (!start || !end) return 0
-  let days = 0
-  let current = new Date(start)
-  const last = new Date(end)
-  while (current <= last) {
-    const dow = current.getDay()
-    if (dow !== 0 && dow !== 6) days++
-    current = addDays(current, 1)
-  }
-  return days
-}
 
 const TOTAL_STEPS = 4
 
@@ -79,6 +73,13 @@ export default function NewRequestPage() {
   const [colleagues, setColleagues] = useState<Colleague[]>([])
   const [isSubmittingMission, setIsSubmittingMission] = useState(false)
 
+  // Holiday-aware day counting
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [workingDaysConfig, setWorkingDaysConfig] = useState<WorkingDays>({
+    id: 0, company_id: null,
+    monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+  })
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -110,6 +111,10 @@ export default function NewRequestPage() {
       setUser(userData)
       loadEmployees()
       loadColleagues(userData.department_id)
+      // Load holiday-aware day counting data
+      const companyId = userData.company_id || undefined
+      fetchHolidays(companyId).then(setHolidays)
+      fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
   }, [])
 
@@ -144,7 +149,7 @@ export default function NewRequestPage() {
     }
   }
 
-  const missionWorkingDays = countWorkingDays(missionStartDate, missionEndDate)
+  const missionWorkingDays = countWorkingDaysUtil(missionStartDate, missionEndDate, workingDaysConfig, holidays)
 
   const handleMissionSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -189,7 +194,7 @@ export default function NewRequestPage() {
     }
   }
 
-  const workingDays = countWorkingDays(startDate, endDate)
+  const workingDays = countWorkingDaysUtil(startDate, endDate, workingDaysConfig, holidays)
   const availableBalance = requestType === 'CONGE'
     ? targetEmployee?.balance_conge || 0
     : targetEmployee?.balance_recuperation || 0
@@ -240,7 +245,7 @@ export default function NewRequestPage() {
     setIsSubmitting(true)
 
     try {
-      const returnDate = addDays(new Date(endDate), 1)
+      const returnDate = nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays)
       const targetUserId = targetEmployee.id
 
       const { data: insertedRequest, error } = await supabase
@@ -670,21 +675,41 @@ export default function NewRequestPage() {
                   </div>
                 </div>
 
-                {startDate && endDate && workingDays > 0 && (
-                  <div className="status-progress rounded-2xl border p-4">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">
-                          Duree calculee: {workingDays} jours ouvrables
-                        </p>
-                        <p className="mt-1 text-sm">
-                          Date de reprise: {format(addDays(new Date(endDate), 1), 'EEEE dd MMMM yyyy', { locale: fr })}
-                        </p>
+                {startDate && endDate && workingDays > 0 && (() => {
+                  const excludedHolidays = getHolidaysInRange(startDate, endDate, workingDaysConfig, holidays)
+                  const returnDate = nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays)
+                  return (
+                    <>
+                      <div className="status-progress rounded-2xl border p-4">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">
+                              Duree calculee: {workingDays} jours ouvrables
+                            </p>
+                            <p className="mt-1 text-sm">
+                              Date de reprise: {format(returnDate, 'EEEE dd MMMM yyyy', { locale: fr })}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )}
+                      {excludedHolidays.length > 0 && (
+                        <div className="rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3">
+                          <p className="text-sm font-medium text-[var(--status-success-text)]">
+                            {excludedHolidays.length} jour(s) ferié(s) exclu(s) du décompte :
+                          </p>
+                          <ul className="mt-1.5 space-y-0.5">
+                            {excludedHolidays.map(h => (
+                              <li key={h.id} className="text-sm text-[var(--status-success-text)]">
+                                • {h.name} ({format(new Date(h.date + 'T00:00:00'), 'dd/MM', { locale: fr })})
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
 
                 {startDate && endDate && workingDays > 0 && (
                   <div className="grid grid-cols-3 gap-3">
@@ -826,7 +851,7 @@ export default function NewRequestPage() {
                   <div className="flex items-center justify-between py-3.5">
                     <span className="text-sm text-muted-foreground">Date de reprise</span>
                     <span className="text-sm font-medium text-foreground">
-                      {endDate ? format(addDays(new Date(endDate), 1), 'EEEE dd MMMM yyyy', { locale: fr }) : '—'}
+                      {endDate ? format(nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays), 'EEEE dd MMMM yyyy', { locale: fr }) : '—'}
                     </span>
                   </div>
                   {replacementName && (

@@ -36,9 +36,14 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
-import { LeaveRequest, Utilisateur } from '@/lib/types/database'
+import { LeaveRequest, Utilisateur, Holiday, WorkingDays } from '@/lib/types/database'
 import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import {
+  countWorkingDays as countWorkingDaysUtil,
+  fetchHolidays,
+  fetchWorkingDays,
+} from '@/lib/leave-utils'
 
 interface RequestWithUser extends LeaveRequest {
   user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'balance_conge' | 'balance_recuperation' | 'gender'>
@@ -82,6 +87,12 @@ export default function ValidationsPage() {
   const [mobileTab, setMobileTab] = useState(0)
   const [showRejected, setShowRejected] = useState(false)
 
+  // Holiday-aware day counting
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [workingDaysConfig, setWorkingDaysConfig] = useState<WorkingDays>({
+    id: 0, company_id: null,
+    monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+  })
 
   // Drag and drop state
   const [draggedId, setDraggedId] = useState<number | null>(null)
@@ -96,6 +107,9 @@ export default function ValidationsPage() {
       setUser(userData)
       loadAllRequests()
       loadRejectedRequests()
+      const companyId = userData.company_id || undefined
+      fetchHolidays(companyId).then(setHolidays)
+      fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
   }, [])
 
@@ -192,39 +206,20 @@ export default function ValidationsPage() {
       const edited = editedDates[request.id]
       const isRhStep = request.status === 'PENDING'
 
-      const updateData: Record<string, unknown> = {
-        status: stage.setsTo,
-        [`approved_by_${stage.field}`]: user.id,
-        [`approved_at_${stage.field}`]: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      // Use RPC for all approvals — handles day recalculation, balance deduction, and history
+      const rpcParams: Record<string, unknown> = {
+        p_request_id: request.id,
+        p_approver_id: user.id,
       }
 
       if (isRhStep && edited) {
-        updateData.start_date = edited.start_date
-        updateData.end_date = edited.end_date
-        updateData.days_count = edited.days_count
+        rpcParams.p_new_start_date = edited.start_date
+        rpcParams.p_new_end_date = edited.end_date
+        rpcParams.p_new_days_count = edited.days_count
       }
 
-      const { error } = await supabase
-        .from('leave_requests')
-        .update(updateData)
-        .eq('id', request.id)
-
+      const { error } = await supabase.rpc('approve_leave_request', rpcParams)
       if (error) throw error
-
-      // On final approval, deduct balance
-      if (stage.setsTo === 'APPROVED' && request.user) {
-        const daysCount = edited?.days_count ?? request.days_count
-        const balanceField = request.request_type === 'CONGE' ? 'balance_conge' : 'balance_recuperation'
-        const currentBalance = request.request_type === 'CONGE'
-          ? request.user.balance_conge
-          : request.user.balance_recuperation
-
-        await supabase
-          .from('utilisateurs')
-          .update({ [balanceField]: currentBalance - daysCount })
-          .eq('id', request.user_id)
-      }
 
       // Move card to next stage or remove if fully approved
       setAllRequests(prev => {
@@ -397,16 +392,7 @@ export default function ValidationsPage() {
       const updated = { ...current, [field]: value }
 
       if (updated.start_date && updated.end_date) {
-        const start = new Date(updated.start_date)
-        const end = new Date(updated.end_date)
-        let count = 0
-        const d = new Date(start)
-        while (d <= end) {
-          const day = d.getDay()
-          if (day !== 0 && day !== 6) count++
-          d.setDate(d.getDate() + 1)
-        }
-        updated.days_count = count
+        updated.days_count = countWorkingDaysUtil(updated.start_date, updated.end_date, workingDaysConfig, holidays)
       }
 
       return { ...prev, [requestId]: updated }
