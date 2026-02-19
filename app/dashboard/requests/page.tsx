@@ -118,54 +118,54 @@ export default function RequestsPage() {
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="shrink-0">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Demandes</h1>
-        <p className="mt-1 text-muted-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Demandes</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">
           {isManagerView ? 'Toutes les demandes de congé' : 'Consultez et gérez vos demandes de congé.'}
         </p>
       </div>
 
       {/* KPI cards */}
-      <div className="shrink-0 grid grid-cols-4 gap-3">
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+      <div className="shrink-0 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-primary/10 sm:flex">
             <FileText className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{stats.total}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Total</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 sm:flex">
             <Clock className="h-5 w-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{stats.pending + stats.inProgress}</p>
-            <p className="text-xs text-muted-foreground">En attente</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{stats.pending + stats.inProgress}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">En attente</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 sm:flex">
             <Calendar className="h-5 w-5 text-emerald-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{stats.approved}</p>
-            <p className="text-xs text-muted-foreground">Approuvées</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{stats.approved}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Approuvées</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 sm:flex">
             <Users className="h-5 w-5 text-red-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{stats.rejected}</p>
-            <p className="text-xs text-muted-foreground">Rejetées</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{stats.rejected}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Rejetées</p>
           </div>
         </div>
       </div>
 
       {/* Main table card */}
-      <Card className="flex min-h-0 flex-1 border-border/70 bg-card shadow-none backdrop-blur-none md:sticky md:top-0 md:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-11rem)]">
+      <Card className="flex min-h-0 flex-col border-border/70 bg-card shadow-none backdrop-blur-none md:flex-1 md:sticky md:top-0 md:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-11rem)]">
         <CardHeader className="shrink-0 border-b border-border/70 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -188,12 +188,12 @@ export default function RequestsPage() {
             </div>
           </div>
           {/* Status tabs */}
-          <div className="mt-3 flex gap-1">
+          <div className="mt-3 flex gap-1 overflow-x-auto">
             {STATUS_TABS.map((tab) => (
               <button
                 key={tab.value}
                 onClick={() => setStatusFilter(tab.value)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3 ${
                   statusFilter === tab.value
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
@@ -292,7 +292,7 @@ export default function RequestsPage() {
               </div>
 
               {/* Mobile cards */}
-              <div className="h-full min-h-0 overflow-auto overscroll-contain pr-1 pt-4 md:hidden">
+              <div className="pt-4 md:hidden">
                 <div className="space-y-3">
                   {filteredRequests.map((request) => (
                     <Link key={request.id} href={`/dashboard/requests/${request.id}`} className="block">

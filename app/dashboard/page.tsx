@@ -167,26 +167,26 @@ export default function DashboardPage() {
   ]
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 md:space-y-8">
       {/* Welcome */}
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           Bienvenue, {user.full_name.split(' ')[0]}
         </h1>
-        <p className="mt-1.5 text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground sm:mt-1.5 sm:text-base">
           Voici un aperçu de votre gestion des congés
         </p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <Card className="border-border/70">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Solde Congé</p>
-              <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">Solde Congé</p>
+              <CalendarIcon className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className="mt-2 text-2xl font-bold">{user.balance_conge}<span className="ml-1 text-sm font-normal text-muted-foreground">jours</span></p>
+            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">{user.balance_conge}<span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">jours</span></p>
             <div className="mt-2.5 h-1.5 w-full rounded-full bg-muted">
               <div className="h-1.5 rounded-full bg-foreground/75 transition-all" style={{ width: `${Math.min((user.balance_conge / 30) * 100, 100)}%` }} />
             </div>
@@ -194,12 +194,12 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="border-border/70">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Récupération</p>
-              <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">Récupération</p>
+              <TrendingUp className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className="mt-2 text-2xl font-bold">{user.balance_recuperation}<span className="ml-1 text-sm font-normal text-muted-foreground">jours</span></p>
+            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">{user.balance_recuperation}<span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">jours</span></p>
             <div className="mt-2.5 h-1.5 w-full rounded-full bg-muted">
               <div className="h-1.5 rounded-full bg-foreground/60 transition-all" style={{ width: `${Math.min((user.balance_recuperation / 10) * 100, 100)}%` }} />
             </div>
@@ -207,24 +207,24 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="border-border/70">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">En attente</p>
-              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">En attente</p>
+              <Clock className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className="mt-2 text-2xl font-bold">{pendingCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground">En cours de validation</p>
+            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">{pendingCount}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground sm:mt-1 sm:text-xs">En cours de validation</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/70">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Approuvées</p>
-              <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">Approuvées</p>
+              <CheckCircle2 className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className="mt-2 text-2xl font-bold">{approvedCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Cette année</p>
+            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">{approvedCount}</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground sm:mt-1 sm:text-xs">Cette année</p>
           </CardContent>
         </Card>
       </div>
@@ -232,12 +232,12 @@ export default function DashboardPage() {
       {/* ─── Calendar ─── */}
       <Card className="border-border/70 overflow-hidden">
         {/* Calendar header */}
-        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3.5">
-          <h2 className="text-base font-semibold text-foreground">Calendrier des congés</h2>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between border-b border-border/60 px-3 py-2.5 sm:px-5 sm:py-3.5">
+          <h2 className="text-sm font-semibold text-foreground sm:text-base">Calendrier</h2>
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setCalendarMonth(new Date())}
-              className="rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="hidden rounded-lg border border-border/70 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:block"
             >
               Aujourd&apos;hui
             </button>
@@ -247,7 +247,7 @@ export default function DashboardPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[140px] text-center text-sm font-semibold capitalize text-foreground">
+            <span className="min-w-[100px] text-center text-xs font-semibold capitalize text-foreground sm:min-w-[140px] sm:text-sm">
               {format(calendarMonth, 'MMMM yyyy', { locale: fr })}
             </span>
             <button
@@ -260,7 +260,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/40 px-5 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-3 py-1.5 sm:gap-x-4 sm:px-5 sm:py-2">
           <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> En attente
           </div>
@@ -297,7 +297,7 @@ export default function DashboardPage() {
               <div
                 key={key}
                 className={cn(
-                  'relative min-h-[80px] border-b border-r border-border/30 p-1.5 transition-colors',
+                  'relative min-h-[48px] border-b border-r border-border/30 p-1 transition-colors sm:min-h-[80px] sm:p-1.5',
                   !inMonth && 'bg-muted/20',
                   isWeekend && inMonth && 'bg-muted/10',
                   idx % 7 === 0 && 'border-l-0',
@@ -355,21 +355,21 @@ export default function DashboardPage() {
 
       {/* ─── Requests with Tab Bar ─── */}
       <Card className="border-border/70">
-        <div className="border-b border-border/60 px-5 pt-4">
+        <div className="border-b border-border/60 px-3 pt-3 sm:px-5 sm:pt-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-foreground">Demandes</h2>
+            <h2 className="text-sm font-semibold text-foreground sm:text-base">Demandes</h2>
             <Link href="/dashboard/requests" className="text-xs font-medium text-primary hover:text-primary/80 transition-colors">
               Tout voir
             </Link>
           </div>
 
-          <div className="mt-3 flex gap-1">
+          <div className="mt-2 flex gap-1 overflow-x-auto sm:mt-3">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  'relative px-3 pb-2.5 text-sm font-medium transition-colors',
+                  'relative shrink-0 px-2 pb-2 text-xs font-medium transition-colors sm:px-3 sm:pb-2.5 sm:text-sm',
                   activeTab === tab.key
                     ? 'text-foreground'
                     : 'text-muted-foreground hover:text-foreground/70'
@@ -421,38 +421,32 @@ export default function DashboardPage() {
                 <Link
                   key={request.id}
                   href={`/dashboard/requests/${request.id}`}
-                  className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-accent/40"
+                  className="flex items-center gap-3 px-3 py-3 transition-colors hover:bg-accent/40 sm:gap-4 sm:px-5 sm:py-3.5"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/70">
+                  <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/70 sm:flex">
                     <FileText className="h-4 w-4 text-muted-foreground" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5">
                       {isManagerView && request.user && (
-                        <span className="text-sm font-semibold text-foreground">{request.user.full_name}</span>
+                        <span className="text-xs font-semibold text-foreground sm:text-sm">{request.user.full_name}</span>
                       )}
-                      <span className="text-sm font-medium text-foreground">
-                        {format(new Date(request.start_date), 'd MMM', { locale: fr })} – {format(new Date(request.end_date), 'd MMM yyyy', { locale: fr })}
+                      <span className="text-xs font-medium text-foreground sm:text-sm">
+                        {format(new Date(request.start_date), 'd MMM', { locale: fr })} – {format(new Date(request.end_date), 'd MMM', { locale: fr })}
                       </span>
-                      <Badge className={cn('text-[11px]', getStatusClass(request.status))}>
+                      <Badge className={cn('text-[10px] sm:text-[11px]', getStatusClass(request.status))}>
                         {getStatusLabel(request.status)}
                       </Badge>
                     </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{request.request_type === 'CONGE' ? 'Congé' : 'Récupération'}</span>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground sm:gap-2 sm:text-xs">
+                      <span>{request.request_type === 'CONGE' ? 'Congé' : 'Récup.'}</span>
                       <span className="text-border">·</span>
-                      <span>{request.days_count} jours</span>
+                      <span>{request.days_count}j</span>
                       {isManagerView && request.user?.job_title && (
                         <>
-                          <span className="text-border">·</span>
-                          <span>{request.user.job_title}</span>
-                        </>
-                      )}
-                      {request.reason && (
-                        <>
-                          <span className="text-border">·</span>
-                          <span className="truncate max-w-[200px]">{request.reason}</span>
+                          <span className="hidden text-border sm:inline">·</span>
+                          <span className="hidden sm:inline">{request.user.job_title}</span>
                         </>
                       )}
                     </div>

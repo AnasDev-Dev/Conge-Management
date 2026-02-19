@@ -101,51 +101,52 @@ export default function MissionsPage() {
   }
 
   return (
-    <div className="space-y-7">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-7">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Ordres de mission</h1>
-          <p className="mt-2 text-muted-foreground">Consultez et gérez vos ordres de mission</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Ordres de mission</h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">Consultez et gérez vos ordres de mission</p>
         </div>
         <Link href="/dashboard/new-mission">
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Nouvelle mission
+          <Button size="sm" className="sm:h-10 sm:px-4 sm:text-sm">
+            <PlusCircle className="mr-1.5 h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Nouvelle mission</span>
+            <span className="sm:hidden">Nouveau</span>
           </Button>
         </Link>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
         <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-foreground">{stats.total}</div>
-            <p className="mt-1 text-sm text-muted-foreground">Total</p>
+          <CardContent className="p-3 sm:pt-6 sm:px-6">
+            <div className="text-xl font-bold text-foreground sm:text-2xl">{stats.total}</div>
+            <p className="text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">Total</p>
           </CardContent>
         </Card>
         <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-[var(--status-pending-text)]">{stats.pending}</div>
-            <p className="mt-1 text-sm text-muted-foreground">En cours</p>
+          <CardContent className="p-3 sm:pt-6 sm:px-6">
+            <div className="text-xl font-bold text-[var(--status-pending-text)] sm:text-2xl">{stats.pending}</div>
+            <p className="text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">En cours</p>
           </CardContent>
         </Card>
         <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-[var(--status-success-text)]">{stats.approved}</div>
-            <p className="mt-1 text-sm text-muted-foreground">Approuvées</p>
+          <CardContent className="p-3 sm:pt-6 sm:px-6">
+            <div className="text-xl font-bold text-[var(--status-success-text)] sm:text-2xl">{stats.approved}</div>
+            <p className="text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">Approuvées</p>
           </CardContent>
         </Card>
         <Card className="border-border/70">
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-[var(--status-alert-text)]">{stats.rejected}</div>
-            <p className="mt-1 text-sm text-muted-foreground">Rejetées</p>
+          <CardContent className="p-3 sm:pt-6 sm:px-6">
+            <div className="text-xl font-bold text-[var(--status-alert-text)] sm:text-2xl">{stats.rejected}</div>
+            <p className="text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">Rejetées</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
       <Card className="border-border/70">
-        <CardContent className="pt-6">
+        <CardContent className="p-3 sm:pt-6 sm:px-6">
           <div className="flex flex-col gap-4 md:flex-row">
             <div className="flex-1">
               <div className="relative">
@@ -209,24 +210,24 @@ export default function MissionsPage() {
             <div className="space-y-2">
               {filteredMissions.map((mission) => (
                 <Link key={mission.id} href={`/dashboard/missions/${mission.id}`} className="block">
-                  <div className="soft-row cursor-pointer rounded-2xl px-5 py-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="mb-3 flex flex-wrap items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-lg font-semibold text-foreground">
+                  <div className="soft-row cursor-pointer rounded-2xl px-3 py-3 sm:px-5 sm:py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-2 flex flex-wrap items-center gap-2 sm:mb-3 sm:gap-3">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground sm:h-4 sm:w-4" />
+                            <span className="text-sm font-semibold text-foreground truncate sm:text-lg">
                               {mission.departure_city} → {mission.arrival_city}
                             </span>
                           </div>
+                          <Badge className={getStatusClass(mission.status)}>
+                            {getStatusLabel(mission.status)}
+                          </Badge>
                           {mission.mission_scope === 'INTERNATIONAL' && (
                             <Badge variant="outline" className="text-xs">
                               International
                             </Badge>
                           )}
-                          <Badge className={getStatusClass(mission.status)}>
-                            {getStatusLabel(mission.status)}
-                          </Badge>
                           {mission.request_origin === 'ASSIGNED' && (
                             <Badge variant="outline" className="text-xs">
                               Assignée
@@ -234,19 +235,19 @@ export default function MissionsPage() {
                           )}
                         </div>
 
-                        <p className="mb-2 line-clamp-1 text-sm text-muted-foreground">
+                        <p className="mb-2 line-clamp-1 text-xs text-muted-foreground sm:text-sm">
                           {mission.mission_object}
                         </p>
 
-                        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-2 text-xs sm:gap-3 sm:text-sm md:grid-cols-4">
                           <div>
                             <span className="text-muted-foreground">Missionnaire:</span>
-                            <span className="ml-2 font-medium text-foreground">
+                            <span className="ml-1 font-medium text-foreground sm:ml-2">
                               {mission.user?.full_name || '—'}
                             </span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                            <Calendar className="h-3 w-3 shrink-0 text-muted-foreground sm:h-3.5 sm:w-3.5" />
                             <span className="font-medium text-foreground">
                               {format(new Date(mission.start_date), 'dd MMM', { locale: fr })} -{' '}
                               {format(new Date(mission.end_date), 'dd MMM yyyy', { locale: fr })}
@@ -254,11 +255,11 @@ export default function MissionsPage() {
                           </div>
                           <div>
                             <span className="text-muted-foreground">Durée:</span>
-                            <span className="ml-2 font-medium text-foreground">
+                            <span className="ml-1 font-medium text-foreground sm:ml-2">
                               {mission.days_count} jour{mission.days_count > 1 ? 's' : ''}
                             </span>
                           </div>
-                          <div>
+                          <div className="hidden sm:block">
                             <span className="text-muted-foreground">Soumis le:</span>
                             <span className="ml-2 font-medium text-foreground">
                               {format(new Date(mission.created_at), 'dd/MM/yyyy', { locale: fr })}
@@ -267,7 +268,7 @@ export default function MissionsPage() {
                         </div>
                       </div>
 
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" className="hidden sm:flex">
                         Voir détails →
                       </Button>
                     </div>

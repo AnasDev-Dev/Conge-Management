@@ -155,42 +155,42 @@ export default function EmployeesPage() {
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="shrink-0">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Employés</h1>
-        <p className="mt-1 text-muted-foreground">Consultez les collaborateurs et leurs historiques de congés.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Employés</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Consultez les collaborateurs et leurs historiques de congés.</p>
       </div>
 
       {/* KPI cards */}
-      <div className="shrink-0 grid grid-cols-3 gap-3">
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+      <div className="shrink-0 grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-primary/10 sm:flex">
             <Users className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{activeEmployees}</p>
-            <p className="text-xs text-muted-foreground">Employés actifs</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{activeEmployees}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Actifs</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 sm:flex">
             <Calendar className="h-5 w-5 text-emerald-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{totalApprovedDays}</p>
-            <p className="text-xs text-muted-foreground">Jours de congé pris</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{totalApprovedDays}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Congé pris</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 sm:flex">
             <Clock className="h-5 w-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{pendingTotal}</p>
-            <p className="text-xs text-muted-foreground">Demandes en attente</p>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{pendingTotal}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">En attente</p>
           </div>
         </div>
       </div>
 
-      <Card className="flex min-h-0 flex-1 border-border/70 bg-card shadow-none backdrop-blur-none md:sticky md:top-0 md:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-11rem)]">
+      <Card className="flex min-h-0 flex-col border-border/70 bg-card shadow-none backdrop-blur-none md:flex-1 md:sticky md:top-0 md:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-11rem)]">
         <CardHeader className="shrink-0 border-b border-border/70 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -291,7 +291,7 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
-              <div className="h-full min-h-0 overflow-auto overscroll-contain pr-1 md:hidden">
+              <div className="md:hidden">
                 <div className="space-y-3">
                   {filteredEmployees.map((employee) => {
                     const employeeSummary = summaryByUser.get(employee.id) || {
