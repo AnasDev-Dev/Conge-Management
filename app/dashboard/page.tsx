@@ -390,7 +390,7 @@ export default function DashboardPage() {
               <div
                 key={key}
                 className={cn(
-                  "group relative flex min-h-[70px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background shadow-sm transition-all sm:min-h-[110px]",
+                  "group relative flex min-h-[60px] flex-col overflow-hidden rounded-xl border border-border/50 bg-background shadow-sm transition-all sm:min-h-[88px]",
                   !inMonth && "border-transparent bg-transparent opacity-40 shadow-none hover:bg-transparent",
                   isWeekend && inMonth && "bg-muted/20 text-muted-foreground shadow-none",
                   today && "border-primary/40 bg-primary/5 ring-1 ring-primary/20",
