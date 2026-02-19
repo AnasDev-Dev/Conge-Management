@@ -62,7 +62,7 @@ function DatePicker({
             "w-full justify-start text-left font-normal",
             compact
               ? "h-8 rounded-2xl px-3 text-xs"
-              : "relative h-11 rounded-2xl pl-12",
+              : "relative h-11 rounded-2xl pl-12 has-[>svg]:pl-12",
             !value && "text-muted-foreground",
             className
           )}
