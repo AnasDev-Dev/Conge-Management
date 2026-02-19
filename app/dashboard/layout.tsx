@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   ClipboardCheck,
+  Briefcase,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
@@ -127,6 +128,7 @@ export default function DashboardLayout({
     { name: 'Employés', href: '/dashboard/employees', icon: Users },
     ...(isManager ? [{ name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck }] : []),
     { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
+    { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
     { name: 'Profil', href: '/dashboard/profile', icon: User },
     { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },

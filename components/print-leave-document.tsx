@@ -223,7 +223,7 @@ export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentPro
           <div className="print-card">
             {approvalSteps.map((step, i) => (
               <div key={i} className="print-approval-step">
-                <span className="print-check">&#10003;</span>
+                <div className="print-check">&#10003;</div>
                 <span className="print-approval-label">{step.label}</span>
                 <span className="print-approval-name">{step.name ?? '—'}</span>
                 <span className="print-approval-date">

@@ -19,6 +19,11 @@ export type LeaveStatus =
 
 export type LeaveRequestType = 'CONGE' | 'RECUPERATION'
 
+export type MissionRequestOrigin = 'SELF' | 'ASSIGNED'
+export type MissionScope = 'LOCAL' | 'INTERNATIONAL'
+export type SupervisorOpinion = 'FAVORABLE' | 'DEFAVORABLE'
+export type DirectorDecision = 'ACCORDEE' | 'REFUSEE'
+
 export interface Company {
   id: number
   legacy_id: string | null
@@ -145,6 +150,55 @@ export interface WorkingDays {
   friday: boolean
   saturday: boolean
   sunday: boolean
+}
+
+export interface MissionRequest {
+  id: number
+  user_id: string
+  assigned_by: string | null
+  request_origin: MissionRequestOrigin
+  mission_scope: MissionScope
+  departure_city: string
+  arrival_city: string
+  mission_object: string
+  start_date: string
+  end_date: string
+  days_count: number
+  transport_type: string | null
+  transport_details: string | null
+  replacement_user_id: string | null
+  comments: string | null
+  status: LeaveStatus
+  supervisor_opinion: SupervisorOpinion | null
+  supervisor_comments: string | null
+  supervisor_id: string | null
+  supervisor_at: string | null
+  approved_by_dc: string | null
+  approved_by_rp: string | null
+  approved_by_tg: string | null
+  approved_by_de: string | null
+  approved_at_dc: string | null
+  approved_at_rp: string | null
+  approved_at_tg: string | null
+  approved_at_de: string | null
+  director_decision: DirectorDecision | null
+  rejected_by: string | null
+  rejected_at: string | null
+  rejection_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MissionRequestWithRelations extends MissionRequest {
+  user?: Utilisateur
+  assigner?: Utilisateur
+  replacement_user?: Utilisateur
+  supervisor?: Utilisateur
+  approver_dc?: Utilisateur
+  approver_rp?: Utilisateur
+  approver_tg?: Utilisateur
+  approver_de?: Utilisateur
+  rejector?: Utilisateur
 }
 
 // Extended types with relations

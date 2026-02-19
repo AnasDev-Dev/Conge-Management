@@ -40,6 +40,21 @@ export function getStatusClass(status: string): string {
   }
 }
 
+// Transport type labels (shared across mission pages & print)
+export const TRANSPORT_LABELS: Record<string, string> = {
+  voiture_personnelle: 'Voiture personnelle',
+  voiture_service: 'Voiture de service',
+  avion: 'Avion',
+  train: 'Train',
+  bus: 'Bus',
+  autre: 'Autre',
+}
+
+export const TRANSPORT_OPTIONS = Object.entries(TRANSPORT_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}))
+
 // Role display labels (French)
 export function getRoleLabel(role: string): string {
   switch (role) {
