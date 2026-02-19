@@ -62,14 +62,14 @@ function DatePicker({
             "w-full justify-start text-left font-normal",
             compact
               ? "h-8 rounded-2xl px-3 text-xs"
-              : "relative h-11 rounded-2xl pl-11",
+              : "relative h-11 rounded-2xl pl-12",
             !value && "text-muted-foreground",
             className
           )}
           onClick={(e) => e.stopPropagation()}
         >
           {!compact && (
-            <CalendarIcon className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+            <CalendarIcon className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
           )}
           {selectedDate
             ? compact
