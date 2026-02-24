@@ -19,8 +19,10 @@ import {
   Menu,
   X,
   ClipboardCheck,
+  ClipboardList,
   Briefcase,
   Settings,
+  BadgeCheck,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
@@ -127,11 +129,17 @@ export default function DashboardLayout({
   const navigation = [
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Employés', href: '/dashboard/employees', icon: Users },
-    ...(isManager ? [{ name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck }] : []),
+    ...(isManager ? [
+      { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck },
+      { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList },
+    ] : []),
     { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
     { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
-    ...(isManager ? [{ name: 'Paramètres', href: '/dashboard/settings', icon: Settings }] : []),
+    ...(isManager ? [
+      { name: 'Paramètres', href: '/dashboard/settings', icon: Settings },
+      { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck },
+    ] : []),
     { name: 'Profil', href: '/dashboard/profile', icon: User },
     { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   ]
