@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -15,9 +15,16 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
-  title: "SMARTFLOW - Leave Management System",
-  description: "Modern leave management system for efficient workforce planning",
+  title: "FRMG - Gestion des Conges",
+  description: "Systeme de gestion des conges - Federation Royale Marocaine de Golf",
 };
 
 export default function RootLayout({

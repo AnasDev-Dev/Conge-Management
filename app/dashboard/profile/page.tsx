@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,26 +10,21 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { Mail, Phone, Calendar, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Mail, Phone, Calendar, Lock, Eye, EyeOff, Loader2, User } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import Image from 'next/image'
+import { calculateSeniority } from '@/lib/leave-utils'
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
   const supabase = createClient()
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      setUser(JSON.parse(userStr))
-    }
-  }, [])
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,10 +76,20 @@ export default function ProfilePage() {
         <Card className="border-border/70 lg:col-span-1">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-primary shadow-[0_12px_28px_color-mix(in_oklab,var(--primary)_25%,transparent)]">
-                <span className="text-3xl font-bold text-white">
-                  {user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                </span>
+              {/* Avatar + FRMG logo */}
+              <div className="relative mx-auto w-fit">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-border bg-muted/60">
+                  <User className="h-11 w-11 text-muted-foreground/70" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-background bg-white shadow-sm">
+                  <Image
+                    src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
+                    alt="FRMG"
+                    width={28}
+                    height={28}
+                    className="h-7 w-7 object-contain"
+                  />
+                </div>
               </div>
               <h2 className="text-xl font-bold mt-4">{user.full_name}</h2>
               <p className="text-muted-foreground">{user.job_title}</p>
@@ -168,6 +174,23 @@ export default function ProfilePage() {
                   </p>
                 </div>
               )}
+              {user.hire_date && (() => {
+                const seniority = calculateSeniority(user.hire_date)
+                return (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Ancienneté</p>
+                    <p className="font-medium mt-1">
+                      {Math.floor(seniority.yearsOfService)} an(s)
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Droit annuel: {seniority.totalEntitlement} jours
+                      {seniority.bonusDays > 0 && (
+                        <span> (dont {seniority.bonusDays} bonus ancienneté)</span>
+                      )}
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
 
             {(user.cin || user.cnss || user.rib) && (

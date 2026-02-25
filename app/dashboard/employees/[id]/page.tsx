@@ -11,10 +11,12 @@ import { LeaveRequest, Utilisateur } from '@/lib/types/database'
 import { ArrowLeft, Calendar, Clock, FileText, User } from 'lucide-react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { getStatusClass, getStatusLabel } from '@/lib/constants'
+import { calculateSeniority } from '@/lib/leave-utils'
 
 type EmployeeDetails = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation'
+  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date'
 >
 
 type RequestDetails = Pick<
@@ -22,8 +24,8 @@ type RequestDetails = Pick<
   'id' | 'request_type' | 'start_date' | 'end_date' | 'days_count' | 'status' | 'reason' | 'created_at' | 'return_date'
 >
 
-const approvedStatuses = new Set(['APPROVED', 'VALIDATED_DE'])
-const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'VALIDATED_TG'])
+const approvedStatuses = new Set(['APPROVED'])
+const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 export default function EmployeeDetailsPage() {
   const params = useParams<{ id: string }>()
@@ -38,7 +40,7 @@ export default function EmployeeDetailsPage() {
         await Promise.all([
           supabase
             .from('utilisateurs')
-            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation')
+            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date')
             .eq('id', employeeId)
             .single(),
           supabase
@@ -83,47 +85,6 @@ export default function EmployeeDetailsPage() {
       rejectedRequests,
     }
   }, [requests])
-
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'status-pending'
-      case 'VALIDATED_DC':
-      case 'VALIDATED_RP':
-      case 'VALIDATED_TG':
-      case 'VALIDATED_DE':
-        return 'status-progress'
-      case 'APPROVED':
-        return 'status-approved'
-      case 'REJECTED':
-        return 'status-rejected'
-      default:
-        return 'status-neutral'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'En attente'
-      case 'VALIDATED_DC':
-        return 'Validé CS'
-      case 'VALIDATED_RP':
-        return 'Validé RH'
-      case 'VALIDATED_TG':
-        return 'Validé TG'
-      case 'VALIDATED_DE':
-        return 'Validé DE'
-      case 'APPROVED':
-        return 'Approuvé'
-      case 'REJECTED':
-        return 'Rejeté'
-      case 'CANCELLED':
-        return 'Annulé'
-      default:
-        return status
-    }
-  }
 
   if (loading) {
     return (
@@ -226,6 +187,17 @@ export default function EmployeeDetailsPage() {
                 {employee.balance_conge} congé / {employee.balance_recuperation} récupération
               </p>
             </div>
+            {employee.hire_date && (() => {
+              const seniority = calculateSeniority(employee.hire_date)
+              return (
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Ancienneté</p>
+                  <p className="mt-1 text-sm text-foreground">
+                    {Math.floor(seniority.yearsOfService)} an(s) — {seniority.totalEntitlement} j/an
+                  </p>
+                </div>
+              )
+            })()}
           </div>
         </CardContent>
       </Card>

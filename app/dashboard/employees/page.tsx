@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { LeaveRequest, Utilisateur } from '@/lib/types/database'
-import { ChevronRight, Search, Users } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Calendar, ChevronRight, Clock, Search, Users } from 'lucide-react'
 
 type EmployeeRow = Pick<
   Utilisateur,
@@ -23,14 +24,13 @@ type EmployeeSummary = {
   pendingRequests: number
 }
 
-const approvedStatuses = new Set(['APPROVED', 'VALIDATED_DE'])
-const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'VALIDATED_TG'])
+const approvedStatuses = new Set(['APPROVED'])
+const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 const roleKeywords: Record<string, string[]> = {
   EMPLOYEE: ['employe', 'employee', 'collaborateur', 'staff'],
   CHEF_SERVICE: ['chef', 'manager', 'service', 'responsable'],
-  RESPONSABLE_PERSONNEL: ['rh', 'hr', 'personnel', 'ressources', 'humaines'],
-  TRESORIER_GENERAL: ['tresorier', 'tresorerie', 'finance', 'compta'],
+  RH: ['rh', 'hr', 'personnel', 'ressources', 'humaines'],
   DIRECTEUR_EXECUTIF: ['directeur', 'executif', 'direction'],
   ADMIN: ['admin', 'administrateur', 'administration'],
 }
@@ -38,8 +38,7 @@ const roleKeywords: Record<string, string[]> = {
 const roleChipClass: Partial<Record<Utilisateur['role'], string>> = {
   EMPLOYEE: 'border-[#cfdacb] bg-[#ecf3e8] text-[#46604a]',
   CHEF_SERVICE: 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]',
-  RESPONSABLE_PERSONNEL: 'border-[#cde1d8] bg-[#e8f3ee] text-[#3e6756]',
-  TRESORIER_GENERAL: 'border-[#e6d3b7] bg-[#f9efdf] text-[#7e6037]',
+  RH: 'border-[#cde1d8] bg-[#e8f3ee] text-[#3e6756]',
   DIRECTEUR_EXECUTIF: 'border-[#e4d3c8] bg-[#f6ebe4] text-[#6b4c3b]',
   ADMIN: 'border-[#d8dade] bg-[#eff1f3] text-[#4e5661]',
 }
@@ -151,47 +150,64 @@ export default function EmployeesPage() {
   const activeEmployees = employees.filter((employee) => employee.is_active).length
   const totalApprovedDays = Array.from(summaryByUser.values()).reduce((sum, user) => sum + user.approvedDays, 0)
 
+  const pendingTotal = Array.from(summaryByUser.values()).reduce((sum, user) => sum + user.pendingRequests, 0)
+
   return (
-    <div className="flex min-h-full flex-col gap-5">
+    <div className="flex min-h-full flex-col gap-4">
       <div className="shrink-0">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Employés</h1>
-        <p className="mt-2 text-muted-foreground">Consultez les collaborateurs et leurs historiques de congés.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Employés</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Consultez les collaborateurs et leurs historiques de congés.</p>
       </div>
 
-      <div className="shrink-0 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-border/70 bg-card shadow-none backdrop-blur-none">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Employés actifs</p>
-            <p className="mt-2 text-3xl font-semibold text-foreground">{activeEmployees}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card shadow-none backdrop-blur-none">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Jours de congé pris</p>
-            <p className="mt-2 text-3xl font-semibold text-primary">{totalApprovedDays}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card shadow-none backdrop-blur-none">
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Résultats filtrés</p>
-            <p className="mt-2 text-3xl font-semibold text-foreground">{filteredEmployees.length}</p>
-          </CardContent>
-        </Card>
+      {/* KPI cards */}
+      <div className="shrink-0 grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-primary/10 sm:flex">
+            <Users className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{activeEmployees}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Actifs</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 sm:flex">
+            <Calendar className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{totalApprovedDays}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">Congé pris</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 sm:flex">
+            <Clock className="h-5 w-5 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-foreground sm:text-2xl">{pendingTotal}</p>
+            <p className="text-[11px] text-muted-foreground sm:text-xs">En attente</p>
+          </div>
+        </div>
       </div>
 
-      <Card className="flex min-h-0 border-border/70 bg-card shadow-none backdrop-blur-none md:sticky md:top-0 md:h-[calc(100dvh-10.5rem)] lg:h-[calc(100dvh-8.75rem)]">
-        <CardHeader className="shrink-0 border-b border-border/70 py-4">
+      <Card className="flex min-h-0 flex-col border-border/70 bg-card shadow-none backdrop-blur-none md:flex-1 md:sticky md:top-0 md:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-11rem)]">
+        <CardHeader className="shrink-0 border-b border-border/70 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="h-4.5 w-4.5 text-primary" />
               Liste des employés
+              {searchTerm && (
+                <span className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-normal text-primary">
+                  {filteredEmployees.length} résultats
+                </span>
+              )}
             </CardTitle>
-            <div className="relative w-full md:w-[27rem]">
+            <div className="relative w-full md:w-[24rem]">
               <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
               <Input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Recherche sémantique: nom, rôle, email, solde..."
+                placeholder="Recherche: nom, rôle, email, solde..."
                 className="pl-11"
               />
             </div>
@@ -199,9 +215,19 @@ export default function EmployeesPage() {
         </CardHeader>
         <CardContent className="min-h-0 flex-1 pt-4">
           {loading ? (
-            <div className="py-12 text-center">
-              <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="mt-4 text-muted-foreground">Chargement des employés...</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="rounded-2xl border border-border/70 p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              ))}
             </div>
           ) : filteredEmployees.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">Aucun employé trouvé.</div>
@@ -265,7 +291,7 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
-              <div className="h-full min-h-0 overflow-auto overscroll-contain pr-1 md:hidden">
+              <div className="md:hidden">
                 <div className="space-y-3">
                   {filteredEmployees.map((employee) => {
                     const employeeSummary = summaryByUser.get(employee.id) || {
@@ -287,11 +313,11 @@ export default function EmployeesPage() {
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                          <div className="rounded-xl bg-secondary/45 p-2.5">
+                          <div className="rounded-xl bg-secondary/60 p-2.5">
                             <p className="text-xs text-muted-foreground">Congé pris</p>
                             <p className="font-semibold text-primary">{employeeSummary.approvedDays} jours</p>
                           </div>
-                          <div className="rounded-xl bg-secondary/45 p-2.5">
+                          <div className="rounded-xl bg-secondary/60 p-2.5">
                             <p className="text-xs text-muted-foreground">En attente</p>
                             <p className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</p>
                           </div>
