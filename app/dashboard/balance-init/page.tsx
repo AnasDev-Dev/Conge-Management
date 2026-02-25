@@ -144,13 +144,27 @@ export default function BalanceInitPage() {
       if (!emp || newBalance === emp.balance_conge) continue
 
       try {
-        const { error } = await supabase.rpc('set_initial_balance', {
-          p_user_id: id,
-          p_balance: newBalance,
-          p_year: currentYear,
-          p_reason: `Initialisation solde ${currentYear} par RH`,
-        })
-        if (error) throw error
+        // Update the employee balance
+        const { error: updateError } = await supabase
+          .from('utilisateurs')
+          .update({ balance_conge: newBalance, updated_at: new Date().toISOString() })
+          .eq('id', id)
+
+        if (updateError) throw updateError
+
+        // Record in balance history for audit trail
+        const { error: historyError } = await supabase
+          .from('leave_balance_history')
+          .insert({
+            user_id: id,
+            type: 'CONGE',
+            amount: newBalance,
+            reason: `Initialisation solde ${currentYear} par RH (ancien solde: ${emp.balance_conge})`,
+            year: currentYear,
+          })
+
+        if (historyError) console.error('History insert error:', historyError)
+
         successCount++
       } catch (error) {
         console.error(`Error updating balance for ${emp.full_name}:`, error)
