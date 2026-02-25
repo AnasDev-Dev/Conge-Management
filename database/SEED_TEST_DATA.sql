@@ -164,7 +164,7 @@ BEGIN
   INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
   VALUES (gen_random_uuid(), uid_youssef, jsonb_build_object('sub', uid_youssef::text, 'email', 'youssef.amrani@ath.ma'), 'email', uid_youssef::text, NOW(), NOW(), NOW());
 
-  -- Nadia (RESPONSABLE_PERSONNEL / RH)
+  -- Nadia (RH)
   INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, is_sso_user)
   VALUES ('00000000-0000-0000-0000-000000000000', uid_nadia, 'authenticated', 'authenticated', 'nadia.fassi@ath.ma', v_pass, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Nadia Fassi"}', NOW(), NOW(), '', '', FALSE);
   INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
@@ -214,7 +214,7 @@ BEGIN
   VALUES
     (uid_salma,   'salma.berrada@ath.ma',  'Salma Berrada',  's.berrada',  v_company_id, v_dept_sport, 'Coordinatrice Sportive',          'EMPLOYEE',              TRUE, 22, 3, '0661-234567', '2019-03-15', '1992-07-20', 'MAT-1001', 'F', 'Casablanca'),
     (uid_youssef, 'youssef.amrani@ath.ma', 'Youssef Amrani', 'y.amrani',   v_company_id, v_dept_comm,  'Chargé de Communication',         'EMPLOYEE',              TRUE, 18, 0, '0662-345678', '2020-09-01', '1995-01-12', 'MAT-1002', 'M', 'Rabat'),
-    (uid_nadia,   'nadia.fassi@ath.ma',    'Nadia Fassi',    'n.fassi',    v_company_id, v_dept_admin, 'Responsable Ressources Humaines', 'RESPONSABLE_PERSONNEL', TRUE, 25, 5, '0663-456789', '2016-06-01', '1985-11-03', 'MAT-1003', 'F', 'Casablanca'),
+    (uid_nadia,   'nadia.fassi@ath.ma',    'Nadia Fassi',    'n.fassi',    v_company_id, v_dept_admin, 'Responsable Ressources Humaines', 'RH', TRUE, 25, 5, '0663-456789', '2016-06-01', '1985-11-03', 'MAT-1003', 'F', 'Casablanca'),
     (uid_karim,   'karim.bennani@ath.ma',  'Karim Bennani',  'k.bennani',  v_company_id, v_dept_sport, 'Chef de Service Sportif',         'CHEF_SERVICE',          TRUE, 20, 2, '0664-567890', '2017-01-10', '1988-04-25', 'MAT-1004', 'M', 'Marrakech'),
     (uid_ahmed,   'ahmed.tazi@ath.ma',     'Ahmed Tazi',     'a.tazi',     v_company_id, v_dept_fin,   'Trésorier Général',               'TRESORIER_GENERAL',     TRUE, 24, 0, '0665-678901', '2015-02-20', '1980-08-15', 'MAT-1005', 'M', 'Casablanca'),
     (uid_fatima,  'fatima.alaoui@ath.ma',  'Fatima Alaoui',  'f.alaoui',   v_company_id, v_dept_admin, 'Directrice Exécutive',            'DIRECTEUR_EXECUTIF',    TRUE, 30, 0, '0666-789012', '2012-11-05', '1975-03-30', 'MAT-1006', 'F', 'Casablanca'),
