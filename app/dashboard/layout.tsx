@@ -93,7 +93,7 @@ export default function DashboardLayout({
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [pathname])
 
   useEffect(() => {
     if (!user && sessionChecked) {

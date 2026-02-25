@@ -164,35 +164,64 @@ export default function RequestDetailPage() {
     )
   }
 
-  const approvalTimeline = [
+  // Build dynamic timeline based on initial_status (which stages were skipped)
+  const initialStatus = (request as RequestDetail & { initial_status?: string }).initial_status || 'PENDING'
+  const isAutoApproved = initialStatus === 'APPROVED'
+
+  const allStages = [
     {
+      key: 'submit',
       label: 'Soumission',
       done: true,
+      active: false,
       name: request.user?.full_name,
       date: request.created_at,
+      minStatus: null, // always shown
     },
     {
+      key: 'rp',
       label: 'RH Personnel',
       done: !!request.approved_at_rp,
       active: request.status === 'PENDING',
       name: request.approved_by_rp ? approvers[request.approved_by_rp]?.full_name : null,
       date: request.approved_at_rp,
+      minStatus: 'PENDING',
     },
     {
+      key: 'dc',
       label: 'Chef de Service',
       done: !!request.approved_at_dc,
       active: request.status === 'VALIDATED_RP',
       name: request.approved_by_dc ? approvers[request.approved_by_dc]?.full_name : null,
       date: request.approved_at_dc,
+      minStatus: 'VALIDATED_RP',
     },
     {
+      key: 'de',
       label: 'Directeur Exécutif',
       done: !!request.approved_at_de,
       active: request.status === 'VALIDATED_DC',
       name: request.approved_by_de ? approvers[request.approved_by_de]?.full_name : null,
       date: request.approved_at_de,
+      minStatus: 'VALIDATED_DC',
     },
   ]
+
+  // Status ordering for filtering skipped stages
+  const statusOrder = ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'APPROVED']
+  const initialIdx = statusOrder.indexOf(initialStatus)
+
+  // For auto-approved, show simplified timeline
+  const approvalTimeline = isAutoApproved
+    ? [
+        allStages[0], // Soumission
+        { key: 'auto', label: 'Approuvé automatiquement', done: true, active: false, name: request.approved_by_de ? approvers[request.approved_by_de]?.full_name : null, date: request.approved_at_de, minStatus: null },
+      ]
+    : allStages.filter(stage => {
+        if (stage.minStatus === null) return true // always show
+        const stageIdx = statusOrder.indexOf(stage.minStatus)
+        return stageIdx >= initialIdx // only show stages at or after initial_status
+      })
 
   const isRejected = request.status === 'REJECTED'
   const balanceAfter = (request.balance_before || 0) - request.days_count

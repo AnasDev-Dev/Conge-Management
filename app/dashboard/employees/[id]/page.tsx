@@ -24,7 +24,7 @@ type RequestDetails = Pick<
   'id' | 'request_type' | 'start_date' | 'end_date' | 'days_count' | 'status' | 'reason' | 'created_at' | 'return_date'
 >
 
-const approvedStatuses = new Set(['APPROVED', 'VALIDATED_DE'])
+const approvedStatuses = new Set(['APPROVED'])
 const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 export default function EmployeeDetailsPage() {

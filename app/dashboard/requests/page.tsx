@@ -55,9 +55,8 @@ export default function RequestsPage() {
 
   const loadRequests = async (userData: Utilisateur) => {
     try {
-      const isManager = MANAGER_ROLES.includes(userData.role)
-
-      let query = supabase
+      // RLS handles visibility: employees see own, CHEF sees dept, RH/DIR/ADMIN see all
+      const { data, error } = await supabase
         .from('leave_requests')
         .select(`
           *,
@@ -65,11 +64,6 @@ export default function RequestsPage() {
         `)
         .order('created_at', { ascending: false })
 
-      if (!isManager) {
-        query = query.eq('user_id', userData.id)
-      }
-
-      const { data, error } = await query
       if (error) throw error
       setRequests(data || [])
     } catch (error) {

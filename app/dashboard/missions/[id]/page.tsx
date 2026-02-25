@@ -7,6 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   ArrowLeft,
   Calendar,
@@ -18,23 +27,46 @@ import {
   MapPin,
   Car,
   Printer,
+  XCircle,
+  Undo2,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { MissionRequestWithRelations, Utilisateur } from '@/lib/types/database'
-import { TRANSPORT_LABELS, getStatusClass, getStatusLabel } from '@/lib/constants'
+import { TRANSPORT_LABELS, getStatusClass, getStatusLabel, MANAGER_ROLES } from '@/lib/constants'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { toast } from 'sonner'
 import PrintMissionDocument from '@/components/print-mission-document'
+
+// Mission approval chain: Chef(dc) → RH(rp) → Dir(de)
+const MISSION_PIPELINE = [
+  { status: 'PENDING', label: 'Chef de Service', role: 'CHEF_SERVICE', field: 'dc' },
+  { status: 'VALIDATED_DC', label: 'Responsable Personnel', role: 'RH', field: 'rp' },
+  { status: 'VALIDATED_RP', label: 'Directeur Exécutif', role: 'DIRECTEUR_EXECUTIF', field: 'de' },
+] as const
+
+const STATUS_ORDER = ['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'APPROVED']
 
 export default function MissionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const [mission, setMission] = useState<MissionRequestWithRelations | null>(null)
   const [missionUser, setMissionUser] = useState<Utilisateur | null>(null)
+  const [currentUser, setCurrentUser] = useState<Utilisateur | null>(null)
   const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
   const [showPrint, setShowPrint] = useState(false)
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
   const printRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user')
+    if (userStr) setCurrentUser(JSON.parse(userStr) as Utilisateur)
+  }, [])
 
   useEffect(() => {
     if (params.id) {
@@ -88,6 +120,141 @@ export default function MissionDetailPage() {
     }, 300)
   }
 
+  // ── Actions ──
+
+  const handleApprove = async () => {
+    if (!currentUser || !mission || actionLoading) return
+    setActionLoading(true)
+    try {
+      const { error } = await supabase.rpc('approve_mission_request', {
+        p_request_id: mission.id,
+        p_approver_id: currentUser.id,
+      })
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      toast.success('Mission approuvée')
+      loadMission(String(mission.id))
+    } catch {
+      toast.error("Erreur lors de l'approbation")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!currentUser || !mission || !rejectReason.trim() || actionLoading) return
+    setActionLoading(true)
+    try {
+      const { error } = await supabase.rpc('reject_mission_request', {
+        p_request_id: mission.id,
+        p_rejector_id: currentUser.id,
+        p_reason: rejectReason.trim(),
+      })
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      setRejectDialogOpen(false)
+      setRejectReason('')
+      toast.success('Mission rejetée')
+      loadMission(String(mission.id))
+    } catch {
+      toast.error('Erreur lors du rejet')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleUndoApprove = async () => {
+    if (!currentUser || !mission || actionLoading) return
+    setActionLoading(true)
+    try {
+      const { error } = await supabase.rpc('undo_approve_mission_request', {
+        p_request_id: mission.id,
+        p_user_id: currentUser.id,
+      })
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      toast.success('Validation annulée')
+      loadMission(String(mission.id))
+    } catch {
+      toast.error("Erreur lors de l'annulation")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleUndoReject = async () => {
+    if (!currentUser || !mission || actionLoading) return
+    setActionLoading(true)
+    try {
+      const { error } = await supabase.rpc('undo_reject_mission_request', {
+        p_request_id: mission.id,
+        p_user_id: currentUser.id,
+      })
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      toast.success('Mission restaurée')
+      loadMission(String(mission.id))
+    } catch {
+      toast.error('Erreur lors de la restauration')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // ── Permission helpers ──
+
+  const getActionInfo = () => {
+    if (!currentUser || !mission) return null
+    const isManager = MANAGER_ROLES.includes(currentUser.role)
+    if (!isManager) return null
+    // Can't act on own mission
+    if (mission.user_id === currentUser.id) return null
+
+    const status = mission.status
+
+    // Can approve: role matches current pipeline stage
+    const stage = MISSION_PIPELINE.find(s => s.status === status)
+    if (stage && (stage.role === currentUser.role || currentUser.role === 'ADMIN')) {
+      return { canApprove: true, canReject: true, stage }
+    }
+
+    // Can undo approve: user is the one who approved at the most recent step
+    // Find which stage produced the current status
+    const prevStageIdx = STATUS_ORDER.indexOf(status) - 1
+    if (prevStageIdx >= 0 && prevStageIdx < MISSION_PIPELINE.length) {
+      const prevStage = MISSION_PIPELINE[prevStageIdx]
+      const approvedByField = `approved_by_${prevStage.field}` as keyof MissionRequestWithRelations
+      if (mission[approvedByField] === currentUser.id) {
+        // Check we're not at initial_status (can't undo below initial)
+        if (!mission.initial_status || mission.status !== mission.initial_status) {
+          return { canUndoApprove: true, prevStage }
+        }
+      }
+    }
+
+    // Can undo approve from APPROVED (Director)
+    if (status === 'APPROVED' && mission.approved_by_de === currentUser.id) {
+      return { canUndoApprove: true, prevStage: MISSION_PIPELINE[2] }
+    }
+
+    // Can undo reject
+    if (status === 'REJECTED') {
+      if (mission.rejected_by === currentUser.id || currentUser.role === 'ADMIN') {
+        return { canUndoReject: true }
+      }
+    }
+
+    return null
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -114,45 +281,68 @@ export default function MissionDetailPage() {
     )
   }
 
-  const approvalSteps = [
+  const actionInfo = getActionInfo()
+
+  // Build dynamic approval timeline
+  const initialStatus = mission.initial_status || 'PENDING'
+  const isAutoApproved = initialStatus === 'APPROVED'
+  const initialIdx = STATUS_ORDER.indexOf(initialStatus)
+
+  const allSteps = [
     {
+      key: 'submit',
       name: 'Soumission',
-      status: 'COMPLETED' as const,
+      done: true,
+      active: false,
       approver: mission.request_origin === 'ASSIGNED'
         ? `${mission.assigner?.full_name} (assigné à ${mission.user?.full_name})`
         : mission.user?.full_name,
       date: mission.created_at,
       icon: Briefcase,
+      minStatus: null as string | null,
     },
     {
+      key: 'dc',
       name: 'Chef de Service',
-      status: mission.approved_at_dc ? 'COMPLETED' as const : mission.status === 'PENDING' ? 'PENDING' as const : 'SKIPPED' as const,
+      done: !!mission.approved_at_dc,
+      active: mission.status === 'PENDING',
       approver: mission.approver_dc?.full_name,
       date: mission.approved_at_dc,
       icon: User,
+      minStatus: 'PENDING',
     },
     {
+      key: 'rp',
       name: 'Responsable Personnel (RH)',
-      status: mission.approved_at_rp ? 'COMPLETED' as const : ['VALIDATED_DC', 'VALIDATED_RP', 'VALIDATED_TG', 'VALIDATED_DE', 'APPROVED'].includes(mission.status) ? 'PENDING' as const : 'SKIPPED' as const,
+      done: !!mission.approved_at_rp,
+      active: mission.status === 'VALIDATED_DC',
       approver: mission.approver_rp?.full_name,
       date: mission.approved_at_rp,
       icon: User,
+      minStatus: 'VALIDATED_DC',
     },
     {
-      name: 'Trésorier Général',
-      status: mission.approved_at_tg ? 'COMPLETED' as const : ['VALIDATED_RP', 'VALIDATED_TG', 'VALIDATED_DE', 'APPROVED'].includes(mission.status) ? 'PENDING' as const : 'SKIPPED' as const,
-      approver: mission.approver_tg?.full_name,
-      date: mission.approved_at_tg,
-      icon: User,
-    },
-    {
+      key: 'de',
       name: 'Directeur Exécutif',
-      status: mission.approved_at_de ? 'COMPLETED' as const : ['VALIDATED_TG', 'VALIDATED_DE', 'APPROVED'].includes(mission.status) ? 'PENDING' as const : 'SKIPPED' as const,
+      done: !!mission.approved_at_de,
+      active: mission.status === 'VALIDATED_RP',
       approver: mission.approver_de?.full_name,
       date: mission.approved_at_de,
       icon: User,
+      minStatus: 'VALIDATED_RP',
     },
   ]
+
+  const approvalSteps = isAutoApproved
+    ? [
+        allSteps[0],
+        { key: 'auto', name: 'Approuvé automatiquement', done: true, active: false, approver: mission.approver_de?.full_name || null, date: mission.approved_at_de, icon: CheckCircle2, minStatus: null as string | null },
+      ]
+    : allSteps.filter(step => {
+        if (step.minStatus === null) return true
+        const stepIdx = STATUS_ORDER.indexOf(step.minStatus)
+        return stepIdx >= initialIdx
+      })
 
   return (
     <>
@@ -378,11 +568,11 @@ export default function MissionDetailPage() {
                 <div className="space-y-4">
                   {approvalSteps.map((step, index) => {
                     const Icon = step.icon
-                    const isCompleted = step.status === 'COMPLETED'
-                    const isPending = step.status === 'PENDING'
+                    const isCompleted = step.done
+                    const isPending = step.active
 
                     return (
-                      <div key={index} className="flex gap-4">
+                      <div key={step.key} className="flex gap-4">
                         <div className="flex flex-col items-center">
                           <div
                             className={`flex h-10 w-10 items-center justify-center rounded-full ${
@@ -443,6 +633,77 @@ export default function MissionDetailPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Action bar */}
+            {actionInfo && (
+              <Card className="border-primary/30 bg-primary/[0.03]">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {'canApprove' in actionInfo && actionInfo.canApprove && (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Cette mission attend votre validation en tant que <span className="font-medium text-foreground">{actionInfo.stage?.label}</span>.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          disabled={actionLoading}
+                          onClick={handleApprove}
+                          className="flex-1 gap-2 bg-[var(--status-success-text)] text-white hover:bg-[var(--status-success-text)]/90"
+                        >
+                          {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                          Valider
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={actionLoading}
+                          onClick={() => { setRejectReason(''); setRejectDialogOpen(true) }}
+                          className="flex-1 gap-2 border-[var(--status-alert-text)]/30 text-[var(--status-alert-text)] hover:bg-[var(--status-alert-text)]/10"
+                        >
+                          {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                          Rejeter
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {'canUndoApprove' in actionInfo && actionInfo.canUndoApprove && (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Vous avez validé cette mission. Vous pouvez annuler votre validation.
+                      </p>
+                      <Button
+                        variant="outline"
+                        disabled={actionLoading}
+                        onClick={handleUndoApprove}
+                        className="w-full gap-2 border-amber-400/50 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      >
+                        {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                        Annuler la validation
+                      </Button>
+                    </>
+                  )}
+
+                  {'canUndoReject' in actionInfo && actionInfo.canUndoReject && (
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Cette mission a été rejetée. Vous pouvez la restaurer à son état précédent.
+                      </p>
+                      <Button
+                        variant="outline"
+                        disabled={actionLoading}
+                        onClick={handleUndoReject}
+                        className="w-full gap-2 border-blue-400/50 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      >
+                        {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                        Restaurer la mission
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle>Missionnaire</CardTitle>
@@ -503,6 +764,37 @@ export default function MissionDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Reject dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rejeter la mission</DialogTitle>
+            <DialogDescription>
+              {mission?.user?.full_name} — {mission?.departure_city} → {mission?.arrival_city}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Motif du rejet (obligatoire)..."
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              disabled={!rejectReason.trim() || actionLoading}
+              onClick={handleReject}
+              className="gap-2 bg-[var(--status-alert-text)] text-white hover:bg-[var(--status-alert-text)]/90"
+            >
+              {actionLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Confirmer le rejet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Print View */}
       {showPrint && mission && missionUser && (

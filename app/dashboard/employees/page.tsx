@@ -24,7 +24,7 @@ type EmployeeSummary = {
   pendingRequests: number
 }
 
-const approvedStatuses = new Set(['APPROVED', 'VALIDATED_DE'])
+const approvedStatuses = new Set(['APPROVED'])
 const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 const roleKeywords: Record<string, string[]> = {

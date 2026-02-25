@@ -62,8 +62,6 @@ const STATUS_DOT_COLORS: Record<string, string> = {
   PENDING: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]",
   VALIDATED_DC: "bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.6)]",
   VALIDATED_RP: "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.6)]",
-  VALIDATED_TG: "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)]",
-  VALIDATED_DE: "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]",
   APPROVED: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]",
   REJECTED: "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]",
   CANCELLED: "bg-gray-400 shadow-[0_0_8px_rgba(156,163,175,0.6)]",
@@ -76,10 +74,6 @@ const STATUS_BAR_COLORS: Record<string, string> = {
     "bg-gradient-to-r from-purple-400/90 to-purple-500/90 text-white shadow-sm border border-purple-400/50",
   VALIDATED_RP:
     "bg-gradient-to-r from-purple-500/90 to-purple-600/90 text-white shadow-sm border border-purple-500/50",
-  VALIDATED_TG:
-    "bg-gradient-to-r from-indigo-400/90 to-indigo-500/90 text-white shadow-sm border border-indigo-400/50",
-  VALIDATED_DE:
-    "bg-gradient-to-r from-indigo-500/90 to-indigo-600/90 text-white shadow-sm border border-indigo-500/50",
   APPROVED:
     "bg-gradient-to-r from-emerald-400/90 to-emerald-500/90 text-emerald-950 shadow-sm border border-emerald-400/50",
   REJECTED:
@@ -109,12 +103,22 @@ export default function DashboardPage() {
       const userData = JSON.parse(userStr);
       setUser(userData);
       loadRequests(userData);
-      // Load entitlement info
-      supabase
-        .rpc("calculate_leave_balance", { p_user_id: userData.id })
-        .then(({ data }) => {
-          if (data) setBalanceInfo(data);
-        });
+      // Load fresh balance + entitlement info from DB
+      Promise.all([
+        supabase
+          .from("utilisateurs")
+          .select("balance_conge, balance_recuperation")
+          .eq("id", userData.id)
+          .single(),
+        supabase.rpc("calculate_leave_balance", { p_user_id: userData.id }),
+      ]).then(([{ data: freshUser }, { data: balanceData }]) => {
+        if (freshUser) {
+          const updated = { ...userData, ...freshUser };
+          setUser(updated);
+          localStorage.setItem("user", JSON.stringify(updated));
+        }
+        if (balanceData) setBalanceInfo(balanceData);
+      });
     }
   }, []);
 

@@ -109,7 +109,7 @@ export default function NewRequestPage() {
     if (userStr) {
       const userData = JSON.parse(userStr)
       setUser(userData)
-      loadEmployees()
+      loadEmployees(userData)
       loadColleagues(userData.department_id)
       // Load holiday-aware day counting data
       const companyId = userData.company_id || undefined
@@ -118,14 +118,20 @@ export default function NewRequestPage() {
     }
   }, [])
 
-  const loadEmployees = async () => {
+  const loadEmployees = async (userData: Utilisateur) => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('utilisateurs')
-        .select('id, full_name, job_title, balance_conge, balance_recuperation')
+        .select('id, full_name, job_title, balance_conge, balance_recuperation, department_id')
         .eq('is_active', true)
         .order('full_name')
 
+      // CHEF_SERVICE can only create on behalf of their department
+      if (userData.role === 'CHEF_SERVICE' && userData.department_id) {
+        query = query.eq('department_id', userData.department_id)
+      }
+
+      const { data, error } = await query
       if (error) throw error
       setEmployees(data || [])
     } catch (error) {
@@ -179,7 +185,8 @@ export default function NewRequestPage() {
           transport_details: transportDetails.trim() || null,
           replacement_user_id: missionReplacementId || null,
           comments: missionComments.trim() || null,
-          status: 'PENDING',
+          // Status is computed by the DB trigger based on creator's role.
+          // Do NOT send status — the trigger overrides it.
         })
         .select()
         .single()
@@ -248,6 +255,8 @@ export default function NewRequestPage() {
       const returnDate = nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays)
       const targetUserId = targetEmployee.id
 
+      // Status is computed by the DB trigger based on creator's role.
+      // Do NOT send status — the trigger overrides it.
       const { data: insertedRequest, error } = await supabase
         .from('leave_requests')
         .insert({
@@ -258,7 +267,6 @@ export default function NewRequestPage() {
           days_count: workingDays,
           return_date: format(returnDate, 'yyyy-MM-dd'),
           replacement_user_id: replacementId || null,
-          status: 'PENDING',
           reason: reason || null,
           balance_before: availableBalance,
           balance_conge_used: requestType === 'CONGE' ? workingDays : 0,
@@ -269,25 +277,31 @@ export default function NewRequestPage() {
 
       if (error) throw error
 
+      const wasAutoApproved = insertedRequest?.status === 'APPROVED'
+
       // If created on behalf of someone, notify that employee
       if (isOnBehalf && insertedRequest) {
         const typeLabel = requestType === 'CONGE' ? 'conge' : 'recuperation'
         await supabase.from('notifications').insert({
           user_id: targetUserId,
-          title: 'Nouvelle demande creee pour vous',
-          message: `${user.full_name} a cree une demande de ${typeLabel} du ${format(new Date(startDate), 'dd/MM/yyyy')} au ${format(new Date(endDate), 'dd/MM/yyyy')} (${workingDays} jours) en votre nom.`,
+          title: wasAutoApproved ? 'Demande approuvee automatiquement' : 'Nouvelle demande creee pour vous',
+          message: `${user.full_name} a cree une demande de ${typeLabel} du ${format(new Date(startDate), 'dd/MM/yyyy')} au ${format(new Date(endDate), 'dd/MM/yyyy')} (${workingDays} jours) en votre nom.${wasAutoApproved ? ' La demande a ete approuvee automatiquement.' : ''}`,
           type: 'LEAVE_CREATED',
           related_request_id: insertedRequest.id,
           is_read: false,
         })
       }
 
-      toast.success(
-        isOnBehalf
-          ? `Demande creee pour ${targetEmployee.full_name} avec succes !`
-          : 'Demande de conge soumise avec succes !'
-      )
-      router.push(isOnBehalf ? '/dashboard/validations' : '/dashboard/requests')
+      if (wasAutoApproved) {
+        toast.success('Demande approuvee automatiquement !')
+      } else {
+        toast.success(
+          isOnBehalf
+            ? `Demande creee pour ${targetEmployee.full_name} avec succes !`
+            : 'Demande de conge soumise avec succes !'
+        )
+      }
+      router.push(wasAutoApproved ? '/dashboard/requests' : isOnBehalf ? '/dashboard/validations' : '/dashboard/requests')
     } catch (error) {
       console.error('Error submitting request:', error)
       toast.error('Erreur lors de la soumission de la demande')

@@ -50,7 +50,6 @@ const STATUS_CONFIG: Record<string, { label: string; class: string; dotClass: st
   PENDING: { label: 'En attente', class: 'status-pending', dotClass: 'bg-[var(--status-pending-text)]' },
   VALIDATED_DC: { label: 'Valid. Chef', class: 'status-progress', dotClass: 'bg-[var(--status-progress-text)]' },
   VALIDATED_RP: { label: 'Valid. RH', class: 'status-progress', dotClass: 'bg-[var(--status-progress-text)]' },
-  VALIDATED_DE: { label: 'Valid. Dir.', class: 'status-progress', dotClass: 'bg-[var(--status-progress-text)]' },
   APPROVED: { label: 'Approuvé', class: 'status-approved', dotClass: 'bg-[var(--status-success-text)]' },
   REJECTED: { label: 'Rejeté', class: 'status-rejected', dotClass: 'bg-[var(--status-alert-text)]' },
 }
@@ -181,7 +180,7 @@ export default function CalendarPage() {
   const monthStats = useMemo(() => {
     const approved = requests.filter((r) => r.status === 'APPROVED')
     const inProgress = requests.filter((r) =>
-      ['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'VALIDATED_DE'].includes(r.status)
+      ['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'].includes(r.status)
     )
     const uniqueEmployees = new Set(requests.map((r) => r.user_id))
     const totalDays = approved.reduce((sum, r) => sum + r.days_count, 0)

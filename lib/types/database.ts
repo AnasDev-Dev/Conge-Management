@@ -2,16 +2,13 @@ export type UserRole =
   | 'EMPLOYEE'
   | 'CHEF_SERVICE'
   | 'RH'
-  | 'TRESORIER_GENERAL'
   | 'DIRECTEUR_EXECUTIF'
   | 'ADMIN'
 
 export type LeaveStatus =
   | 'PENDING'
-  | 'VALIDATED_DC'
   | 'VALIDATED_RP'
-  | 'VALIDATED_TG'
-  | 'VALIDATED_DE'
+  | 'VALIDATED_DC'
   | 'APPROVED'
   | 'REJECTED'
   | 'CANCELLED'
@@ -104,6 +101,8 @@ export interface LeaveRequest {
   rejected_by: string | null
   rejected_at: string | null
   rejection_reason: string | null
+  created_by: string | null
+  initial_status: string | null
   created_at: string
   updated_at: string
 }
@@ -182,6 +181,8 @@ export interface MissionRequest {
   approved_at_tg: string | null
   approved_at_de: string | null
   director_decision: DirectorDecision | null
+  created_by: string | null
+  initial_status: string | null
   rejected_by: string | null
   rejected_at: string | null
   rejection_reason: string | null

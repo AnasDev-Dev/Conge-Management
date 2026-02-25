@@ -39,6 +39,7 @@ import {
 import { LeaveRequest, Utilisateur, Holiday, WorkingDays } from '@/lib/types/database'
 import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { toast } from 'sonner'
 import {
   countWorkingDays as countWorkingDaysUtil,
   fetchHolidays,
@@ -115,7 +116,10 @@ export default function ValidationsPage() {
 
   const loadAllRequests = async () => {
     try {
-      const { data, error } = await supabase
+      const userStr = localStorage.getItem('user')
+      const currentUserId = userStr ? (JSON.parse(userStr) as Utilisateur).id : null
+
+      let query = supabase
         .from('leave_requests')
         .select(`
           *,
@@ -123,6 +127,13 @@ export default function ValidationsPage() {
         `)
         .in('status', ALL_KANBAN_STATUSES)
         .order('created_at', { ascending: false })
+
+      // Exclude own requests — you can never approve your own leave
+      if (currentUserId) {
+        query = query.neq('user_id', currentUserId)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setAllRequests(data || [])
@@ -135,7 +146,10 @@ export default function ValidationsPage() {
 
   const loadRejectedRequests = async () => {
     try {
-      const { data, error } = await supabase
+      const userStr = localStorage.getItem('user')
+      const currentUserId = userStr ? (JSON.parse(userStr) as Utilisateur).id : null
+
+      let query = supabase
         .from('leave_requests')
         .select(`
           *,
@@ -144,6 +158,12 @@ export default function ValidationsPage() {
         .eq('status', 'REJECTED')
         .order('rejected_at', { ascending: false })
         .limit(20)
+
+      if (currentUserId) {
+        query = query.neq('user_id', currentUserId)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setRejectedRequests(data || [])
@@ -234,7 +254,9 @@ export default function ValidationsPage() {
       })
       setExpandedDateEdit(null)
       delete editedDates[request.id]
-    } catch (error) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erreur lors de l'approbation"
+      toast.error(msg)
       console.error('Error approving request:', error)
     } finally {
       setActionLoading(null)
@@ -255,16 +277,11 @@ export default function ValidationsPage() {
 
     setActionLoading(rejectingRequest.id)
     try {
-      const { error } = await supabase
-        .from('leave_requests')
-        .update({
-          status: 'REJECTED',
-          rejected_by: user.id,
-          rejected_at: new Date().toISOString(),
-          rejection_reason: rejectReason.trim(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', rejectingRequest.id)
+      const { error } = await supabase.rpc('reject_leave_request', {
+        p_request_id: rejectingRequest.id,
+        p_rejector_id: user.id,
+        p_reason: rejectReason.trim(),
+      })
 
       if (error) throw error
 
@@ -279,7 +296,9 @@ export default function ValidationsPage() {
       setRejectDialogOpen(false)
       setRejectingRequest(null)
       setRejectReason('')
-    } catch (error) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Erreur lors du rejet'
+      toast.error(msg)
       console.error('Error rejecting request:', error)
     } finally {
       setActionLoading(null)
@@ -291,35 +310,29 @@ export default function ValidationsPage() {
   // ──────────────────────────────────────────────
   const handleUndoApprove = async (request: RequestWithUser) => {
     if (!user) return
-    const prevStage = getPreviousStage(request.status)
-    if (!prevStage) return
-
-    // Only the approver who moved it here (or admin) can undo
-    const approverField = `approved_by_${prevStage.field}` as keyof RequestWithUser
-    if (!isAdmin && (request[approverField] as string) !== user.id) return
 
     setActionLoading(request.id)
     try {
-      const { error } = await supabase
-        .from('leave_requests')
-        .update({
-          status: prevStage.status,
-          [`approved_by_${prevStage.field}`]: null,
-          [`approved_at_${prevStage.field}`]: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', request.id)
+      const { data, error } = await supabase.rpc('undo_approve_leave_request', {
+        p_request_id: request.id,
+        p_user_id: user.id,
+      })
 
       if (error) throw error
 
-      setAllRequests(prev =>
-        prev.map(r =>
-          r.id === request.id
-            ? { ...r, status: prevStage.status as RequestWithUser['status'], [`approved_by_${prevStage.field}`]: null, [`approved_at_${prevStage.field}`]: null }
-            : r
+      // Update local state with the returned data
+      if (data) {
+        const updated = data as unknown as RequestWithUser
+        setAllRequests(prev =>
+          prev.map(r => r.id === request.id ? { ...r, ...updated } : r)
         )
-      )
-    } catch (error) {
+      } else {
+        // Fallback: reload
+        loadAllRequests()
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erreur lors de l'annulation"
+      toast.error(msg)
       console.error('Error undoing approval:', error)
     } finally {
       setActionLoading(null)
@@ -332,32 +345,33 @@ export default function ValidationsPage() {
   const handleUndoReject = async (request: RequestWithUser) => {
     if (!user) return
 
-    // Only the rejector (or admin) can undo
-    if (!isAdmin && request.rejected_by !== user.id) return
-
-    const restoreStatus = inferPreRejectStatus(request)
-
     setActionLoading(request.id)
     try {
-      const { error } = await supabase
-        .from('leave_requests')
-        .update({
-          status: restoreStatus,
-          rejected_by: null,
-          rejected_at: null,
-          rejection_reason: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', request.id)
+      const { data, error } = await supabase.rpc('undo_reject_leave_request', {
+        p_request_id: request.id,
+        p_user_id: user.id,
+      })
 
       if (error) throw error
 
       setRejectedRequests(prev => prev.filter(r => r.id !== request.id))
-      setAllRequests(prev => [
-        { ...request, status: restoreStatus as RequestWithUser['status'], rejected_by: null, rejected_at: null, rejection_reason: null },
-        ...prev,
-      ])
-    } catch (error) {
+
+      if (data) {
+        const restored = data as unknown as RequestWithUser
+        // Re-add to active requests if it's in a kanban status
+        if (['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'].includes(restored.status)) {
+          setAllRequests(prev => [
+            { ...request, ...restored, rejected_by: null, rejected_at: null, rejection_reason: null },
+            ...prev,
+          ])
+        }
+      } else {
+        loadAllRequests()
+        loadRejectedRequests()
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Erreur lors de la restauration'
+      toast.error(msg)
       console.error('Error undoing rejection:', error)
     } finally {
       setActionLoading(null)
@@ -482,6 +496,8 @@ export default function ValidationsPage() {
 
   // Check if the current user can undo the approval that put this card in its current column
   const canUndoApprove = (request: RequestWithUser): boolean => {
+    // Cannot undo if already at initial_status (auto-promoted stages)
+    if (request.initial_status && request.status === request.initial_status) return false
     const prev = getPreviousStage(request.status)
     if (!prev) return false
     const approverField = `approved_by_${prev.field}` as keyof RequestWithUser
