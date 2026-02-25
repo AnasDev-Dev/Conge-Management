@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, DragEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -73,7 +74,7 @@ function inferPreRejectStatus(r: RequestWithUser): string {
 }
 
 export default function ValidationsPage() {
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const [allRequests, setAllRequests] = useState<RequestWithUser[]>([])
   const [rejectedRequests, setRejectedRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,23 +103,17 @@ export default function ValidationsPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      const userData = JSON.parse(userStr) as Utilisateur
-      setUser(userData)
-      loadAllRequests()
-      loadRejectedRequests()
-      const companyId = userData.company_id || undefined
+    if (user) {
+      loadAllRequests(user.id)
+      loadRejectedRequests(user.id)
+      const companyId = user.company_id || undefined
       fetchHolidays(companyId).then(setHolidays)
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
-  }, [])
+  }, [user])
 
-  const loadAllRequests = async () => {
+  const loadAllRequests = async (currentUserId?: string) => {
     try {
-      const userStr = localStorage.getItem('user')
-      const currentUserId = userStr ? (JSON.parse(userStr) as Utilisateur).id : null
-
       let query = supabase
         .from('leave_requests')
         .select(`
@@ -144,11 +139,8 @@ export default function ValidationsPage() {
     }
   }
 
-  const loadRejectedRequests = async () => {
+  const loadRejectedRequests = async (currentUserId?: string) => {
     try {
-      const userStr = localStorage.getItem('user')
-      const currentUserId = userStr ? (JSON.parse(userStr) as Utilisateur).id : null
-
       let query = supabase
         .from('leave_requests')
         .select(`
@@ -328,7 +320,7 @@ export default function ValidationsPage() {
         )
       } else {
         // Fallback: reload
-        loadAllRequests()
+        loadAllRequests(user?.id)
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erreur lors de l'annulation"
@@ -366,8 +358,8 @@ export default function ValidationsPage() {
           ])
         }
       } else {
-        loadAllRequests()
-        loadRejectedRequests()
+        loadAllRequests(user?.id)
+        loadRejectedRequests(user?.id)
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Erreur lors de la restauration'

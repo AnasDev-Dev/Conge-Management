@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -55,7 +56,7 @@ const MISSION_PIPELINE = [
 const ALL_MISSION_STATUSES: string[] = MISSION_PIPELINE.map(s => s.status)
 
 export default function MissionValidationsPage() {
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const [allMissions, setAllMissions] = useState<MissionWithUser[]>([])
   const [rejectedMissions, setRejectedMissions] = useState<MissionWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,14 +72,11 @@ export default function MissionValidationsPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      const userData = JSON.parse(userStr) as Utilisateur
-      setUser(userData)
-      loadMissions(userData.id)
-      loadRejectedMissions(userData.id)
+    if (user) {
+      loadMissions(user.id)
+      loadRejectedMissions(user.id)
     }
-  }, [])
+  }, [user])
 
   const loadMissions = async (currentUserId: string) => {
     try {

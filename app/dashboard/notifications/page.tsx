@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Bell, CheckCircle2, XCircle, Info, AlertCircle } from 'lucide-react'
@@ -10,16 +11,16 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
 export default function NotificationsPage() {
+  const { user } = useCurrentUser()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
-    const userId = localStorage.getItem('userId')
-    if (userId) {
-      loadNotifications(userId)
+    if (user) {
+      loadNotifications(user.id)
     }
-  }, [])
+  }, [user])
 
   const loadNotifications = async (userId: string) => {
     try {
@@ -58,13 +59,12 @@ export default function NotificationsPage() {
 
   const markAllAsRead = async () => {
     try {
-      const userId = localStorage.getItem('userId')
-      if (!userId) return
+      if (!user) return
 
       const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('user_id', userId)
+        .eq('user_id', user.id)
         .eq('is_read', false)
 
       if (error) throw error

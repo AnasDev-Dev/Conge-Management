@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,7 +49,7 @@ type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('working-days')
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const supabase = useMemo(() => createClient(), [])
 
   // Working days state
@@ -77,15 +78,12 @@ export default function SettingsPage() {
   const [creditingRecup, setCreditingRecup] = useState(false)
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      const userData = JSON.parse(userStr)
-      setUser(userData)
-      loadWorkingDays(userData.company_id)
-      loadHolidays(userData.company_id)
+    if (user) {
+      loadWorkingDays(user.company_id ?? undefined)
+      loadHolidays(user.company_id ?? undefined)
       loadEmployees()
     }
-  }, [])
+  }, [user])
 
   // ─── Working Days ───────────────────────────────────
   const loadWorkingDays = async (companyId?: number) => {

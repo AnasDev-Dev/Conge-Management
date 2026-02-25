@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -37,7 +38,7 @@ const STATUS_TABS = [
 ] as const
 
 export default function RequestsPage() {
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const [requests, setRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -45,13 +46,10 @@ export default function RequestsPage() {
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      const userData = JSON.parse(userStr)
-      setUser(userData)
-      loadRequests(userData)
+    if (user) {
+      loadRequests(user)
     }
-  }, [])
+  }, [user])
 
   const loadRequests = async (userData: Utilisateur) => {
     try {

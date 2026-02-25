@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -54,7 +55,7 @@ export default function MissionDetailPage() {
   const router = useRouter()
   const [mission, setMission] = useState<MissionRequestWithRelations | null>(null)
   const [missionUser, setMissionUser] = useState<Utilisateur | null>(null)
-  const [currentUser, setCurrentUser] = useState<Utilisateur | null>(null)
+  const { user: currentUser } = useCurrentUser()
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [showPrint, setShowPrint] = useState(false)
@@ -62,11 +63,6 @@ export default function MissionDetailPage() {
   const [rejectReason, setRejectReason] = useState('')
   const printRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) setCurrentUser(JSON.parse(userStr) as Utilisateur)
-  }, [])
 
   useEffect(() => {
     if (params.id) {

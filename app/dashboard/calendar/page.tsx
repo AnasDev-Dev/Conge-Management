@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -75,18 +76,11 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [loading, setLoading] = useState(true)
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
 
   const supabase = createClient()
 
   const isManager = user ? MANAGER_ROLES.includes(user.role) : false
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      setUser(JSON.parse(userStr) as Utilisateur)
-    }
-  }, [])
 
   const loadData = useCallback(async () => {
     if (!user) return

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +20,7 @@ interface MissionWithUser extends MissionRequest {
 }
 
 export default function MissionsPage() {
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const [missions, setMissions] = useState<MissionWithUser[]>([])
   const [filteredMissions, setFilteredMissions] = useState<MissionWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,13 +29,10 @@ export default function MissionsPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      const userData = JSON.parse(userStr) as Utilisateur
-      setUser(userData)
-      loadMissions(userData)
+    if (user) {
+      loadMissions(user)
     }
-  }, [])
+  }, [user])
 
   useEffect(() => {
     filterMissions()

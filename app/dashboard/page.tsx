@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -85,7 +86,7 @@ const STATUS_BAR_COLORS: Record<string, string> = {
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<Utilisateur | null>(null);
+  const { user } = useCurrentUser();
   const [requests, setRequests] = useState<DashboardRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -98,29 +99,15 @@ export default function DashboardPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      const userData = JSON.parse(userStr);
-      setUser(userData);
-      loadRequests(userData);
-      // Load fresh balance + entitlement info from DB
-      Promise.all([
-        supabase
-          .from("utilisateurs")
-          .select("balance_conge, balance_recuperation")
-          .eq("id", userData.id)
-          .single(),
-        supabase.rpc("calculate_leave_balance", { p_user_id: userData.id }),
-      ]).then(([{ data: freshUser }, { data: balanceData }]) => {
-        if (freshUser) {
-          const updated = { ...userData, ...freshUser };
-          setUser(updated);
-          localStorage.setItem("user", JSON.stringify(updated));
-        }
-        if (balanceData) setBalanceInfo(balanceData);
-      });
+    if (user) {
+      loadRequests(user);
+      supabase
+        .rpc("calculate_leave_balance", { p_user_id: user.id })
+        .then(({ data: balanceData }) => {
+          if (balanceData) setBalanceInfo(balanceData);
+        });
     }
-  }, []);
+  }, [user]);
 
   const managerRoles = MANAGER_ROLES;
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,7 +44,7 @@ export default function NewRequestPage() {
   const [activeTab, setActiveTab] = useState<Tab>(
     searchParams.get('tab') === 'mission' ? 'mission' : 'conge'
   )
-  const [user, setUser] = useState<Utilisateur | null>(null)
+  const { user } = useCurrentUser()
   const [currentStep, setCurrentStep] = useState(1)
   const [requestType, setRequestType] = useState<'CONGE' | 'RECUPERATION'>('CONGE')
   const [startDate, setStartDate] = useState('')
@@ -105,18 +106,14 @@ export default function NewRequestPage() {
   const isOnBehalf = !!onBehalfOfId && onBehalfOfId !== user?.id
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      const userData = JSON.parse(userStr)
-      setUser(userData)
-      loadEmployees(userData)
-      loadColleagues(userData.department_id)
-      // Load holiday-aware day counting data
-      const companyId = userData.company_id || undefined
+    if (user) {
+      loadEmployees(user)
+      loadColleagues(user.department_id)
+      const companyId = user.company_id || undefined
       fetchHolidays(companyId).then(setHolidays)
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
-  }, [])
+  }, [user])
 
   const loadEmployees = async (userData: Utilisateur) => {
     try {
