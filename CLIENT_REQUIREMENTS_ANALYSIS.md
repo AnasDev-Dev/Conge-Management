@@ -19,18 +19,18 @@
 
 | # | Exigence | Statut | Effort |
 |---|----------|--------|--------|
-| 1 | Paramétrage jours de travail par catégorie | ⚠️ Partiel | Élevé |
-| 2 | Demi-journées dans le paramétrage | ⚠️ Partiel | Moyen |
-| 3 | Nombre de jours de congé annuel par catégorie | ⚠️ Partiel | Moyen |
+| 1 | Paramétrage jours de travail par catégorie | ✅ Fait | Élevé |
+| 2 | Demi-journées dans le paramétrage | ✅ Fait | Moyen |
+| 3 | Nombre de jours de congé annuel par catégorie | ✅ Fait | Moyen |
 | 4 | Majoration après 5 ans d'ancienneté | ✅ Fait | Faible |
-| 5 | Calcul mensuel du solde de congé | ❌ À faire | Élevé |
+| 5 | Calcul mensuel du solde de congé | ✅ Fait | Élevé |
 | 6 | Solde initial de congé par employé | ✅ Fait | — |
-| 7 | Plafond maximal du solde (52 jours) | ❌ À faire | Faible |
-| 8 | Validation préalable des jours de récupération | ⚠️ Partiel | Élevé |
-| 9 | Demande combinée Congé + Récupération | ❌ À faire | Élevé |
-| 10 | Limite de validité des jours de récupération | ❌ À faire | Moyen |
-| 11 | Filtres dynamiques du calendrier | ⚠️ Partiel | Faible |
-| 12 | Gestion multi-sociétés et multi-profils | ⚠️ Partiel | Élevé |
+| 7 | Plafond maximal du solde (52 jours) | ✅ Fait | Faible |
+| 8 | Validation préalable des jours de récupération | ✅ Fait | Élevé |
+| 9 | Demande combinée Congé + Récupération | ✅ Fait | Élevé |
+| 10 | Limite de validité des jours de récupération | ✅ Fait | Moyen |
+| 11 | Filtres dynamiques du calendrier | ✅ Fait | Faible |
+| 12 | Gestion multi-sociétés et multi-profils | ✅ Fait | Élevé |
 
 ---
 
