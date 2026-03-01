@@ -19,6 +19,7 @@ import Link from "next/link";
 import { Utilisateur } from "@/lib/types/database";
 import {
   MANAGER_ROLES,
+  MAX_LEAVE_BALANCE,
   PENDING_STATUSES,
   getStatusClass,
   getStatusLabel,
@@ -222,7 +223,7 @@ export default function DashboardPage() {
               </p>
               <CalendarIcon className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
+            <p className={`mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'text-red-600' : ''}`}>
               {user.balance_conge}
               {balanceInfo ? (
                 <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
@@ -234,9 +235,12 @@ export default function DashboardPage() {
                 </span>
               )}
             </p>
+            {user.balance_conge >= MAX_LEAVE_BALANCE && (
+              <p className="mt-0.5 text-[10px] font-medium text-red-600 sm:text-xs">Maximum atteint (52j)</p>
+            )}
             <div className="mt-2.5 h-1.5 w-full rounded-full bg-muted">
               <div
-                className="h-1.5 rounded-full bg-foreground/75 transition-all"
+                className={`h-1.5 rounded-full transition-all ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'bg-red-500' : 'bg-foreground/75'}`}
                 style={{
                   width: `${Math.min((user.balance_conge / (balanceInfo?.annual_entitlement || 18)) * 100, 100)}%`,
                 }}

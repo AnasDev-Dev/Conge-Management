@@ -17,6 +17,17 @@
 --  10. Seed data (working days config, Moroccan public holidays)
 --  11. Grants
 --
+-- NOTE: Additional features are in 05_new_features.sql:
+--   - Personnel categories (Req #1)
+--   - Half-day working days (Req #2)
+--   - Category-based annual leave (Req #3)
+--   - Monthly balance accrual (Req #5)
+--   - 52-day balance cap (Req #7)
+--   - Recovery request validation workflow (Req #8)
+--   - Combined leave+recovery requests (Req #9)
+--   - Recovery expiration (Req #10)
+--   - Multi-company/multi-profile (Req #12)
+--
 -- Approval chains:
 --   Leave:   PENDING -> RH -> VALIDATED_RP -> Chef -> VALIDATED_DC -> Dir -> APPROVED
 --   Mission: PENDING -> Chef -> VALIDATED_DC -> RH -> VALIDATED_RP -> Dir -> APPROVED

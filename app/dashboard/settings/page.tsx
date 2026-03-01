@@ -26,14 +26,16 @@ import {
   Save,
   Search,
   UserPlus,
+  Users,
   Loader2,
+  Pencil,
 } from 'lucide-react'
-import { Holiday, WorkingDays, Utilisateur } from '@/lib/types/database'
+import { Holiday, WorkingDays, Utilisateur, PersonnelCategory } from '@/lib/types/database'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { clearCaches } from '@/lib/leave-utils'
 
-type Tab = 'working-days' | 'holidays' | 'recuperation'
+type Tab = 'categories' | 'working-days' | 'holidays' | 'recuperation'
 
 const DAY_LABELS = [
   { key: 'monday', label: 'Lundi' },
@@ -48,14 +50,27 @@ const DAY_LABELS = [
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('working-days')
+  const [activeTab, setActiveTab] = useState<Tab>('categories')
   const { user } = useCurrentUser()
   const supabase = useMemo(() => createClient(), [])
 
-  // Working days state
+  // ─── Categories state ─────────────────────────────
+  const [categories, setCategories] = useState<PersonnelCategory[]>([])
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false)
+  const [editCategoryOpen, setEditCategoryOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<PersonnelCategory | null>(null)
+  const [categoryName, setCategoryName] = useState('')
+  const [categoryDescription, setCategoryDescription] = useState('')
+  const [categoryAnnualLeaveDays, setCategoryAnnualLeaveDays] = useState('')
+  const [savingCategory, setSavingCategory] = useState(false)
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
+
+  // ─── Working days state ───────────────────────────
   const [workingDays, setWorkingDays] = useState<WorkingDays | null>(null)
   const [workingDaysLoading, setWorkingDaysLoading] = useState(true)
   const [savingWorkingDays, setSavingWorkingDays] = useState(false)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
 
   // Holidays state
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -79,23 +94,154 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      loadWorkingDays(user.company_id ?? undefined)
+      loadCategories(user.company_id ?? undefined)
+      loadWorkingDays(user.company_id ?? undefined, null)
       loadHolidays(user.company_id ?? undefined)
       loadEmployees()
     }
   }, [user])
 
-  // ─── Working Days ───────────────────────────────────
-  const loadWorkingDays = async (companyId?: number) => {
+  // ─── Categories ───────────────────────────────────
+  const loadCategories = async (companyId?: number) => {
+    try {
+      let query = supabase.from('personnel_categories').select('*').order('name')
+      if (companyId) query = query.eq('company_id', companyId)
+      const { data, error } = await query
+      if (error) throw error
+      setCategories(data || [])
+    } catch (error) {
+      console.error('Error loading categories:', error)
+    } finally {
+      setCategoriesLoading(false)
+    }
+  }
+
+  const openAddCategory = () => {
+    setCategoryName('')
+    setCategoryDescription('')
+    setCategoryAnnualLeaveDays('')
+    setAddCategoryOpen(true)
+  }
+
+  const openEditCategory = (cat: PersonnelCategory) => {
+    setEditingCategory(cat)
+    setCategoryName(cat.name)
+    setCategoryDescription(cat.description || '')
+    setCategoryAnnualLeaveDays(String(cat.annual_leave_days))
+    setEditCategoryOpen(true)
+  }
+
+  const addCategory = async () => {
+    if (!categoryName.trim() || !categoryAnnualLeaveDays || !user) return
+    const annualDays = parseFloat(categoryAnnualLeaveDays)
+    if (isNaN(annualDays) || annualDays < 0) {
+      toast.error('Le nombre de jours de congé annuel doit être positif')
+      return
+    }
+    setSavingCategory(true)
+    try {
+      const { data, error } = await supabase
+        .from('personnel_categories')
+        .insert({
+          company_id: user.company_id || 1,
+          name: categoryName.trim(),
+          description: categoryDescription.trim() || null,
+          annual_leave_days: annualDays,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      if (data) setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+      setCategoryName('')
+      setCategoryDescription('')
+      setCategoryAnnualLeaveDays('')
+      setAddCategoryOpen(false)
+      toast.success('Catégorie ajoutée')
+    } catch (error) {
+      console.error('Error adding category:', error)
+      toast.error("Erreur lors de l'ajout de la catégorie")
+    } finally {
+      setSavingCategory(false)
+    }
+  }
+
+  const updateCategory = async () => {
+    if (!editingCategory || !categoryName.trim() || !categoryAnnualLeaveDays || !user) return
+    const annualDays = parseFloat(categoryAnnualLeaveDays)
+    if (isNaN(annualDays) || annualDays < 0) {
+      toast.error('Le nombre de jours de congé annuel doit être positif')
+      return
+    }
+    setSavingCategory(true)
+    try {
+      const { data, error } = await supabase
+        .from('personnel_categories')
+        .update({
+          name: categoryName.trim(),
+          description: categoryDescription.trim() || null,
+          annual_leave_days: annualDays,
+        })
+        .eq('id', editingCategory.id)
+        .select()
+        .single()
+      if (error) throw error
+      if (data) {
+        setCategories(prev =>
+          prev.map(c => (c.id === data.id ? data : c)).sort((a, b) => a.name.localeCompare(b.name))
+        )
+      }
+      setEditCategoryOpen(false)
+      setEditingCategory(null)
+      toast.success('Catégorie mise à jour')
+    } catch (error) {
+      console.error('Error updating category:', error)
+      toast.error('Erreur lors de la mise à jour')
+    } finally {
+      setSavingCategory(false)
+    }
+  }
+
+  const deleteCategory = async (id: number) => {
+    setDeletingCategoryId(id)
+    try {
+      const { error } = await supabase.from('personnel_categories').delete().eq('id', id)
+      if (error) throw error
+      setCategories(prev => prev.filter(c => c.id !== id))
+      toast.success('Catégorie supprimée')
+    } catch (error) {
+      console.error('Error deleting category:', error)
+      toast.error('Erreur lors de la suppression')
+    } finally {
+      setDeletingCategoryId(null)
+    }
+  }
+
+  // ─── Working Days ─────────────────────────────────
+  const loadWorkingDays = async (companyId?: number, categoryId?: number | null) => {
+    setWorkingDaysLoading(true)
     try {
       let query = supabase.from('working_days').select('*')
       if (companyId) query = query.eq('company_id', companyId)
+      if (categoryId) {
+        query = query.eq('category_id', categoryId)
+      } else {
+        query = query.is('category_id', null)
+      }
       const { data, error } = await query.limit(1).single()
       if (error && error.code !== 'PGRST116') throw error
       setWorkingDays(data || {
-        id: 0, company_id: companyId || null,
+        id: 0,
+        company_id: companyId || null,
+        category_id: categoryId || null,
         monday: true, tuesday: true, wednesday: true, thursday: true,
         friday: true, saturday: true, sunday: false,
+        monday_morning: true, monday_afternoon: true,
+        tuesday_morning: true, tuesday_afternoon: true,
+        wednesday_morning: true, wednesday_afternoon: true,
+        thursday_morning: true, thursday_afternoon: true,
+        friday_morning: true, friday_afternoon: true,
+        saturday_morning: true, saturday_afternoon: true,
+        sunday_morning: false, sunday_afternoon: false,
       })
     } catch (error) {
       console.error('Error loading working days:', error)
@@ -104,9 +250,27 @@ export default function SettingsPage() {
     }
   }
 
-  const toggleDay = (dayKey: string) => {
+  const handleCategoryFilterChange = (categoryId: number | null) => {
+    setSelectedCategoryId(categoryId)
+    if (user) {
+      loadWorkingDays(user.company_id ?? undefined, categoryId)
+    }
+  }
+
+  const toggleHalfDay = (dayKey: string, period: 'morning' | 'afternoon') => {
     if (!workingDays) return
-    setWorkingDays({ ...workingDays, [dayKey]: !workingDays[dayKey as keyof WorkingDays] })
+    const halfDayKey = `${dayKey}_${period}` as keyof WorkingDays
+    const newValue = !workingDays[halfDayKey]
+    const otherPeriod = period === 'morning' ? 'afternoon' : 'morning'
+    const otherKey = `${dayKey}_${otherPeriod}` as keyof WorkingDays
+    const otherValue = workingDays[otherKey] as boolean
+    // Derive full-day boolean: both halves must be true
+    const fullDayValue = newValue && otherValue
+    setWorkingDays({
+      ...workingDays,
+      [halfDayKey]: newValue,
+      [dayKey]: fullDayValue,
+    })
   }
 
   const saveWorkingDays = async () => {
@@ -114,33 +278,42 @@ export default function SettingsPage() {
     setSavingWorkingDays(true)
     try {
       const companyId = user.company_id || 1
+      const payload = {
+        company_id: companyId,
+        category_id: selectedCategoryId || null,
+        monday: workingDays.monday,
+        tuesday: workingDays.tuesday,
+        wednesday: workingDays.wednesday,
+        thursday: workingDays.thursday,
+        friday: workingDays.friday,
+        saturday: workingDays.saturday,
+        sunday: workingDays.sunday,
+        monday_morning: workingDays.monday_morning,
+        monday_afternoon: workingDays.monday_afternoon,
+        tuesday_morning: workingDays.tuesday_morning,
+        tuesday_afternoon: workingDays.tuesday_afternoon,
+        wednesday_morning: workingDays.wednesday_morning,
+        wednesday_afternoon: workingDays.wednesday_afternoon,
+        thursday_morning: workingDays.thursday_morning,
+        thursday_afternoon: workingDays.thursday_afternoon,
+        friday_morning: workingDays.friday_morning,
+        friday_afternoon: workingDays.friday_afternoon,
+        saturday_morning: workingDays.saturday_morning,
+        saturday_afternoon: workingDays.saturday_afternoon,
+        sunday_morning: workingDays.sunday_morning,
+        sunday_afternoon: workingDays.sunday_afternoon,
+      }
+
       if (workingDays.id && workingDays.id > 0) {
         const { error } = await supabase
           .from('working_days')
-          .update({
-            monday: workingDays.monday,
-            tuesday: workingDays.tuesday,
-            wednesday: workingDays.wednesday,
-            thursday: workingDays.thursday,
-            friday: workingDays.friday,
-            saturday: workingDays.saturday,
-            sunday: workingDays.sunday,
-          })
+          .update(payload)
           .eq('id', workingDays.id)
         if (error) throw error
       } else {
         const { data, error } = await supabase
           .from('working_days')
-          .insert({
-            company_id: companyId,
-            monday: workingDays.monday,
-            tuesday: workingDays.tuesday,
-            wednesday: workingDays.wednesday,
-            thursday: workingDays.thursday,
-            friday: workingDays.friday,
-            saturday: workingDays.saturday,
-            sunday: workingDays.sunday,
-          })
+          .insert(payload)
           .select()
           .single()
         if (error) throw error
@@ -156,7 +329,7 @@ export default function SettingsPage() {
     }
   }
 
-  // ─── Holidays ───────────────────────────────────────
+  // ─── Holidays ─────────────────────────────────────
   const loadHolidays = async (companyId?: number) => {
     try {
       let query = supabase.from('holidays').select('*').order('date', { ascending: true })
@@ -217,7 +390,7 @@ export default function SettingsPage() {
     }
   }
 
-  // ─── Recuperation Credit ────────────────────────────
+  // ─── Recuperation Credit ──────────────────────────
   const loadEmployees = async () => {
     try {
       const { data, error } = await supabase
@@ -278,6 +451,7 @@ export default function SettingsPage() {
   }
 
   const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
+    { key: 'categories', label: 'Catégories', icon: Users },
     { key: 'working-days', label: 'Jours ouvrables', icon: Clock },
     { key: 'holidays', label: 'Jours fériés', icon: Calendar },
     { key: 'recuperation', label: 'Crédit récupération', icon: UserPlus },
@@ -294,7 +468,7 @@ export default function SettingsPage() {
           Paramètres
         </h1>
         <p className="mt-1 text-sm text-muted-foreground sm:mt-1.5 sm:text-base">
-          Configuration des jours ouvrables, fériés et récupération
+          Configuration des catégories, jours ouvrables, fériés et récupération
         </p>
       </div>
 
@@ -319,6 +493,197 @@ export default function SettingsPage() {
         })}
       </div>
 
+      {/* ─── Categories Tab ──────────────────────────── */}
+      {activeTab === 'categories' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              {categories.length} catégorie(s) de personnel configurée(s)
+            </p>
+            <Button onClick={openAddCategory}>
+              <Plus className="mr-2 h-4 w-4" />
+              Ajouter une catégorie
+            </Button>
+          </div>
+
+          {categoriesLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Chargement...</div>
+          ) : categories.length === 0 ? (
+            <Card className="border-border/70">
+              <CardContent className="py-8 text-center text-muted-foreground">
+                Aucune catégorie de personnel configurée. Ajoutez une catégorie pour commencer.
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-border/70">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Users className="h-5 w-5 text-primary" />
+                  Catégories de personnel
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  {categories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-muted/30"
+                    >
+                      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                        <span className="text-sm font-medium">{cat.name}</span>
+                        {cat.description && (
+                          <span className="text-xs text-muted-foreground">{cat.description}</span>
+                        )}
+                        <Badge variant="secondary" className="w-fit border border-border/70 text-xs">
+                          {cat.annual_leave_days} jour(s) de congé / an
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditCategory(cat)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteCategory(cat.id)}
+                          disabled={deletingCategoryId === cat.id}
+                        >
+                          {deletingCategoryId === cat.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Add Category Dialog */}
+          <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Ajouter une catégorie de personnel</DialogTitle>
+                <DialogDescription>
+                  Définissez une catégorie avec son nombre de jours de congé annuel.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nom *</Label>
+                  <Input
+                    value={categoryName}
+                    onChange={(e) => setCategoryName(e.target.value)}
+                    placeholder="Ex: Cadre, Technicien, Ouvrier"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input
+                    value={categoryDescription}
+                    onChange={(e) => setCategoryDescription(e.target.value)}
+                    placeholder="Ex: Personnel d'encadrement"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Jours de congé annuel *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={categoryAnnualLeaveDays}
+                    onChange={(e) => setCategoryAnnualLeaveDays(e.target.value)}
+                    placeholder="Ex: 18"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddCategoryOpen(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  onClick={addCategory}
+                  disabled={savingCategory || !categoryName.trim() || !categoryAnnualLeaveDays}
+                >
+                  {savingCategory ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  Ajouter
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Category Dialog */}
+          <Dialog open={editCategoryOpen} onOpenChange={setEditCategoryOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Modifier la catégorie</DialogTitle>
+                <DialogDescription>
+                  Modifiez les informations de cette catégorie de personnel.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nom *</Label>
+                  <Input
+                    value={categoryName}
+                    onChange={(e) => setCategoryName(e.target.value)}
+                    placeholder="Ex: Cadre, Technicien, Ouvrier"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input
+                    value={categoryDescription}
+                    onChange={(e) => setCategoryDescription(e.target.value)}
+                    placeholder="Ex: Personnel d'encadrement"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Jours de congé annuel *</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={categoryAnnualLeaveDays}
+                    onChange={(e) => setCategoryAnnualLeaveDays(e.target.value)}
+                    placeholder="Ex: 18"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditCategoryOpen(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  onClick={updateCategory}
+                  disabled={savingCategory || !categoryName.trim() || !categoryAnnualLeaveDays}
+                >
+                  {savingCategory ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Enregistrer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
+
       {/* ─── Working Days Tab ──────────────────────── */}
       {activeTab === 'working-days' && (
         <Card className="border-border/70">
@@ -329,46 +694,106 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {workingDaysLoading ? (
-              <div className="py-8 text-center text-muted-foreground">Chargement...</div>
-            ) : workingDays ? (
-              <div className="space-y-6">
-                <p className="text-sm text-muted-foreground">
-                  Sélectionnez les jours travaillés. Par défaut, le droit marocain prévoit du lundi au samedi (jours ouvrables).
+            <div className="space-y-6">
+              {/* Category selector */}
+              <div className="space-y-2">
+                <Label>Configuration pour</Label>
+                <select
+                  value={selectedCategoryId ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    handleCategoryFilterChange(val ? Number(val) : null)
+                  }}
+                  className="w-full rounded-lg border border-border/70 bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="">Entreprise (par défaut)</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedCategoryId
+                    ? `Configuration spécifique pour la catégorie "${categories.find(c => c.id === selectedCategoryId)?.name}"`
+                    : 'Configuration par défaut applicable à toute l\u2019entreprise'}
                 </p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-                  {DAY_LABELS.map(({ key, label }) => {
-                    const isActive = workingDays[key as keyof WorkingDays] as boolean
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => toggleDay(key)}
-                        className={`rounded-xl border-2 px-4 py-4 text-center transition-all ${
-                          isActive
-                            ? 'border-primary bg-primary/5 text-foreground'
-                            : 'border-border/70 bg-muted/20 text-muted-foreground'
-                        }`}
-                      >
-                        <p className="text-sm font-semibold">{label}</p>
-                        <p className="mt-1 text-xs">
-                          {isActive ? 'Travaillé' : 'Repos'}
-                        </p>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={saveWorkingDays} disabled={savingWorkingDays}>
-                    {savingWorkingDays ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Enregistrer
-                  </Button>
-                </div>
               </div>
-            ) : null}
+
+              {workingDaysLoading ? (
+                <div className="py-8 text-center text-muted-foreground">Chargement...</div>
+              ) : workingDays ? (
+                <div className="space-y-6">
+                  <p className="text-sm text-muted-foreground">
+                    Configurez les demi-journées travaillées pour chaque jour. Activez Matin et/ou Après-midi selon le planning.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {DAY_LABELS.map(({ key, label }) => {
+                      const morningKey = `${key}_morning` as keyof WorkingDays
+                      const afternoonKey = `${key}_afternoon` as keyof WorkingDays
+                      const isMorning = workingDays[morningKey] as boolean
+                      const isAfternoon = workingDays[afternoonKey] as boolean
+                      const isFullDay = isMorning && isAfternoon
+                      const isPartial = isMorning || isAfternoon
+                      return (
+                        <div
+                          key={key}
+                          className={`rounded-xl border-2 p-4 transition-all ${
+                            isFullDay
+                              ? 'border-primary bg-primary/5'
+                              : isPartial
+                              ? 'border-primary/50 bg-primary/[0.02]'
+                              : 'border-border/70 bg-muted/20'
+                          }`}
+                        >
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-semibold">{label}</p>
+                            <Badge
+                              variant={isFullDay ? 'default' : isPartial ? 'secondary' : 'outline'}
+                              className="text-[10px]"
+                            >
+                              {isFullDay ? 'Journée complète' : isPartial ? 'Demi-journée' : 'Repos'}
+                            </Badge>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => toggleHalfDay(key, 'morning')}
+                              className={`flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                                isMorning
+                                  ? 'bg-primary text-primary-foreground shadow-sm'
+                                  : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                              }`}
+                            >
+                              Matin
+                            </button>
+                            <button
+                              onClick={() => toggleHalfDay(key, 'afternoon')}
+                              className={`flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                                isAfternoon
+                                  ? 'bg-primary text-primary-foreground shadow-sm'
+                                  : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                              }`}
+                            >
+                              Après-midi
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex justify-end">
+                    <Button onClick={saveWorkingDays} disabled={savingWorkingDays}>
+                      {savingWorkingDays ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Enregistrer
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       )}

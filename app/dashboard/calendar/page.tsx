@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { LeaveRequestWithRelations, Utilisateur, Holiday } from '@/lib/types/database'
-import { MANAGER_ROLES } from '@/lib/constants'
+import { MANAGER_ROLES, CALENDAR_STATUS_FILTERS } from '@/lib/constants'
 import {
   format,
   startOfMonth,
@@ -76,6 +76,8 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [loading, setLoading] = useState(true)
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'APPROVED', 'REJECTED']))
+  const [allFilters, setAllFilters] = useState(true)
   const { user } = useCurrentUser()
 
   const supabase = createClient()
@@ -144,16 +146,39 @@ export default function CalendarPage() {
     return [...paddingBefore, ...days, ...paddingAfter]
   }, [currentMonth])
 
+  // Filter requests by status filters
+  const filteredRequests = useMemo(() => {
+    return requests.filter(req => statusFilters.has(req.status))
+  }, [requests, statusFilters])
+
+  const toggleStatusFilter = (status: string) => {
+    const next = new Set(statusFilters)
+    if (next.has(status)) next.delete(status)
+    else next.add(status)
+    setStatusFilters(next)
+    setAllFilters(next.size === CALENDAR_STATUS_FILTERS.length)
+  }
+
+  const toggleAllFilters = () => {
+    if (allFilters) {
+      setStatusFilters(new Set())
+      setAllFilters(false)
+    } else {
+      setStatusFilters(new Set(CALENDAR_STATUS_FILTERS.map(f => f.key)))
+      setAllFilters(true)
+    }
+  }
+
   // Get leaves for a specific day
   const getDayRequests = useCallback(
     (day: Date): CalendarLeave[] => {
-      return requests.filter((req) => {
+      return filteredRequests.filter((req) => {
         const start = parseISO(req.start_date)
         const end = parseISO(req.end_date)
         return day >= start && day <= end
       })
     },
-    [requests]
+    [filteredRequests]
   )
 
   // Check if a day is a holiday
@@ -172,11 +197,11 @@ export default function CalendarPage() {
 
   // Monthly statistics
   const monthStats = useMemo(() => {
-    const approved = requests.filter((r) => r.status === 'APPROVED')
-    const inProgress = requests.filter((r) =>
+    const approved = filteredRequests.filter((r) => r.status === 'APPROVED')
+    const inProgress = filteredRequests.filter((r) =>
       ['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'].includes(r.status)
     )
-    const uniqueEmployees = new Set(requests.map((r) => r.user_id))
+    const uniqueEmployees = new Set(filteredRequests.map((r) => r.user_id))
     const totalDays = approved.reduce((sum, r) => sum + r.days_count, 0)
 
     return {
@@ -185,7 +210,7 @@ export default function CalendarPage() {
       uniqueEmployees: uniqueEmployees.size,
       totalDays,
     }
-  }, [requests])
+  }, [filteredRequests])
 
   // Navigation
   const goToPreviousMonth = () => setCurrentMonth((prev) => subMonths(prev, 1))
@@ -285,6 +310,45 @@ export default function CalendarPage() {
           </Card>
         )}
       </div>
+
+      {/* Status Filters */}
+      <Card className="border-border/70">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allFilters}
+                onChange={toggleAllFilters}
+                className="accent-primary h-4 w-4 rounded"
+              />
+              <span className="font-semibold text-foreground">Tous</span>
+            </label>
+            <span className="h-5 w-px bg-border/70" />
+            {CALENDAR_STATUS_FILTERS.map((filter) => {
+              const dotColor: Record<string, string> = {
+                PENDING: 'bg-amber-500',
+                VALIDATED_DC: 'bg-purple-500',
+                VALIDATED_RP: 'bg-purple-500',
+                APPROVED: 'bg-emerald-500',
+                REJECTED: 'bg-red-500',
+              }
+              return (
+                <label key={filter.key} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={statusFilters.has(filter.key)}
+                    onChange={() => toggleStatusFilter(filter.key)}
+                    className="accent-primary h-4 w-4 rounded"
+                  />
+                  <span className={`h-2.5 w-2.5 rounded-full ${dotColor[filter.key] || 'bg-gray-400'}`} />
+                  <span className="text-muted-foreground">{filter.label}</span>
+                </label>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Calendar */}
       <Card className="border-border/70">

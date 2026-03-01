@@ -51,6 +51,55 @@ export const TRANSPORT_OPTIONS = Object.entries(TRANSPORT_LABELS).map(([value, l
   label,
 }))
 
+// Maximum leave balance (Req #7)
+export const MAX_LEAVE_BALANCE = 52
+
+// Maximum consecutive recovery days (Req #9)
+export const MAX_CONSECUTIVE_RECOVERY_DAYS = 5
+
+// Recovery work type labels (Req #8)
+export const RECOVERY_WORK_TYPE_LABELS: Record<string, string> = {
+  JOUR_FERIE: 'Jour férié',
+  JOUR_REPOS: 'Jour de repos',
+  SAMEDI: 'Samedi',
+  DIMANCHE: 'Dimanche',
+}
+
+// Recovery request status labels (Req #8)
+export function getRecoveryStatusLabel(status: string): string {
+  switch (status) {
+    case 'PENDING': return 'En attente'
+    case 'VALIDATED': return 'Validée'
+    case 'REJECTED': return 'Rejetée'
+    default: return status
+  }
+}
+
+export function getRecoveryStatusClass(status: string): string {
+  switch (status) {
+    case 'PENDING': return 'status-pending'
+    case 'VALIDATED': return 'status-approved'
+    case 'REJECTED': return 'status-rejected'
+    default: return 'status-neutral'
+  }
+}
+
+// Calendar status filters (Req #11)
+export const CALENDAR_STATUS_FILTERS = [
+  { key: 'PENDING', label: 'En cours' },
+  { key: 'REJECTED', label: 'Refusé' },
+  { key: 'VALIDATED_DC', label: 'Validé Chef' },
+  { key: 'VALIDATED_RP', label: 'Validé RH' },
+  { key: 'APPROVED', label: 'Approuvé' },
+] as const
+
+// Half-day labels (Req #2)
+export const HALF_DAY_LABELS: Record<string, string> = {
+  FULL: 'Journée complète',
+  MORNING: 'Matin',
+  AFTERNOON: 'Après-midi',
+}
+
 // Role display labels (French)
 export function getRoleLabel(role: string): string {
   switch (role) {

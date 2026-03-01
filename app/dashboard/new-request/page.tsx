@@ -14,7 +14,7 @@ import { toast } from 'sonner'
 import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur, Holiday, WorkingDays, MissionScope } from '@/lib/types/database'
-import { MANAGER_ROLES, TRANSPORT_OPTIONS } from '@/lib/constants'
+import { MANAGER_ROLES, TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -49,6 +49,8 @@ export default function NewRequestPage() {
   const [requestType, setRequestType] = useState<'CONGE' | 'RECUPERATION'>('CONGE')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [startHalfDay, setStartHalfDay] = useState<'FULL' | 'MORNING' | 'AFTERNOON'>('FULL')
+  const [endHalfDay, setEndHalfDay] = useState<'FULL' | 'MORNING' | 'AFTERNOON'>('FULL')
   const [reason, setReason] = useState('')
   const [replacementId, setReplacementId] = useState('')
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
@@ -198,7 +200,7 @@ export default function NewRequestPage() {
     }
   }
 
-  const workingDays = countWorkingDaysUtil(startDate, endDate, workingDaysConfig, holidays)
+  const workingDays = countWorkingDaysUtil(startDate, endDate, workingDaysConfig, holidays, startHalfDay, endHalfDay)
   const availableBalance = requestType === 'CONGE'
     ? targetEmployee?.balance_conge || 0
     : targetEmployee?.balance_recuperation || 0
@@ -246,6 +248,11 @@ export default function NewRequestPage() {
       return
     }
 
+    if (requestType === 'RECUPERATION' && workingDays > MAX_CONSECUTIVE_RECOVERY_DAYS) {
+      toast.error(`La récupération ne peut pas dépasser ${MAX_CONSECUTIVE_RECOVERY_DAYS} jours consécutifs. Veuillez combiner avec des jours de congé.`)
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -261,6 +268,8 @@ export default function NewRequestPage() {
           request_type: requestType,
           start_date: startDate,
           end_date: endDate,
+          start_half_day: startHalfDay,
+          end_half_day: endHalfDay,
           days_count: workingDays,
           return_date: format(returnDate, 'yyyy-MM-dd'),
           replacement_user_id: replacementId || null,
@@ -683,6 +692,36 @@ export default function NewRequestPage() {
                       min={startDate || format(new Date(), 'yyyy-MM-dd')}
                       placeholder="Date de fin"
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Demi-journée début</Label>
+                    <div className="flex gap-2">
+                      {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
+                        <button key={hd} type="button"
+                          onClick={() => setStartHalfDay(hd)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                            startHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
+                          }`}
+                        >{HALF_DAY_LABELS[hd]}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Demi-journée fin</Label>
+                    <div className="flex gap-2">
+                      {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
+                        <button key={hd} type="button"
+                          onClick={() => setEndHalfDay(hd)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                            endHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
+                          }`}
+                        >{HALF_DAY_LABELS[hd]}</button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { calculateSeniority } from '@/lib/leave-utils'
+import { MAX_LEAVE_BALANCE } from '@/lib/constants'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -115,7 +116,8 @@ export default function BalanceInitPage() {
     if (value === '' || isNaN(parsed)) {
       next.delete(employeeId)
     } else {
-      next.set(employeeId, parsed)
+      // Cap at MAX_LEAVE_BALANCE (52 days) - Req #7
+      next.set(employeeId, Math.min(parsed, MAX_LEAVE_BALANCE))
     }
     setEditedBalances(next)
   }
@@ -310,14 +312,20 @@ export default function BalanceInitPage() {
                       type="number"
                       step="0.5"
                       min="0"
+                      max={MAX_LEAVE_BALANCE}
                       value={getDisplayBalance(emp)}
                       onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
                       className={`h-9 flex-1 text-center text-sm font-medium transition-all ${
                         modified
                           ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30 dark:border-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400'
-                          : 'border-border/60'
+                          : parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE
+                            ? 'border-red-400 text-red-600'
+                            : 'border-border/60'
                       }`}
                     />
+                    {parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE && (
+                      <span className="shrink-0 text-[10px] font-semibold text-red-600">max</span>
+                    )}
                   </div>
                 </div>
               )
@@ -397,15 +405,23 @@ export default function BalanceInitPage() {
                               type="number"
                               step="0.5"
                               min="0"
+                              max={MAX_LEAVE_BALANCE}
                               value={getDisplayBalance(emp)}
                               onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
                               className={`h-9 w-24 text-center font-medium transition-all ${
                                 modified
                                   ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30 dark:border-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20'
-                                  : 'border-border/60'
+                                  : parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE
+                                    ? 'border-red-400 text-red-600 ring-1 ring-red-300/30'
+                                    : 'border-border/60'
                               }`}
                             />
-                            {modified && (
+                            {parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE && (
+                              <Badge className="border-0 bg-red-100 text-red-700 text-[10px] px-1.5 dark:bg-red-950/40 dark:text-red-400">
+                                max
+                              </Badge>
+                            )}
+                            {modified && parseFloat(getDisplayBalance(emp)) < MAX_LEAVE_BALANCE && (
                               <Badge className="border-0 bg-emerald-100 text-emerald-700 text-[10px] px-1.5 dark:bg-emerald-950/40 dark:text-emerald-400">
                                 modifié
                               </Badge>

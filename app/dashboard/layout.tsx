@@ -23,10 +23,13 @@ import {
   Briefcase,
   Settings,
   BadgeCheck,
+  RotateCcw,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { CompanySwitcher } from '@/components/company-switcher'
+import { CompanyProvider } from '@/lib/hooks/use-company-context'
 
 export default function DashboardLayout({
   children,
@@ -136,6 +139,7 @@ export default function DashboardLayout({
     { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
     { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
+    { name: 'Recuperations', href: '/dashboard/recovery-requests', icon: RotateCcw },
     ...(isManager ? [
       { name: 'Paramètres', href: '/dashboard/settings', icon: Settings },
       { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck },
@@ -150,6 +154,7 @@ export default function DashboardLayout({
   }
 
   return (
+    <CompanyProvider userId={user.id}>
     <div className="min-h-[100dvh] bg-[var(--shell-bg)] p-0 md:h-[100dvh] md:overflow-hidden md:p-5">
       <div className="surface-shell mx-auto min-h-[100dvh] max-w-[1600px] rounded-none p-0 md:h-[calc(100dvh-2.5rem)] md:overflow-hidden md:rounded-[2rem] md:p-3">
         <div className="flex min-h-full gap-0 md:h-full md:overflow-hidden md:gap-3">
@@ -218,6 +223,10 @@ export default function DashboardLayout({
                 Nouvelle demande
               </Link>
 
+              <div className="mt-3">
+                <CompanySwitcher />
+              </div>
+
               <nav className="mt-4 flex-1 space-y-1.5 overflow-y-auto pr-1 overscroll-contain">
                 {navigation.map((item) => {
                   const Icon = item.icon
@@ -279,5 +288,6 @@ export default function DashboardLayout({
         />
       )}
     </div>
+    </CompanyProvider>
   )
 }
