@@ -30,7 +30,6 @@ import {
   XCircle,
   Clock,
   Send,
-  Calendar,
   User as UserIcon,
 } from 'lucide-react'
 import { RecoveryRequest, Utilisateur } from '@/lib/types/database'
@@ -86,7 +85,7 @@ export default function RecoveryRequestsPage() {
     try {
       const { data, error } = await supabase
         .from('recovery_requests')
-        .select('*, user:utilisateurs!recovery_requests_user_id_fkey(id, full_name, job_title, department_id)')
+        .select('*, user:utilisateurs!user_id(id, full_name, job_title, department_id)')
         .order('created_at', { ascending: false })
 
       if (error) throw error
