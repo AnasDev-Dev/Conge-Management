@@ -29,6 +29,10 @@ import {
   Users,
   Loader2,
   Pencil,
+  Briefcase,
+  CalendarDays,
+  Layers,
+  GraduationCap,
 } from 'lucide-react'
 import { Holiday, WorkingDays, Utilisateur, PersonnelCategory } from '@/lib/types/database'
 import { format } from 'date-fns'
@@ -65,6 +69,8 @@ export default function SettingsPage() {
   const [categoryAnnualLeaveDays, setCategoryAnnualLeaveDays] = useState('')
   const [savingCategory, setSavingCategory] = useState(false)
   const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
+  const [categorySearch, setCategorySearch] = useState('')
+  const [deleteCategoryConfirm, setDeleteCategoryConfirm] = useState<PersonnelCategory | null>(null)
 
   // ─── Working days state ───────────────────────────
   const [workingDays, setWorkingDays] = useState<WorkingDays | null>(null)
@@ -405,6 +411,26 @@ export default function SettingsPage() {
     }
   }
 
+  const filteredCategories = useMemo(() => {
+    if (!categorySearch.trim()) return categories
+    const term = categorySearch.toLowerCase()
+    return categories.filter(c =>
+      c.name.toLowerCase().includes(term) ||
+      c.description?.toLowerCase().includes(term)
+    )
+  }, [categories, categorySearch])
+
+  const categoryStats = useMemo(() => {
+    if (categories.length === 0) return { total: 0, avgDays: 0, minDays: 0, maxDays: 0 }
+    const days = categories.map(c => c.annual_leave_days)
+    return {
+      total: categories.length,
+      avgDays: Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10,
+      minDays: Math.min(...days),
+      maxDays: Math.max(...days),
+    }
+  }, [categories])
+
   const filteredEmployees = useMemo(() => {
     if (!recupSearch.trim()) return employees
     const term = recupSearch.toLowerCase()
@@ -495,48 +521,178 @@ export default function SettingsPage() {
 
       {/* ─── Categories Tab ──────────────────────────── */}
       {activeTab === 'categories' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              {categories.length} catégorie(s) de personnel configurée(s)
-            </p>
-            <Button onClick={openAddCategory}>
+        <div className="space-y-5">
+          {/* KPI Stats */}
+          {!categoriesLoading && categories.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-primary/10 sm:flex">
+                  <Layers className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.total}</p>
+                  <p className="text-[11px] text-muted-foreground sm:text-xs">Catégories</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 sm:flex">
+                  <CalendarDays className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.avgDays}</p>
+                  <p className="text-[11px] text-muted-foreground sm:text-xs">Moyenne jours/an</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 sm:flex">
+                  <GraduationCap className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.maxDays}</p>
+                  <p className="text-[11px] text-muted-foreground sm:text-xs">Maximum jours/an</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 sm:flex">
+                  <Briefcase className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.minDays}</p>
+                  <p className="text-[11px] text-muted-foreground sm:text-xs">Minimum jours/an</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Search bar + Add button */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={categorySearch}
+                onChange={(e) => setCategorySearch(e.target.value)}
+                placeholder="Rechercher une catégorie..."
+                className="pl-10"
+              />
+            </div>
+            <Button onClick={openAddCategory} className="shrink-0">
               <Plus className="mr-2 h-4 w-4" />
               Ajouter une catégorie
             </Button>
           </div>
 
           {categoriesLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Chargement...</div>
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted/40" />
+              ))}
+            </div>
           ) : categories.length === 0 ? (
-            <Card className="border-border/70">
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Aucune catégorie de personnel configurée. Ajoutez une catégorie pour commencer.
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/10 py-16">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/40">
+                <Users className="h-7 w-7 text-muted-foreground/40" />
+              </div>
+              <p className="mt-4 text-sm font-medium text-foreground">Aucune catégorie</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ajoutez une catégorie de personnel pour commencer.
+              </p>
+              <Button onClick={openAddCategory} className="mt-5" variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Ajouter une catégorie
+              </Button>
+            </div>
           ) : (
-            <Card className="border-border/70">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Users className="h-5 w-5 text-primary" />
-                  Catégories de personnel
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  {categories.map((cat) => (
-                    <div
-                      key={cat.id}
-                      className="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-muted/30"
-                    >
-                      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
-                        <span className="text-sm font-medium">{cat.name}</span>
-                        {cat.description && (
-                          <span className="text-xs text-muted-foreground">{cat.description}</span>
-                        )}
-                        <Badge variant="secondary" className="w-fit border border-border/70 text-xs">
-                          {cat.annual_leave_days} jour(s) de congé / an
-                        </Badge>
+            <>
+              {/* Desktop Table */}
+              <div className="hidden overflow-hidden rounded-2xl border border-border/70 bg-card md:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] border-separate border-spacing-0">
+                    <thead>
+                      <tr className="bg-secondary text-xs uppercase tracking-[0.08em] text-foreground/85">
+                        <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Catégorie</th>
+                        <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Description</th>
+                        <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Jours congé/an</th>
+                        <th className="whitespace-nowrap px-5 py-3.5 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCategories.map((cat) => (
+                        <tr key={cat.id} className="group transition-colors hover:bg-accent/40">
+                          <td className="border-b border-border/45 px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                                <Users className="h-4 w-4 text-primary" />
+                              </div>
+                              <span className="text-sm font-semibold text-foreground">{cat.name}</span>
+                            </div>
+                          </td>
+                          <td className="border-b border-border/45 px-5 py-3.5">
+                            <span className="text-sm text-muted-foreground">
+                              {cat.description || '—'}
+                            </span>
+                          </td>
+                          <td className="border-b border-border/45 px-5 py-3.5 text-center">
+                            <Badge variant="secondary" className="border border-border/70 text-xs font-semibold">
+                              {cat.annual_leave_days} jour{cat.annual_leave_days !== 1 ? 's' : ''}
+                            </Badge>
+                          </td>
+                          <td className="border-b border-border/45 px-5 py-3.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                                onClick={() => openEditCategory(cat)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                                onClick={() => setDeleteCategoryConfirm(cat)}
+                                disabled={deletingCategoryId === cat.id}
+                              >
+                                {deletingCategoryId === cat.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredCategories.length === 0 && categorySearch && (
+                        <tr>
+                          <td colSpan={4} className="px-5 py-10 text-center text-sm text-muted-foreground">
+                            Aucune catégorie ne correspond à &quot;{categorySearch}&quot;
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="space-y-3 md:hidden">
+                {filteredCategories.map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="rounded-2xl border border-border/70 bg-card p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                          <Users className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{cat.name}</p>
+                          {cat.description && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">{cat.description}</p>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -551,7 +707,7 @@ export default function SettingsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteCategory(cat.id)}
+                          onClick={() => setDeleteCategoryConfirm(cat)}
                           disabled={deletingCategoryId === cat.id}
                         >
                           {deletingCategoryId === cat.id ? (
@@ -562,11 +718,57 @@ export default function SettingsPage() {
                         </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="mt-3 flex items-center gap-2 rounded-xl bg-secondary/60 px-3 py-2">
+                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs font-medium text-foreground">
+                        {cat.annual_leave_days} jour{cat.annual_leave_days !== 1 ? 's' : ''} de congé / an
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {filteredCategories.length === 0 && categorySearch && (
+                  <div className="rounded-2xl border border-dashed border-border/70 py-10 text-center text-sm text-muted-foreground">
+                    Aucune catégorie ne correspond à &quot;{categorySearch}&quot;
+                  </div>
+                )}
+              </div>
+            </>
           )}
+
+          {/* Delete Confirmation Dialog */}
+          <Dialog open={!!deleteCategoryConfirm} onOpenChange={(open) => !open && setDeleteCategoryConfirm(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Supprimer la catégorie</DialogTitle>
+                <DialogDescription>
+                  Êtes-vous sûr de vouloir supprimer la catégorie &quot;{deleteCategoryConfirm?.name}&quot; ?
+                  Cette action est irréversible.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteCategoryConfirm(null)}>
+                  Annuler
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (deleteCategoryConfirm) {
+                      deleteCategory(deleteCategoryConfirm.id)
+                      setDeleteCategoryConfirm(null)
+                    }
+                  }}
+                  disabled={deletingCategoryId === deleteCategoryConfirm?.id}
+                >
+                  {deletingCategoryId === deleteCategoryConfirm?.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 h-4 w-4" />
+                  )}
+                  Supprimer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Add Category Dialog */}
           <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
