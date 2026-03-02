@@ -249,6 +249,45 @@ export function nextWorkingDay(
   return d
 }
 
+// ─── Monthly Balance Accrual (Req #5) ────────────────────
+
+export interface MonthlyAccrualInfo {
+  annualTotal: number        // RH-set balance_conge (e.g. 22)
+  currentMonth: number       // 1-12
+  monthlyRate: number        // annualTotal / 12
+  cumulativeEarned: number   // monthlyRate * currentMonth
+  daysUsed: number           // approved CONGE days this year
+  daysPending: number        // pending CONGE days this year
+  availableNow: number       // cumulativeEarned - daysUsed - daysPending (what can be requested)
+}
+
+/**
+ * Calculates the monthly accrual balance for an employee.
+ * The RH-set balance_conge is the annual total.
+ * Available balance = (annualTotal / 12 * currentMonth) - daysUsed - daysPending
+ */
+export function calculateMonthlyAccrual(
+  annualTotal: number,
+  daysUsed: number = 0,
+  daysPending: number = 0,
+  month?: number
+): MonthlyAccrualInfo {
+  const currentMonth = month ?? (new Date().getMonth() + 1) // 1-based
+  const monthlyRate = Math.round((annualTotal / 12) * 100) / 100
+  const cumulativeEarned = Math.round(monthlyRate * currentMonth * 100) / 100
+  const availableNow = Math.max(cumulativeEarned - daysUsed - daysPending, 0)
+
+  return {
+    annualTotal,
+    currentMonth,
+    monthlyRate,
+    cumulativeEarned,
+    daysUsed,
+    daysPending,
+    availableNow,
+  }
+}
+
 // ─── Seniority & Entitlement (mirrors SQL RPC for frontend display) ───
 
 export interface SeniorityInfo {

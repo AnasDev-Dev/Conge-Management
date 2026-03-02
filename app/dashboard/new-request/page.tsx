@@ -24,6 +24,7 @@ import {
   fetchWorkingDays,
   getHolidaysInRange,
   nextWorkingDay,
+  calculateMonthlyAccrual,
 } from '@/lib/leave-utils'
 
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation'>
@@ -83,6 +84,10 @@ export default function NewRequestPage() {
     monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
   })
 
+  // Monthly accrual: track used/pending CONGE days for the target employee
+  const [congeUsedDays, setCongeUsedDays] = useState(0)
+  const [congePendingDays, setCongePendingDays] = useState(0)
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -116,6 +121,35 @@ export default function NewRequestPage() {
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
   }, [user])
+
+  // Fetch used/pending CONGE days for the target employee (for monthly accrual)
+  useEffect(() => {
+    if (!targetEmployee) return
+    const currentYear = new Date().getFullYear()
+    const fetchUsage = async () => {
+      const [{ data: usedData }, { data: pendingData }] = await Promise.all([
+        supabase
+          .from('leave_requests')
+          .select('days_count')
+          .eq('user_id', targetEmployee.id)
+          .eq('request_type', 'CONGE')
+          .eq('status', 'APPROVED')
+          .gte('start_date', `${currentYear}-01-01`)
+          .lte('start_date', `${currentYear}-12-31`),
+        supabase
+          .from('leave_requests')
+          .select('days_count')
+          .eq('user_id', targetEmployee.id)
+          .eq('request_type', 'CONGE')
+          .in('status', ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'])
+          .gte('start_date', `${currentYear}-01-01`)
+          .lte('start_date', `${currentYear}-12-31`),
+      ])
+      setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.days_count || 0), 0))
+      setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.days_count || 0), 0))
+    }
+    fetchUsage()
+  }, [targetEmployee?.id])
 
   const loadEmployees = async (userData: Utilisateur) => {
     try {
@@ -201,8 +235,15 @@ export default function NewRequestPage() {
   }
 
   const workingDays = countWorkingDaysUtil(startDate, endDate, workingDaysConfig, holidays, startHalfDay, endHalfDay)
+
+  // Monthly accrual for CONGE: available = (annual / 12 * month) - used - pending
+  const congeAccrual = useMemo(() => {
+    const annual = targetEmployee?.balance_conge || 0
+    return calculateMonthlyAccrual(annual, congeUsedDays, congePendingDays)
+  }, [targetEmployee?.balance_conge, congeUsedDays, congePendingDays])
+
   const availableBalance = requestType === 'CONGE'
-    ? targetEmployee?.balance_conge || 0
+    ? congeAccrual.availableNow
     : targetEmployee?.balance_recuperation || 0
   const balanceAfter = availableBalance - workingDays
 
@@ -393,7 +434,7 @@ export default function NewRequestPage() {
               Demande pour {targetEmployee.full_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {targetEmployee.job_title || 'Employe'} — Solde conge: {targetEmployee.balance_conge}j, Recup: {targetEmployee.balance_recuperation}j
+              {targetEmployee.job_title || 'Employe'} — Acquis: {congeAccrual.availableNow}j/{congeAccrual.annualTotal}j, Recup: {targetEmployee.balance_recuperation}j
             </p>
           </div>
           <Button
@@ -605,10 +646,11 @@ export default function NewRequestPage() {
                         ? 'border-primary/20 bg-primary/5'
                         : 'border-border/50 bg-muted/40'
                     )}>
-                      <span className="text-muted-foreground">Solde disponible:</span>{' '}
+                      <span className="text-muted-foreground">Acquis ce mois:</span>{' '}
                       <span className="font-semibold text-foreground">
-                        {targetEmployee?.balance_conge ?? user.balance_conge} jours
+                        {congeAccrual.availableNow}
                       </span>
+                      <span className="text-muted-foreground"> / {congeAccrual.annualTotal} jours/an</span>
                     </div>
                   </button>
 
@@ -764,8 +806,11 @@ export default function NewRequestPage() {
                 {startDate && endDate && workingDays > 0 && (
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                      <p className="text-xs text-muted-foreground">Solde actuel</p>
+                      <p className="text-xs text-muted-foreground">{requestType === 'CONGE' ? 'Acquis' : 'Solde'}</p>
                       <p className="mt-1 text-lg font-semibold text-foreground">{availableBalance}j</p>
+                      {requestType === 'CONGE' && (
+                        <p className="text-[10px] text-muted-foreground">/ {congeAccrual.annualTotal}j an</p>
+                      )}
                     </div>
                     <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
                       <p className="text-xs text-muted-foreground">Demandes</p>
@@ -934,8 +979,24 @@ export default function NewRequestPage() {
                 <CardTitle className="text-base">Impact sur le solde {isOnBehalf ? `de ${selectedEmployeeName}` : ''}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {requestType === 'CONGE' && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Solde annuel (RH)</span>
+                    <span className="font-medium">{congeAccrual.annualTotal} jours</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Solde actuel</span>
+                  <span className="text-muted-foreground">{requestType === 'CONGE' ? `Acquis (mois ${congeAccrual.currentMonth}/12)` : 'Solde actuel'}</span>
+                  <span className="font-medium">{requestType === 'CONGE' ? congeAccrual.cumulativeEarned : availableBalance} jours</span>
+                </div>
+                {requestType === 'CONGE' && (congeUsedDays > 0 || congePendingDays > 0) && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Deja utilise/en cours</span>
+                    <span className="font-medium">- {congeUsedDays + congePendingDays} jours</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Disponible</span>
                   <span className="font-medium">{availableBalance} jours</span>
                 </div>
                 <div className="flex justify-between text-sm">

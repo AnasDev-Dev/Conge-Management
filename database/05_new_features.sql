@@ -474,7 +474,7 @@ BEGIN
 
     v_cumulative := v_cumulative + v_monthly;
 
-    -- Insert or update
+    -- Insert or update (audit trail only — balance_conge is managed by RH via Init. Soldes)
     INSERT INTO monthly_balance_accrual (user_id, year, month, accrued_days, cumulative_days, annual_entitlement)
     VALUES (v_user.id, v_year, v_month, v_monthly, v_cumulative, v_annual)
     ON CONFLICT (user_id, year, month)
@@ -482,13 +482,9 @@ BEGIN
                   cumulative_days = EXCLUDED.cumulative_days,
                   annual_entitlement = EXCLUDED.annual_entitlement;
 
-    -- Update balance (capped at 52 days - Req #7)
-    UPDATE utilisateurs
-    SET balance_conge = LEAST(
-      (SELECT balance_conge FROM utilisateurs WHERE id = v_user.id) + v_monthly,
-      v_max_balance
-    )
-    WHERE id = v_user.id;
+    -- NOTE: We do NOT update utilisateurs.balance_conge here.
+    -- The RH sets the annual total via Init. Soldes.
+    -- The frontend calculates monthly available as: balance_conge / 12 * current_month
 
     v_count := v_count + 1;
   END LOOP;
@@ -622,10 +618,8 @@ BEGIN
     AND status IN ('PENDING', 'VALIDATED_RP', 'VALIDATED_DC')
     AND EXTRACT(YEAR FROM start_date) = v_current_year;
 
-  -- Monthly accrual info
-  SELECT COALESCE(cumulative_days, 0) INTO v_monthly_accrued
-  FROM monthly_balance_accrual
-  WHERE user_id = p_user_id AND year = v_current_year AND month = v_current_month;
+  -- Monthly accrual: calculate from RH-set balance_conge / 12 * current_month
+  v_monthly_accrued := ROUND((v_user.balance_conge / 12.0 * v_current_month)::NUMERIC, 2)::FLOAT;
 
   -- Check 52-day cap
   v_is_max_reached := v_user.balance_conge >= v_max_balance;
@@ -644,6 +638,8 @@ BEGIN
     'recup_pending',        v_recup_pending,
     'entitlement_details',  v_entitlement,
     'monthly_accrued',      v_monthly_accrued,
+    'monthly_rate',         ROUND((v_user.balance_conge / 12.0)::NUMERIC, 2)::FLOAT,
+    'available_now',        GREATEST(v_monthly_accrued - v_days_used_this_year - v_days_pending, 0),
     'is_max_reached',       v_is_max_reached,
     'max_balance',          v_max_balance,
     'recup_expires_at',     v_recup_expires_at

@@ -96,6 +96,9 @@ export default function DashboardPage() {
     annual_entitlement: number;
     days_used_this_year: number;
     days_pending: number;
+    monthly_accrued: number;
+    monthly_rate: number;
+    available_now: number;
   } | null>(null);
   const supabase = createClient();
 
@@ -223,18 +226,26 @@ export default function DashboardPage() {
               </p>
               <CalendarIcon className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className={`mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'text-red-600' : ''}`}>
-              {user.balance_conge}
-              {balanceInfo ? (
-                <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
-                  / {balanceInfo.annual_entitlement} jours
-                </span>
-              ) : (
+            {balanceInfo ? (
+              <>
+                <p className={`mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'text-red-600' : ''}`}>
+                  {balanceInfo.available_now}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
+                    / {user.balance_conge} jours/an
+                  </span>
+                </p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-xs">
+                  {balanceInfo.monthly_rate}j/mois — Cumulé: {balanceInfo.monthly_accrued}j
+                </p>
+              </>
+            ) : (
+              <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
+                {user.balance_conge}
                 <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
                   jours
                 </span>
-              )}
-            </p>
+              </p>
+            )}
             {user.balance_conge >= MAX_LEAVE_BALANCE && (
               <p className="mt-0.5 text-[10px] font-medium text-red-600 sm:text-xs">Maximum atteint (52j)</p>
             )}
@@ -242,7 +253,7 @@ export default function DashboardPage() {
               <div
                 className={`h-1.5 rounded-full transition-all ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'bg-red-500' : 'bg-foreground/75'}`}
                 style={{
-                  width: `${Math.min((user.balance_conge / (balanceInfo?.annual_entitlement || 18)) * 100, 100)}%`,
+                  width: `${Math.min(((balanceInfo?.monthly_accrued ?? user.balance_conge) / (user.balance_conge || 18)) * 100, 100)}%`,
                 }}
               />
             </div>
