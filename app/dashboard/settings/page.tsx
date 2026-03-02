@@ -485,24 +485,26 @@ export default function SettingsPage() {
       </div>
 
       {/* Tabs — sticky below mobile header, at top on desktop */}
-      <div className="sticky top-[4.5rem] lg:top-0 z-20 flex gap-1.5 overflow-x-auto rounded-xl border border-border/70 bg-card p-1.5">
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-                activeTab === tab.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          )
-        })}
+      <div className="sticky top-[4.5rem] lg:top-0 z-20 -mx-3 md:-mx-6 px-3 md:px-6 pt-1 pb-3 bg-gradient-to-b from-card from-85% to-transparent">
+        <div className="flex gap-1.5 overflow-x-auto rounded-xl border border-border/70 bg-card p-1.5 shadow-sm">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* ─── Categories Tab ──────────────────────────── */}
