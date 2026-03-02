@@ -484,8 +484,8 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1.5 overflow-x-auto rounded-xl border border-border/70 bg-muted/30 p-1.5">
+      {/* Tabs — sticky below mobile header, at top on desktop */}
+      <div className="sticky top-[4.5rem] lg:top-0 z-20 flex gap-1.5 overflow-x-auto rounded-xl border border-border/70 bg-card p-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon
           return (
