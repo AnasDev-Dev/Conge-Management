@@ -552,7 +552,7 @@ export default function SettingsPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[700px] border-separate border-spacing-0">
                     <thead>
-                      <tr className="bg-gradient-to-r from-slate-800 to-slate-700 text-xs uppercase tracking-[0.08em] text-white dark:from-slate-700 dark:to-slate-600">
+                      <tr className="bg-secondary text-xs uppercase tracking-[0.08em] text-foreground/85">
                         <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Catégorie</th>
                         <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Description</th>
                         <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Jours congé/an</th>
