@@ -29,10 +29,7 @@ import {
   Users,
   Loader2,
   Pencil,
-  Briefcase,
   CalendarDays,
-  Layers,
-  GraduationCap,
 } from 'lucide-react'
 import { Holiday, WorkingDays, Utilisateur, PersonnelCategory } from '@/lib/types/database'
 import { format } from 'date-fns'
@@ -420,17 +417,6 @@ export default function SettingsPage() {
     )
   }, [categories, categorySearch])
 
-  const categoryStats = useMemo(() => {
-    if (categories.length === 0) return { total: 0, avgDays: 0, minDays: 0, maxDays: 0 }
-    const days = categories.map(c => c.annual_leave_days)
-    return {
-      total: categories.length,
-      avgDays: Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10,
-      minDays: Math.min(...days),
-      maxDays: Math.max(...days),
-    }
-  }, [categories])
-
   const filteredEmployees = useMemo(() => {
     if (!recupSearch.trim()) return employees
     const term = recupSearch.toLowerCase()
@@ -522,48 +508,6 @@ export default function SettingsPage() {
       {/* ─── Categories Tab ──────────────────────────── */}
       {activeTab === 'categories' && (
         <div className="space-y-5">
-          {/* KPI Stats */}
-          {!categoriesLoading && categories.length > 0 && (
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-primary/10 sm:flex">
-                  <Layers className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.total}</p>
-                  <p className="text-[11px] text-muted-foreground sm:text-xs">Catégories</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 sm:flex">
-                  <CalendarDays className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.avgDays}</p>
-                  <p className="text-[11px] text-muted-foreground sm:text-xs">Moyenne jours/an</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 sm:flex">
-                  <GraduationCap className="h-5 w-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.maxDays}</p>
-                  <p className="text-[11px] text-muted-foreground sm:text-xs">Maximum jours/an</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-                <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 sm:flex">
-                  <Briefcase className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-foreground sm:text-2xl">{categoryStats.minDays}</p>
-                  <p className="text-[11px] text-muted-foreground sm:text-xs">Minimum jours/an</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Search bar + Add button */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:max-w-sm">
@@ -608,7 +552,7 @@ export default function SettingsPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[700px] border-separate border-spacing-0">
                     <thead>
-                      <tr className="bg-secondary text-xs uppercase tracking-[0.08em] text-foreground/85">
+                      <tr className="bg-gradient-to-r from-slate-800 to-slate-700 text-xs uppercase tracking-[0.08em] text-white dark:from-slate-700 dark:to-slate-600">
                         <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Catégorie</th>
                         <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Description</th>
                         <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Jours congé/an</th>
@@ -641,7 +585,7 @@ export default function SettingsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                                 onClick={() => openEditCategory(cat)}
                               >
                                 <Pencil className="h-4 w-4" />
@@ -649,7 +593,7 @@ export default function SettingsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
                                 onClick={() => setDeleteCategoryConfirm(cat)}
                                 disabled={deletingCategoryId === cat.id}
                               >
