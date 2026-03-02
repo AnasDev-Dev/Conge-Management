@@ -895,5 +895,29 @@ ON CONFLICT (name) DO NOTHING;
 
 
 -- ==============================================================================
+-- SEED: Default personnel categories for ATH and FRMG
+-- ==============================================================================
+
+INSERT INTO public.personnel_categories (company_id, name, description, annual_leave_days)
+SELECT c.id, v.name, v.description, v.annual_leave_days
+FROM (VALUES
+  ('Cadre Supérieur',    'Directeurs et responsables de département',  24::float),
+  ('Cadre',              'Ingénieurs, chefs de projet, managers',      21),
+  ('Agent de Maîtrise',  'Techniciens supérieurs, superviseurs',       19.5),
+  ('Employé',            'Personnel administratif et support',         18),
+  ('Ouvrier',            'Personnel opérationnel et technique',        18),
+  ('Chauffeur',          'Chauffeurs et conducteurs',                  18),
+  ('Agent de Sécurité',  'Gardiens et agents de surveillance',         18),
+  ('Agent d''Entretien', 'Personnel de nettoyage et maintenance',      18),
+  ('Jardinier',          'Entretien des espaces verts et terrains',    18),
+  ('Cuisinier',          'Personnel de restauration et cuisine',       18),
+  ('Stagiaire',          'Stagiaires et contrats d''insertion',        15)
+) AS v(name, description, annual_leave_days)
+CROSS JOIN public.companies c
+WHERE c.name IN ('ATH', 'FRMG')
+ON CONFLICT (company_id, name) DO NOTHING;
+
+
+-- ==============================================================================
 -- SCHEMA UPDATE COMPLETE
 -- ==============================================================================
