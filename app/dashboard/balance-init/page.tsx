@@ -219,7 +219,7 @@ export default function BalanceInitPage() {
   }
 
   // Shared sticky-column classes
-  const stickyColBase = 'sticky left-0 z-[5] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border/40'
+  const stickyColBase = 'sticky left-0 z-[5] after:absolute after:-right-[6px] after:top-0 after:bottom-0 after:w-[6px] after:bg-gradient-to-r after:from-black/[0.06] after:to-transparent after:pointer-events-none dark:after:from-black/20'
 
   return (
     <div className="flex min-h-full flex-col gap-3 sm:gap-4">
@@ -394,7 +394,7 @@ export default function BalanceInitPage() {
               <table className="w-full min-w-[1100px] border-separate border-spacing-0">
                 <thead className="sticky top-0 z-20">
                   <tr className="text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-                    <th className={`${stickyColBase} z-30 w-[220px] min-w-[180px] whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold`}>
+                    <th className={`${stickyColBase} z-30 w-[220px] min-w-[180px] whitespace-nowrap border-b border-border/50 bg-muted px-4 py-3 font-semibold`}>
                       Employé
                     </th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold">Département</th>
@@ -420,10 +420,17 @@ export default function BalanceInitPage() {
                         ? 'bg-card'
                         : 'bg-muted/20'
 
+                    // Opaque backgrounds for frozen column so scrolling content doesn't show through
+                    const stickyBg = modified
+                      ? 'bg-emerald-50 dark:bg-emerald-950'
+                      : isEven
+                        ? 'bg-card'
+                        : 'bg-muted'
+
                     return (
-                      <tr key={emp.id} className={`transition-colors hover:bg-muted/40 ${rowBg}`}>
+                      <tr key={emp.id} className={`group transition-colors hover:bg-muted/40 ${rowBg}`}>
                         {/* Frozen name column */}
-                        <td className={`${stickyColBase} border-b border-border/30 px-4 py-3 align-middle ${rowBg}`}>
+                        <td className={`${stickyColBase} border-b border-border/30 px-4 py-3 align-middle ${stickyBg} group-hover:bg-muted`}>
                           <p className="font-medium text-foreground text-sm leading-tight">{emp.full_name}</p>
                           <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{emp.job_title || '—'}</p>
                         </td>
