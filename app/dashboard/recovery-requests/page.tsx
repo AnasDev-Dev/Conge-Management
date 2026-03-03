@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { DatePicker } from '@/components/ui/date-picker'
 import {
   Select,
   SelectContent,
@@ -678,12 +679,11 @@ export default function RecoveryRequestsPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="dialog-date-worked">Date travaillee</Label>
-                <Input
+                <DatePicker
                   id="dialog-date-worked"
-                  type="date"
                   value={formDateWorked}
-                  onChange={(e) => setFormDateWorked(e.target.value)}
-                  required
+                  onChange={setFormDateWorked}
+                  placeholder="Selectionnez la date"
                 />
               </div>
 

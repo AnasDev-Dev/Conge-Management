@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -1065,10 +1066,10 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={newHolidayDate}
-                    onChange={(e) => setNewHolidayDate(e.target.value)}
+                    onChange={setNewHolidayDate}
+                    placeholder="Selectionnez la date"
                   />
                 </div>
                 <div className="flex items-center gap-3">
@@ -1181,19 +1182,19 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Date début (travaillé) *</Label>
-                  <Input
-                    type="date"
+                  <Label>Date debut (travaille) *</Label>
+                  <DatePicker
                     value={recupDateFrom}
-                    onChange={(e) => setRecupDateFrom(e.target.value)}
+                    onChange={setRecupDateFrom}
+                    placeholder="Date debut"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Date fin (travaillé) *</Label>
-                  <Input
-                    type="date"
+                  <Label>Date fin (travaille) *</Label>
+                  <DatePicker
                     value={recupDateTo}
-                    onChange={(e) => setRecupDateTo(e.target.value)}
+                    onChange={setRecupDateTo}
+                    placeholder="Date fin"
                   />
                 </div>
               </div>
