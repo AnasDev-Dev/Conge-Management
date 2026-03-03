@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { LeaveRequest, Utilisateur } from '@/lib/types/database'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Calendar, ChevronRight, Clock, Search, Users } from 'lucide-react'
+import { Calendar, ChevronRight, Clock, Search, UserPlus, Users } from 'lucide-react'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { AddEmployeeDialog } from '@/components/add-employee-dialog'
 
 type EmployeeRow = Pick<
   Utilisateur,
@@ -90,7 +92,10 @@ export default function EmployeesPage() {
   const [requests, setRequests] = useState<LeaveRow[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
+  const { user: currentUser } = useCurrentUser()
+  const canCreateEmployee = currentUser && currentUser.role !== 'EMPLOYEE'
 
   const loadData = useCallback(async () => {
     try {
@@ -202,14 +207,22 @@ export default function EmployeesPage() {
                 </span>
               )}
             </CardTitle>
-            <div className="relative w-full md:w-[24rem]">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Recherche: nom, rôle, email, solde..."
-                className="pl-11"
-              />
+            <div className="flex items-center gap-2">
+              <div className="relative w-full md:w-[24rem]">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Recherche: nom, rôle, email, solde..."
+                  className="pl-11"
+                />
+              </div>
+              {canCreateEmployee && (
+                <Button onClick={() => setAddDialogOpen(true)} size="sm" className="shrink-0">
+                  <UserPlus className="mr-1.5 h-4 w-4" />
+                  <span className="hidden sm:inline">Nouvel employé</span>
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -341,6 +354,10 @@ export default function EmployeesPage() {
           )}
         </CardContent>
       </Card>
+
+      {canCreateEmployee && (
+        <AddEmployeeDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} onCreated={loadData} />
+      )}
     </div>
   )
 }
