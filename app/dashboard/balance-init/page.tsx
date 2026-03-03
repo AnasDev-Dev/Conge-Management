@@ -181,26 +181,19 @@ export default function BalanceInitPage() {
       if (!emp || newBalance === emp.balance_conge) continue
 
       try {
-        // Update the employee balance
-        const { error: updateError } = await supabase
-          .from('utilisateurs')
-          .update({ balance_conge: newBalance, updated_at: new Date().toISOString() })
-          .eq('id', id)
+        // Use the set_initial_balance RPC which enforces 52-day cap and records audit trail
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('set_initial_balance', {
+          p_user_id: id,
+          p_balance: newBalance,
+          p_year: currentYear,
+          p_reason: `Initialisation solde ${currentYear} par RH`,
+        })
 
-        if (updateError) throw updateError
+        if (rpcError) throw rpcError
 
-        // Record in balance history for audit trail
-        const { error: historyError } = await supabase
-          .from('leave_balance_history')
-          .insert({
-            user_id: id,
-            type: 'CONGE',
-            amount: newBalance,
-            reason: `Initialisation solde ${currentYear} par RH (ancien solde: ${emp.balance_conge})`,
-            year: currentYear,
-          })
-
-        if (historyError) console.error('History insert error:', historyError)
+        if (rpcResult?.capped) {
+          toast.warning(`${emp.full_name}: solde plafonné à 52 jours`)
+        }
 
         successCount++
       } catch (error) {
