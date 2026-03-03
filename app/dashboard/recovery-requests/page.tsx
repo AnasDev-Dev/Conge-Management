@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -29,11 +30,21 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Send,
+  Plus,
+  Sun,
+  Sunset,
+  CalendarDays,
   User as UserIcon,
 } from 'lucide-react'
 import { RecoveryRequest, Utilisateur } from '@/lib/types/database'
-import { MANAGER_ROLES, RECOVERY_WORK_TYPE_LABELS, getRecoveryStatusLabel, getRecoveryStatusClass } from '@/lib/constants'
+import {
+  MANAGER_ROLES,
+  RECOVERY_WORK_TYPE_LABELS,
+  RECOVERY_PERIOD_OPTIONS,
+  getRecoveryStatusLabel,
+  getRecoveryStatusClass,
+} from '@/lib/constants'
+import type { RecoveryPeriod } from '@/lib/constants'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
@@ -49,6 +60,18 @@ const STATUS_TABS = [
   { value: 'REJECTED', label: 'Rejetees' },
 ] as const
 
+const PERIOD_ICONS: Record<RecoveryPeriod, typeof Sun> = {
+  MORNING: Sun,
+  AFTERNOON: Sunset,
+  FULL: CalendarDays,
+}
+
+const PERIOD_DISPLAY_LABELS: Record<string, string> = {
+  MORNING: 'Matin',
+  AFTERNOON: 'Après-midi',
+  FULL: 'Journée complète',
+}
+
 export default function RecoveryRequestsPage() {
   const { user } = useCurrentUser()
   const [requests, setRequests] = useState<RecoveryRequestWithUser[]>([])
@@ -57,8 +80,9 @@ export default function RecoveryRequestsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const supabase = useMemo(() => createClient(), [])
 
-  // Form state
-  const [formDays, setFormDays] = useState<number>(1)
+  // Create dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [formPeriod, setFormPeriod] = useState<RecoveryPeriod>('FULL')
   const [formDateWorked, setFormDateWorked] = useState<string>('')
   const [formWorkType, setFormWorkType] = useState<string>('')
   const [formReason, setFormReason] = useState<string>('')
@@ -76,6 +100,12 @@ export default function RecoveryRequestsPage() {
 
   const isManager = user ? MANAGER_ROLES.includes(user.role) : false
   const isEmployee = user?.role === 'EMPLOYEE'
+
+  // Auto-calculate days from period
+  const calculatedDays = useMemo(() => {
+    const opt = RECOVERY_PERIOD_OPTIONS.find((o) => o.value === formPeriod)
+    return opt?.days ?? 1
+  }, [formPeriod])
 
   useEffect(() => {
     if (user) {
@@ -116,6 +146,19 @@ export default function RecoveryRequestsPage() {
     }
   }
 
+  const resetForm = () => {
+    setFormPeriod('FULL')
+    setFormDateWorked('')
+    setFormWorkType('')
+    setFormReason('')
+    setFormEmployeeId('')
+  }
+
+  const openCreateDialog = () => {
+    resetForm()
+    setCreateDialogOpen(true)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
@@ -125,7 +168,6 @@ export default function RecoveryRequestsPage() {
       return
     }
 
-    // Managers must select an employee
     const targetUserId = isManager ? formEmployeeId : user.id
     if (isManager && !targetUserId) {
       toast.error('Veuillez selectionner un employe')
@@ -136,20 +178,20 @@ export default function RecoveryRequestsPage() {
     try {
       const { error } = await supabase.rpc('submit_recovery_request', {
         p_user_id: targetUserId,
-        p_days: formDays,
+        p_days: calculatedDays,
         p_date_worked: formDateWorked,
         p_work_type: formWorkType,
         p_reason: formReason || null,
+        p_period: formPeriod,
       })
 
       if (error) throw error
 
-      toast.success('Credit de recuperation soumis avec succes')
-      setFormDays(1)
-      setFormDateWorked('')
-      setFormWorkType('')
-      setFormReason('')
-      setFormEmployeeId('')
+      toast.success(
+        `Credit de ${calculatedDays === 1 ? '1 jour' : '0.5 jour'} soumis avec succes`
+      )
+      setCreateDialogOpen(false)
+      resetForm()
       await loadRequests()
     } catch (error: any) {
       console.error('Error submitting recovery request:', error)
@@ -240,16 +282,23 @@ export default function RecoveryRequestsPage() {
 
   return (
     <div className="flex min-h-full flex-col gap-4">
-      {/* Header */}
-      <div className="shrink-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-          Credit Recuperation
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-          {isManager
-            ? 'Creditez et validez les jours de recuperation des employes ayant travaille un jour de repos.'
-            : 'Declarez les jours travailles pendant vos repos pour obtenir des credits de recuperation.'}
-        </p>
+      {/* Header with create button */}
+      <div className="flex items-start justify-between gap-4 shrink-0">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            Credit Recuperation
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
+            {isManager
+              ? 'Creditez et validez les jours de recuperation des employes.'
+              : 'Declarez les jours travailles pendant vos repos.'}
+          </p>
+        </div>
+        <Button onClick={openCreateDialog} className="shrink-0 gap-2">
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Nouveau credit</span>
+          <span className="sm:hidden">Crediter</span>
+        </Button>
       </div>
 
       {/* KPI cards */}
@@ -291,109 +340,6 @@ export default function RecoveryRequestsPage() {
           </div>
         </div>
       </div>
-
-      {/* Credit submission form — employees declare their own, managers credit on behalf */}
-      <Card className="shrink-0 border-border/70 bg-card shadow-none">
-        <CardHeader className="border-b border-border/70 py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Send className="h-4.5 w-4.5 text-primary" />
-            {isManager ? 'Crediter un employe' : 'Declarer un jour travaille'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {/* Employee picker — managers only */}
-            {isManager && (
-              <div className="space-y-2">
-                <Label htmlFor="employee">Employe</Label>
-                <Select value={formEmployeeId} onValueChange={setFormEmployeeId} required>
-                  <SelectTrigger id="employee" className="w-full">
-                    <SelectValue placeholder="Selectionner un employe..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.map((emp) => (
-                      <SelectItem key={emp.id} value={emp.id}>
-                        {emp.full_name} {emp.job_title ? `— ${emp.job_title}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="days">Nombre de jours</Label>
-              <Input
-                id="days"
-                type="number"
-                step={0.5}
-                min={0.5}
-                max={5}
-                value={formDays}
-                onChange={(e) => setFormDays(parseFloat(e.target.value) || 0.5)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="date-worked">Date travaillee</Label>
-              <Input
-                id="date-worked"
-                type="date"
-                value={formDateWorked}
-                onChange={(e) => setFormDateWorked(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="work-type">Type de jour</Label>
-              <Select value={formWorkType} onValueChange={setFormWorkType} required>
-                <SelectTrigger id="work-type" className="w-full">
-                  <SelectValue placeholder="Selectionner..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(RECOVERY_WORK_TYPE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="reason">Motif</Label>
-              <Input
-                id="reason"
-                type="text"
-                placeholder="Motif de la recuperation..."
-                value={formReason}
-                onChange={(e) => setFormReason(e.target.value)}
-              />
-            </div>
-
-            <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
-              <Button
-                type="submit"
-                disabled={submitting || !formWorkType || !formDateWorked || (isManager && !formEmployeeId)}
-              >
-                {submitting ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
-                    Envoi en cours...
-                  </>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    {isManager ? 'Crediter la recuperation' : 'Soumettre la demande'}
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
 
       {/* Requests list */}
       <Card className="flex min-h-0 flex-col border-border/70 bg-card shadow-none backdrop-blur-none md:flex-1 md:sticky md:top-0">
@@ -450,7 +396,7 @@ export default function RecoveryRequestsPage() {
                 {statusFilter !== 'ALL'
                   ? 'Essayez de modifier vos filtres'
                   : isEmployee
-                    ? 'Soumettez votre premiere demande ci-dessus'
+                    ? 'Cliquez sur "Nouveau credit" pour soumettre votre premiere demande'
                     : 'Aucune demande de recuperation pour le moment'}
               </p>
             </div>
@@ -463,7 +409,8 @@ export default function RecoveryRequestsPage() {
                     <thead className="sticky top-0 z-10 bg-secondary">
                       <tr className="text-left text-xs uppercase tracking-[0.08em] text-foreground/85">
                         {isManager && <th className="whitespace-nowrap px-4 py-3 font-semibold">Employe</th>}
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Jours</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Credit</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Periode</th>
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">Date travaillee</th>
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">Type</th>
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">Motif</th>
@@ -491,6 +438,11 @@ export default function RecoveryRequestsPage() {
                             <span className="font-semibold text-foreground">{request.days}</span>
                             <span className="ml-1 text-sm text-muted-foreground">
                               jour{request.days > 1 ? 's' : ''}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
+                            <span className="text-sm text-foreground">
+                              {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journée complète'}
                             </span>
                           </td>
                           <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 text-sm text-foreground">
@@ -581,11 +533,17 @@ export default function RecoveryRequestsPage() {
                         </Badge>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
                         <div className="rounded-xl bg-secondary/60 p-2.5">
-                          <p className="text-xs text-muted-foreground">Jours</p>
+                          <p className="text-xs text-muted-foreground">Credit</p>
                           <p className="font-semibold text-primary">
                             {request.days} jour{request.days > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-secondary/60 p-2.5">
+                          <p className="text-xs text-muted-foreground">Periode</p>
+                          <p className="font-medium text-foreground">
+                            {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journee'}
                           </p>
                         </div>
                         <div className="rounded-xl bg-secondary/60 p-2.5">
@@ -644,7 +602,167 @@ export default function RecoveryRequestsPage() {
         </CardContent>
       </Card>
 
-      {/* Reject dialog */}
+      {/* ── Create Recovery Credit Dialog ── */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <RotateCcw className="h-4 w-4 text-primary" />
+              </div>
+              {isManager ? 'Crediter un employe' : 'Declarer un jour travaille'}
+            </DialogTitle>
+            <DialogDescription>
+              {isManager
+                ? 'Creditez les jours de recuperation pour un employe ayant travaille un jour de repos.'
+                : 'Declarez un jour travaille pendant votre repos pour obtenir un credit de recuperation.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Employee picker — managers only */}
+            {isManager && (
+              <div className="space-y-2">
+                <Label htmlFor="dialog-employee">Employe</Label>
+                <Select value={formEmployeeId} onValueChange={setFormEmployeeId} required>
+                  <SelectTrigger id="dialog-employee" className="w-full">
+                    <SelectValue placeholder="Selectionner un employe..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.full_name} {emp.job_title ? `— ${emp.job_title}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Period toggle buttons */}
+            <div className="space-y-2">
+              <Label>Periode travaillee</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {RECOVERY_PERIOD_OPTIONS.map((opt) => {
+                  const Icon = PERIOD_ICONS[opt.value]
+                  const isSelected = formPeriod === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFormPeriod(opt.value)}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-all ${
+                        isSelected
+                          ? 'border-primary bg-primary/5 text-primary shadow-sm'
+                          : 'border-border/70 bg-background text-muted-foreground hover:border-border hover:bg-secondary/50'
+                      }`}
+                    >
+                      <Icon className={`h-5 w-5 ${isSelected ? 'text-primary' : 'text-muted-foreground/70'}`} />
+                      <span className="text-xs leading-tight">{opt.label}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          isSelected
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-secondary text-muted-foreground'
+                        }`}
+                      >
+                        {opt.days === 1 ? '1 jour' : '0.5 jour'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Date worked & Work type side by side */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="dialog-date-worked">Date travaillee</Label>
+                <Input
+                  id="dialog-date-worked"
+                  type="date"
+                  value={formDateWorked}
+                  onChange={(e) => setFormDateWorked(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dialog-work-type">Type de jour</Label>
+                <Select value={formWorkType} onValueChange={setFormWorkType} required>
+                  <SelectTrigger id="dialog-work-type" className="w-full">
+                    <SelectValue placeholder="Selectionner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(RECOVERY_WORK_TYPE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Reason */}
+            <div className="space-y-2">
+              <Label htmlFor="dialog-reason">
+                Motif <span className="text-muted-foreground font-normal">(optionnel)</span>
+              </Label>
+              <Textarea
+                id="dialog-reason"
+                placeholder="Ex: Tournoi sportif, permanence weekend, inventaire..."
+                value={formReason}
+                onChange={(e) => setFormReason(e.target.value)}
+                className="min-h-20 resize-none"
+              />
+            </div>
+
+            {/* Summary */}
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+              <p className="text-sm font-medium text-primary">
+                Credit total : {calculatedDays === 1 ? '1 jour' : '0.5 jour'}
+              </p>
+              <p className="mt-0.5 text-xs text-primary/70">
+                {formPeriod === 'FULL'
+                  ? 'Journee complete travaillee'
+                  : formPeriod === 'MORNING'
+                    ? 'Matinee travaillee (demi-journee)'
+                    : 'Apres-midi travaillee (demi-journee)'}
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateDialogOpen(false)}
+                disabled={submitting}
+              >
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                disabled={submitting || !formWorkType || !formDateWorked || (isManager && !formEmployeeId)}
+              >
+                {submitting ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
+                    Envoi en cours...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {isManager ? 'Crediter' : 'Soumettre'}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Reject Dialog ── */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>

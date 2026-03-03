@@ -100,6 +100,14 @@ export const HALF_DAY_LABELS: Record<string, string> = {
   AFTERNOON: 'Après-midi',
 }
 
+// Recovery period options with credit values (Req #8)
+export type RecoveryPeriod = 'MORNING' | 'AFTERNOON' | 'FULL'
+export const RECOVERY_PERIOD_OPTIONS: { value: RecoveryPeriod; label: string; days: number }[] = [
+  { value: 'FULL', label: 'Journée complète', days: 1 },
+  { value: 'MORNING', label: 'Matin', days: 0.5 },
+  { value: 'AFTERNOON', label: 'Après-midi', days: 0.5 },
+]
+
 // Role display labels (French)
 export function getRoleLabel(role: string): string {
   switch (role) {
