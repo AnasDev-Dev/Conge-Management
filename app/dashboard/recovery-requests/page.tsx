@@ -62,6 +62,8 @@ export default function RecoveryRequestsPage() {
   const [formDateWorked, setFormDateWorked] = useState<string>('')
   const [formWorkType, setFormWorkType] = useState<string>('')
   const [formReason, setFormReason] = useState<string>('')
+  const [formEmployeeId, setFormEmployeeId] = useState<string>('')
+  const [employees, setEmployees] = useState<Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>[]>([])
 
   // Reject dialog state
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
@@ -78,8 +80,24 @@ export default function RecoveryRequestsPage() {
   useEffect(() => {
     if (user) {
       loadRequests()
+      if (MANAGER_ROLES.includes(user.role)) {
+        loadEmployees()
+      }
     }
   }, [user])
+
+  const loadEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('utilisateurs')
+        .select('id, full_name, job_title')
+        .eq('is_active', true)
+        .order('full_name')
+      if (!error && data) setEmployees(data)
+    } catch (e) {
+      console.error('Error loading employees:', e)
+    }
+  }
 
   const loadRequests = async () => {
     try {
@@ -107,10 +125,17 @@ export default function RecoveryRequestsPage() {
       return
     }
 
+    // Managers must select an employee
+    const targetUserId = isManager ? formEmployeeId : user.id
+    if (isManager && !targetUserId) {
+      toast.error('Veuillez selectionner un employe')
+      return
+    }
+
     setSubmitting(true)
     try {
       const { error } = await supabase.rpc('submit_recovery_request', {
-        p_user_id: user.id,
+        p_user_id: targetUserId,
         p_days: formDays,
         p_date_worked: formDateWorked,
         p_work_type: formWorkType,
@@ -119,11 +144,12 @@ export default function RecoveryRequestsPage() {
 
       if (error) throw error
 
-      toast.success('Demande de recuperation soumise avec succes')
+      toast.success('Credit de recuperation soumis avec succes')
       setFormDays(1)
       setFormDateWorked('')
       setFormWorkType('')
       setFormReason('')
+      setFormEmployeeId('')
       await loadRequests()
     } catch (error: any) {
       console.error('Error submitting recovery request:', error)
@@ -217,12 +243,12 @@ export default function RecoveryRequestsPage() {
       {/* Header */}
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-          Demandes de Recuperation
+          Credit Recuperation
         </h1>
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">
           {isManager
-            ? 'Gerez et validez les demandes de recuperation des employes.'
-            : 'Soumettez et suivez vos demandes de recuperation.'}
+            ? 'Creditez et validez les jours de recuperation des employes ayant travaille un jour de repos.'
+            : 'Declarez les jours travailles pendant vos repos pour obtenir des credits de recuperation.'}
         </p>
       </div>
 
@@ -266,88 +292,108 @@ export default function RecoveryRequestsPage() {
         </div>
       </div>
 
-      {/* Employee submission form */}
-      {isEmployee && (
-        <Card className="shrink-0 border-border/70 bg-card shadow-none">
-          <CardHeader className="border-b border-border/70 py-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Send className="h-4.5 w-4.5 text-primary" />
-              Nouvelle demande de recuperation
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Credit submission form — employees declare their own, managers credit on behalf */}
+      <Card className="shrink-0 border-border/70 bg-card shadow-none">
+        <CardHeader className="border-b border-border/70 py-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Send className="h-4.5 w-4.5 text-primary" />
+            {isManager ? 'Crediter un employe' : 'Declarer un jour travaille'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {/* Employee picker — managers only */}
+            {isManager && (
               <div className="space-y-2">
-                <Label htmlFor="days">Nombre de jours</Label>
-                <Input
-                  id="days"
-                  type="number"
-                  step={0.5}
-                  min={0.5}
-                  max={5}
-                  value={formDays}
-                  onChange={(e) => setFormDays(parseFloat(e.target.value) || 0.5)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="date-worked">Date travaillee</Label>
-                <Input
-                  id="date-worked"
-                  type="date"
-                  value={formDateWorked}
-                  onChange={(e) => setFormDateWorked(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="work-type">Type de travail</Label>
-                <Select value={formWorkType} onValueChange={setFormWorkType} required>
-                  <SelectTrigger id="work-type" className="w-full">
-                    <SelectValue placeholder="Selectionner..." />
+                <Label htmlFor="employee">Employe</Label>
+                <Select value={formEmployeeId} onValueChange={setFormEmployeeId} required>
+                  <SelectTrigger id="employee" className="w-full">
+                    <SelectValue placeholder="Selectionner un employe..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(RECOVERY_WORK_TYPE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
+                    {employees.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.full_name} {emp.job_title ? `— ${emp.job_title}` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <Label htmlFor="reason">Motif</Label>
-                <Input
-                  id="reason"
-                  type="text"
-                  placeholder="Motif de la recuperation..."
-                  value={formReason}
-                  onChange={(e) => setFormReason(e.target.value)}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="days">Nombre de jours</Label>
+              <Input
+                id="days"
+                type="number"
+                step={0.5}
+                min={0.5}
+                max={5}
+                value={formDays}
+                onChange={(e) => setFormDays(parseFloat(e.target.value) || 0.5)}
+                required
+              />
+            </div>
 
-              <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
-                <Button type="submit" disabled={submitting || !formWorkType || !formDateWorked}>
-                  {submitting ? (
-                    <>
-                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
-                      Envoi en cours...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="mr-2 h-4 w-4" />
-                      Soumettre la demande
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+            <div className="space-y-2">
+              <Label htmlFor="date-worked">Date travaillee</Label>
+              <Input
+                id="date-worked"
+                type="date"
+                value={formDateWorked}
+                onChange={(e) => setFormDateWorked(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="work-type">Type de jour</Label>
+              <Select value={formWorkType} onValueChange={setFormWorkType} required>
+                <SelectTrigger id="work-type" className="w-full">
+                  <SelectValue placeholder="Selectionner..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(RECOVERY_WORK_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reason">Motif</Label>
+              <Input
+                id="reason"
+                type="text"
+                placeholder="Motif de la recuperation..."
+                value={formReason}
+                onChange={(e) => setFormReason(e.target.value)}
+              />
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
+              <Button
+                type="submit"
+                disabled={submitting || !formWorkType || !formDateWorked || (isManager && !formEmployeeId)}
+              >
+                {submitting ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
+                    Envoi en cours...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    {isManager ? 'Crediter la recuperation' : 'Soumettre la demande'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       {/* Requests list */}
       <Card className="flex min-h-0 flex-col border-border/70 bg-card shadow-none backdrop-blur-none md:flex-1 md:sticky md:top-0">

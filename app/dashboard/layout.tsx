@@ -139,7 +139,7 @@ export default function DashboardLayout({
     { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
     { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
-    { name: 'Recuperations', href: '/dashboard/recovery-requests', icon: RotateCcw },
+    { name: 'Crédit Récup.', href: '/dashboard/recovery-requests', icon: RotateCcw },
     ...(isManager ? [
       { name: 'Paramètres', href: '/dashboard/settings', icon: Settings },
       { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck },
