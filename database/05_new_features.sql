@@ -894,7 +894,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION count_working_days(DATE, DATE, BIGINT, BIGINT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION accrue_monthly_balance(INT, INT) TO authenticated;
-GRANT EXECUTE ON FUNCTION submit_recovery_request(UUID, FLOAT, DATE, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION submit_recovery_request(UUID, FLOAT, DATE, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION validate_recovery_request(BIGINT, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION reject_recovery_request(BIGINT, UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION expire_recovery_days() TO authenticated;
