@@ -90,6 +90,9 @@ export default function RecoveryRequestsPage() {
   const [formEmployeeId, setFormEmployeeId] = useState<string>('')
   const [employees, setEmployees] = useState<Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>[]>([])
 
+  // Detail dialog state
+  const [detailRequest, setDetailRequest] = useState<RecoveryRequestWithUser | null>(null)
+
   // Reject dialog state
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [rejectingRequestId, setRejectingRequestId] = useState<number | null>(null)
@@ -402,203 +405,67 @@ export default function RecoveryRequestsPage() {
               </p>
             </div>
           ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden h-full min-h-0 md:block">
-                <div className="h-full overflow-auto rounded-2xl border border-border/70 overscroll-contain mt-4">
-                  <table className="w-full min-w-[800px] border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-10 bg-secondary">
-                      <tr className="text-left text-xs uppercase tracking-[0.08em] text-foreground/85">
-                        {isManager && <th className="whitespace-nowrap px-4 py-3 font-semibold">Employe</th>}
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Credit</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Periode</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Date travaillee</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Type</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Motif</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Statut</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Soumis le</th>
-                        {isManager && (
-                          <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Actions</th>
+            <div className="grid gap-3 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredRequests.map((request) => {
+                const PeriodIcon = PERIOD_ICONS[request.period as RecoveryPeriod] ?? CalendarDays
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    onClick={() => setDetailRequest(request)}
+                    className="group rounded-2xl border border-border/70 bg-background/80 p-4 text-left transition-all hover:border-primary/30 hover:shadow-md"
+                  >
+                    {/* Top row: employee/date + status */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {isManager && request.user && (
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <UserIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <p className="truncate font-medium text-foreground text-sm">
+                              {request.user.full_name}
+                            </p>
+                          </div>
                         )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRequests.map((request) => (
-                        <tr key={request.id} className="soft-row">
-                          {isManager && (
-                            <td className="border-b border-border/45 px-4 py-3.5 align-top">
-                              <p className="font-medium text-foreground">
-                                {request.user?.full_name ?? '\u2014'}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {request.user?.job_title ?? ''}
-                              </p>
-                            </td>
-                          )}
-                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
-                            <span className="font-semibold text-foreground">{request.days}</span>
-                            <span className="ml-1 text-sm text-muted-foreground">
-                              jour{request.days > 1 ? 's' : ''}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
-                            <span className="text-sm text-foreground">
-                              {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journée complète'}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 text-sm text-foreground">
-                            {format(new Date(request.date_worked + 'T00:00:00'), 'dd MMM yyyy', {
-                              locale: fr,
-                            })}
-                          </td>
-                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
-                            <Badge variant="secondary" className="border border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]">
-                              {RECOVERY_WORK_TYPE_LABELS[request.work_type] ?? request.work_type}
-                            </Badge>
-                          </td>
-                          <td className="border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground max-w-[200px]">
-                            <span className="line-clamp-1">{request.reason || '\u2014'}</span>
-                          </td>
-                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
-                            <Badge className={getRecoveryStatusClass(request.status)}>
-                              {getRecoveryStatusLabel(request.status)}
-                            </Badge>
-                          </td>
-                          <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground">
-                            {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}
-                          </td>
-                          {isManager && (
-                            <td className="border-b border-border/45 px-4 py-3.5 text-right align-top">
-                              {request.status === 'PENDING' ? (
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                    onClick={() => handleValidate(request.id)}
-                                    disabled={validatingId === request.id}
-                                  >
-                                    {validatingId === request.id ? (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-600/20 border-t-emerald-600" />
-                                    ) : (
-                                      <CheckCircle2 className="mr-1 h-4 w-4" />
-                                    )}
-                                    Valider
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                    onClick={() => openRejectDialog(request.id)}
-                                  >
-                                    <XCircle className="mr-1 h-4 w-4" />
-                                    Rejeter
-                                  </Button>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">\u2014</span>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Mobile cards */}
-              <div className="pt-4 md:hidden">
-                <div className="space-y-3">
-                  {filteredRequests.map((request) => (
-                    <div
-                      key={request.id}
-                      className="rounded-2xl border border-border/70 bg-background/80 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          {isManager && request.user && (
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                              <p className="font-medium text-foreground">{request.user.full_name}</p>
-                            </div>
-                          )}
-                          <p className="text-sm text-muted-foreground">
-                            {format(new Date(request.date_worked + 'T00:00:00'), 'dd MMM yyyy', {
-                              locale: fr,
-                            })}
-                          </p>
-                        </div>
-                        <Badge className={getRecoveryStatusClass(request.status)}>
-                          {getRecoveryStatusLabel(request.status)}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                        <div className="rounded-xl bg-secondary/60 p-2.5">
-                          <p className="text-xs text-muted-foreground">Credit</p>
-                          <p className="font-semibold text-primary">
-                            {request.days} jour{request.days > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                        <div className="rounded-xl bg-secondary/60 p-2.5">
-                          <p className="text-xs text-muted-foreground">Periode</p>
-                          <p className="font-medium text-foreground">
-                            {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journee'}
-                          </p>
-                        </div>
-                        <div className="rounded-xl bg-secondary/60 p-2.5">
-                          <p className="text-xs text-muted-foreground">Type</p>
-                          <p className="font-medium text-foreground">
-                            {RECOVERY_WORK_TYPE_LABELS[request.work_type] ?? request.work_type}
-                          </p>
-                        </div>
-                      </div>
-
-                      {request.reason && (
-                        <p className="mt-2.5 line-clamp-2 text-xs text-muted-foreground">
-                          {request.reason}
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(request.date_worked + 'T00:00:00'), 'dd MMMM yyyy', {
+                            locale: fr,
+                          })}
                         </p>
-                      )}
-
-                      {request.status === 'REJECTED' && request.rejection_reason && (
-                        <p className="mt-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
-                          Motif de rejet : {request.rejection_reason}
-                        </p>
-                      )}
-
-                      {isManager && request.status === 'PENDING' && (
-                        <div className="mt-3 flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                            onClick={() => handleValidate(request.id)}
-                            disabled={validatingId === request.id}
-                          >
-                            {validatingId === request.id ? (
-                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-600/20 border-t-emerald-600" />
-                            ) : (
-                              <CheckCircle2 className="mr-1 h-4 w-4" />
-                            )}
-                            Valider
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                            onClick={() => openRejectDialog(request.id)}
-                          >
-                            <XCircle className="mr-1 h-4 w-4" />
-                            Rejeter
-                          </Button>
-                        </div>
-                      )}
+                      </div>
+                      <Badge className={`shrink-0 ${getRecoveryStatusClass(request.status)}`}>
+                        {getRecoveryStatusLabel(request.status)}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </>
+
+                    {/* Info chips */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                        {request.days} jour{request.days > 1 ? 's' : ''}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-secondary px-2 py-1 text-xs font-medium text-foreground">
+                        <PeriodIcon className="h-3 w-3" />
+                        {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journee'}
+                      </span>
+                      <Badge variant="secondary" className="border border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84] text-[11px]">
+                        {RECOVERY_WORK_TYPE_LABELS[request.work_type] ?? request.work_type}
+                      </Badge>
+                    </div>
+
+                    {/* Reason preview */}
+                    {request.reason && (
+                      <p className="mt-2.5 line-clamp-1 text-xs text-muted-foreground">
+                        {request.reason}
+                      </p>
+                    )}
+
+                    {/* Submitted date */}
+                    <p className="mt-2 text-[11px] text-muted-foreground/70">
+                      Soumis le {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -759,6 +626,137 @@ export default function RecoveryRequestsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Detail Dialog ── */}
+      <Dialog open={!!detailRequest} onOpenChange={(open) => !open && setDetailRequest(null)}>
+        <DialogContent className="sm:max-w-md">
+          {detailRequest && (() => {
+            const PeriodIcon = PERIOD_ICONS[detailRequest.period as RecoveryPeriod] ?? CalendarDays
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                      <RotateCcw className="h-4 w-4 text-primary" />
+                    </div>
+                    Detail de la demande
+                  </DialogTitle>
+                  <DialogDescription>
+                    Demande #{detailRequest.id} — soumise le{' '}
+                    {format(new Date(detailRequest.created_at), 'dd MMMM yyyy', { locale: fr })}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  {/* Status */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Statut</span>
+                    <Badge className={getRecoveryStatusClass(detailRequest.status)}>
+                      {getRecoveryStatusLabel(detailRequest.status)}
+                    </Badge>
+                  </div>
+
+                  {/* Employee */}
+                  {isManager && detailRequest.user && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Employe</span>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-foreground">{detailRequest.user.full_name}</p>
+                        {detailRequest.user.job_title && (
+                          <p className="text-xs text-muted-foreground">{detailRequest.user.job_title}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="h-px bg-border/70" />
+
+                  {/* Info grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-secondary/60 p-3">
+                      <p className="text-xs text-muted-foreground">Credit</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary">
+                        {detailRequest.days} <span className="text-sm font-medium">jour{detailRequest.days > 1 ? 's' : ''}</span>
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-secondary/60 p-3">
+                      <p className="text-xs text-muted-foreground">Periode</p>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <PeriodIcon className="h-4 w-4 text-foreground" />
+                        <p className="font-medium text-foreground">
+                          {PERIOD_DISPLAY_LABELS[detailRequest.period] ?? 'Journee'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-secondary/60 p-3">
+                      <p className="text-xs text-muted-foreground">Date travaillee</p>
+                      <p className="mt-0.5 font-medium text-foreground">
+                        {format(new Date(detailRequest.date_worked + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-secondary/60 p-3">
+                      <p className="text-xs text-muted-foreground">Type</p>
+                      <p className="mt-0.5 font-medium text-foreground">
+                        {RECOVERY_WORK_TYPE_LABELS[detailRequest.work_type] ?? detailRequest.work_type}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Reason */}
+                  {detailRequest.reason && (
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">Motif</p>
+                      <p className="rounded-xl bg-secondary/60 p-3 text-sm text-foreground">
+                        {detailRequest.reason}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Rejection reason */}
+                  {detailRequest.status === 'REJECTED' && detailRequest.rejection_reason && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                      <p className="mb-1 text-xs font-medium text-red-700">Motif de rejet</p>
+                      <p className="text-sm text-red-700">{detailRequest.rejection_reason}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Manager actions */}
+                {isManager && detailRequest.status === 'PENDING' && (
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                      variant="outline"
+                      className="flex-1 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                      onClick={() => {
+                        setDetailRequest(null)
+                        openRejectDialog(detailRequest.id)
+                      }}
+                    >
+                      <XCircle className="mr-1 h-4 w-4" />
+                      Rejeter
+                    </Button>
+                    <Button
+                      className="flex-1 border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
+                      onClick={async () => {
+                        await handleValidate(detailRequest.id)
+                        setDetailRequest(null)
+                      }}
+                      disabled={validatingId === detailRequest.id}
+                    >
+                      {validatingId === detailRequest.id ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                      ) : (
+                        <CheckCircle2 className="mr-1 h-4 w-4" />
+                      )}
+                      Valider
+                    </Button>
+                  </DialogFooter>
+                )}
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
 
