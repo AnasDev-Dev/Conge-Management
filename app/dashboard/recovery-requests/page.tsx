@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -75,6 +76,8 @@ const PERIOD_DISPLAY_LABELS: Record<string, string> = {
 
 export default function RecoveryRequestsPage() {
   const { user } = useCurrentUser()
+  const { activeRole } = useCompanyContext()
+  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [requests, setRequests] = useState<RecoveryRequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -102,8 +105,8 @@ export default function RecoveryRequestsPage() {
   // Validating state
   const [validatingId, setValidatingId] = useState<number | null>(null)
 
-  const isManager = user ? MANAGER_ROLES.includes(user.role) : false
-  const isEmployee = user?.role === 'EMPLOYEE'
+  const isManager = MANAGER_ROLES.includes(effectiveRole)
+  const isEmployee = effectiveRole === 'EMPLOYEE'
 
   // Auto-calculate days from period
   const calculatedDays = useMemo(() => {
@@ -114,7 +117,7 @@ export default function RecoveryRequestsPage() {
   useEffect(() => {
     if (user) {
       loadRequests()
-      if (MANAGER_ROLES.includes(user.role)) {
+      if (MANAGER_ROLES.includes(effectiveRole)) {
         loadEmployees()
       }
     }

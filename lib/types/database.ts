@@ -249,6 +249,8 @@ export interface UserCompanyRole {
   company_id: number
   role: UserRole
   is_active: boolean
+  is_home: boolean
+  department_id: number | null
   created_at: string
 }
 

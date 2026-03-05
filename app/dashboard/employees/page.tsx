@@ -11,6 +11,7 @@ import { LeaveRequest, Utilisateur } from '@/lib/types/database'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Calendar, ChevronRight, Clock, Search, UserPlus, Users } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { AddEmployeeDialog } from '@/components/add-employee-dialog'
 
 type EmployeeRow = Pick<
@@ -95,15 +96,24 @@ export default function EmployeesPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   const { user: currentUser } = useCurrentUser()
-  const canCreateEmployee = currentUser && currentUser.role !== 'EMPLOYEE'
+  const { activeRole, activeCompany } = useCompanyContext()
+  const effectiveRole = activeRole || currentUser?.role || 'EMPLOYEE'
+  const canCreateEmployee = currentUser && effectiveRole !== 'EMPLOYEE'
 
   const loadData = useCallback(async () => {
     try {
+      let empQuery = supabase
+        .from('utilisateurs')
+        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, company_id')
+        .order('full_name')
+
+      // Filter by active company if set
+      if (activeCompany) {
+        empQuery = empQuery.eq('company_id', activeCompany.id)
+      }
+
       const [{ data: employeeData, error: employeeError }, { data: requestData, error: requestError }] = await Promise.all([
-        supabase
-          .from('utilisateurs')
-          .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation')
-          .order('full_name'),
+        empQuery,
         supabase.from('leave_requests').select('id, user_id, status, days_count, created_at'),
       ])
 
@@ -117,7 +127,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false)
     }
-  }, [supabase])
+  }, [supabase, activeCompany])
 
   useEffect(() => {
     loadData()

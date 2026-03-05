@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { MANAGER_ROLES } from '@/lib/constants'
 import {
   LayoutDashboard,
@@ -29,7 +28,7 @@ import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { CompanySwitcher } from '@/components/company-switcher'
-import { CompanyProvider } from '@/lib/hooks/use-company-context'
+import { CompanyProvider, useCompanyContext } from '@/lib/hooks/use-company-context'
 
 export default function DashboardLayout({
   children,
@@ -43,7 +42,6 @@ export default function DashboardLayout({
     const userStr = localStorage.getItem('user')
     return userStr ? (JSON.parse(userStr) as Utilisateur) : null
   })
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sessionChecked, setSessionChecked] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
@@ -126,12 +124,27 @@ export default function DashboardLayout({
     )
   }
 
-  const managerRoles = MANAGER_ROLES
-  const isManager = user && managerRoles.includes(user.role)
+  return (
+    <CompanyProvider userId={user.id}>
+      <DashboardShell user={user} onLogout={handleLogout}>
+        {children}
+      </DashboardShell>
+    </CompanyProvider>
+  )
+}
+
+function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLogout: () => void; children: React.ReactNode }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const pathname = usePathname()
+  const { activeRole, activeCompany } = useCompanyContext()
+
+  // Use company-aware role: activeRole from company context, fallback to user.role
+  const effectiveRole = activeRole || user.role
+  const isManager = MANAGER_ROLES.includes(effectiveRole)
 
   const navigation = [
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Employés', href: '/dashboard/employees', icon: Users },
+    { name: 'Employes', href: '/dashboard/employees', icon: Users },
     ...(isManager ? [
       { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck },
       { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList },
@@ -139,9 +152,9 @@ export default function DashboardLayout({
     { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
     { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
     { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
-    { name: 'Crédit Récup.', href: '/dashboard/recovery-requests', icon: RotateCcw },
+    { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw },
     ...(isManager ? [
-      { name: 'Paramètres', href: '/dashboard/settings', icon: Settings },
+      { name: 'Parametres', href: '/dashboard/settings', icon: Settings },
       { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck },
     ] : []),
     { name: 'Profil', href: '/dashboard/profile', icon: User },
@@ -154,7 +167,6 @@ export default function DashboardLayout({
   }
 
   return (
-    <CompanyProvider userId={user.id}>
     <div className="min-h-[100dvh] bg-[var(--shell-bg)] p-0 md:h-[100dvh] md:overflow-hidden md:p-5">
       <div className="surface-shell mx-auto min-h-[100dvh] max-w-[1600px] rounded-none p-0 md:h-[calc(100dvh-2.5rem)] md:overflow-hidden md:rounded-[2rem] md:p-3">
         <div className="flex min-h-full gap-0 md:h-full md:overflow-hidden md:gap-3">
@@ -178,7 +190,7 @@ export default function DashboardLayout({
                       className="h-9 w-9 object-contain"
                     />
                     <div>
-                      <p className="text-sm font-semibold tracking-tight">FRMG</p>
+                      <p className="text-sm font-semibold tracking-tight">{activeCompany?.name || 'FRMG'}</p>
                       <p className="text-xs text-muted-foreground">Gestion des conges</p>
                     </div>
                   </div>
@@ -191,7 +203,7 @@ export default function DashboardLayout({
             </div>
           </header>
 
-	          <aside
+          <aside
             className={cn(
               'fixed inset-y-0 left-0 z-50 w-[300px] px-3 py-3 transition-transform duration-200 ease-out lg:relative lg:inset-auto lg:h-full lg:translate-x-0 lg:w-[290px] lg:px-0 lg:py-0',
               sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -261,7 +273,7 @@ export default function DashboardLayout({
                   </div>
                 </div>
                 <button
-                  onClick={handleLogout}
+                  onClick={onLogout}
                   className="flex w-full items-center gap-2.5 rounded-2xl border border-transparent px-3.5 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border hover:bg-accent hover:text-foreground"
                 >
                   <LogOut className="h-4 w-4" />
@@ -288,6 +300,5 @@ export default function DashboardLayout({
         />
       )}
     </div>
-    </CompanyProvider>
   )
 }
