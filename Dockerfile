@@ -15,9 +15,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
-# Allow connections to self-hosted Supabase with self-signed/invalid SSL certificates.
-# The Next.js server needs this to proxy browser requests and for SSR/middleware auth checks.
-ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
