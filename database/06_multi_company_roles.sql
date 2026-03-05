@@ -123,8 +123,7 @@ $$;
 -- STEP 4: REWRITE get_my_role() — company-aware with fallback
 -- ==============================================================================
 
-DROP FUNCTION IF EXISTS public.get_my_role() CASCADE;
-
+-- NOTE: Using CREATE OR REPLACE (not DROP CASCADE) to preserve RLS policies
 CREATE OR REPLACE FUNCTION public.get_my_role()
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -166,8 +165,6 @@ $$;
 -- STEP 5: REWRITE is_manager() — delegates to company-aware get_my_role()
 -- ==============================================================================
 
-DROP FUNCTION IF EXISTS public.is_manager() CASCADE;
-
 CREATE OR REPLACE FUNCTION public.is_manager()
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -184,8 +181,6 @@ $$;
 -- ==============================================================================
 -- STEP 6: REWRITE can_manage_user() — company + department scoped
 -- ==============================================================================
-
-DROP FUNCTION IF EXISTS public.can_manage_user(UUID) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.can_manage_user(target_user_id UUID)
 RETURNS BOOLEAN

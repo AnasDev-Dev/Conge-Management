@@ -47,7 +47,7 @@ export default function NewRequestPage() {
     searchParams.get('tab') === 'mission' ? 'mission' : 'conge'
   )
   const { user } = useCurrentUser()
-  const { activeRole } = useCompanyContext()
+  const { activeRole, activeCompany, isHome } = useCompanyContext()
   const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [currentStep, setCurrentStep] = useState(1)
   const [requestType, setRequestType] = useState<'CONGE' | 'RECUPERATION'>('CONGE')
@@ -126,11 +126,19 @@ export default function NewRequestPage() {
     if (user) {
       loadEmployees(user)
       loadColleagues(user.department_id)
-      const companyId = user.company_id || undefined
+      // Use active company for holidays/working days (not home company)
+      const companyId = activeCompany?.id || user.company_id || undefined
       fetchHolidays(companyId).then(setHolidays)
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
-  }, [user])
+  }, [user, activeCompany?.id])
+
+  // Auto-select "on behalf" mode when manager is on non-home company
+  useEffect(() => {
+    if (!isHome && isManager && !onBehalfOfId) {
+      setOnBehalfOfId('_selecting')
+    }
+  }, [isHome, isManager])
 
   // Fetch used/pending CONGE days for the target employee (for monthly accrual)
   useEffect(() => {
@@ -169,8 +177,13 @@ export default function NewRequestPage() {
         .eq('is_active', true)
         .order('full_name')
 
+      // Filter by active company
+      if (activeCompany?.id) {
+        query = query.eq('company_id', activeCompany.id)
+      }
+
       // CHEF_SERVICE can only create on behalf of their department
-      if (userData.role === 'CHEF_SERVICE' && userData.department_id) {
+      if (effectiveRole === 'CHEF_SERVICE' && userData.department_id) {
         query = query.eq('department_id', userData.department_id)
       }
 
@@ -527,15 +540,24 @@ export default function NewRequestPage() {
                 <CardContent>
                   <div className="space-y-4">
                     {/* Toggle: self vs on-behalf */}
+                    {/* When on non-home company, manager can only create on behalf of employees */}
+                    {!isHome && isManager && activeTab === 'conge' && (
+                      <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        Votre solde de conge est sur votre societe d&apos;origine. Vous pouvez creer des demandes pour les employes de {activeCompany?.name || 'cette societe'}.
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => { setOnBehalfOfId(''); setEmployeeSearch('') }}
+                        disabled={!isHome && isManager}
                         className={cn(
                           'rounded-2xl border-2 p-3 sm:p-4 text-left transition-all',
                           !onBehalfOfId
                             ? 'border-primary/50 bg-primary/5'
-                            : 'border-border/70 hover:border-border hover:bg-accent/30'
+                            : 'border-border/70 hover:border-border hover:bg-accent/30',
+                          !isHome && isManager && 'cursor-not-allowed opacity-50'
                         )}
                       >
                         <p className="font-semibold text-xs sm:text-sm">Pour moi-meme</p>

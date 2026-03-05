@@ -15,6 +15,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  Home,
 } from "lucide-react";
 import Link from "next/link";
 import { Utilisateur } from "@/lib/types/database";
@@ -219,6 +220,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
+      {!isHome && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          <Home className="h-3.5 w-3.5 shrink-0" />
+          Les soldes affiches sont ceux de votre societe d&apos;origine.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <Card className="border-border/70">
           <CardContent className="p-3 sm:p-4">
