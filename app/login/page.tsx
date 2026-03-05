@@ -70,7 +70,12 @@ export default function LoginPage() {
       router.refresh()
     } catch (error) {
       console.error('Login error:', error)
-      toast.error("Une erreur s'est produite lors de la connexion")
+      const message = error instanceof Error ? error.message : ''
+      if (message.includes('fetch') || message.includes('network') || message.includes('Failed')) {
+        toast.error("Erreur de connexion au serveur. Veuillez vérifier votre connexion internet et réessayer.")
+      } else {
+        toast.error("Une erreur s'est produite lors de la connexion")
+      }
     } finally {
       setIsLoading(false)
     }
