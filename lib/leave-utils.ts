@@ -33,13 +33,15 @@ export async function fetchWorkingDays(companyId?: number): Promise<WorkingDays>
   const result = data || {
     id: 0,
     company_id: null,
-    monday: true,
-    tuesday: true,
-    wednesday: true,
-    thursday: true,
-    friday: true,
-    saturday: true,
-    sunday: false,
+    category_id: null,
+    monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+    monday_morning: true, monday_afternoon: true,
+    tuesday_morning: true, tuesday_afternoon: true,
+    wednesday_morning: true, wednesday_afternoon: true,
+    thursday_morning: true, thursday_afternoon: true,
+    friday_morning: true, friday_afternoon: true,
+    saturday_morning: true, saturday_afternoon: false,
+    sunday_morning: false, sunday_afternoon: false,
   }
   cachedWorkingDays = result as WorkingDays
   return cachedWorkingDays
@@ -112,27 +114,83 @@ export function isWorkingDay(
   return !isHoliday(date, holidays)
 }
 
+/**
+ * Get the working value of a day (0, 0.5, or 1) considering half-day config.
+ */
+export function getDayWorkValue(
+  date: Date,
+  config: WorkingDays,
+  holidays: Holiday[]
+): number {
+  if (!isWorkingDay(date, config, holidays)) return 0
+
+  const dow = date.getDay()
+
+  const morning =
+    dow === 0 ? config.sunday_morning :
+    dow === 1 ? config.monday_morning :
+    dow === 2 ? config.tuesday_morning :
+    dow === 3 ? config.wednesday_morning :
+    dow === 4 ? config.thursday_morning :
+    dow === 5 ? config.friday_morning :
+    dow === 6 ? config.saturday_morning :
+    false
+
+  const afternoon =
+    dow === 0 ? config.sunday_afternoon :
+    dow === 1 ? config.monday_afternoon :
+    dow === 2 ? config.tuesday_afternoon :
+    dow === 3 ? config.wednesday_afternoon :
+    dow === 4 ? config.thursday_afternoon :
+    dow === 5 ? config.friday_afternoon :
+    dow === 6 ? config.saturday_afternoon :
+    false
+
+  // If half-day columns are not set (null/undefined), fall back to full day
+  const m = morning ?? true
+  const a = afternoon ?? true
+
+  let value = 0
+  if (m) value += 0.5
+  if (a) value += 0.5
+  return value
+}
+
 // ─── Core day counting ────────────────────────────────────
 
 /**
  * Counts working days between start and end (inclusive),
- * respecting company working days config and excluding holidays.
+ * respecting company working days config, excluding holidays,
+ * and supporting half-day start/end.
  */
 export function countWorkingDays(
   start: string,
   end: string,
   config: WorkingDays,
-  holidays: Holiday[]
+  holidays: Holiday[],
+  startHalfDay: string = 'FULL',
+  endHalfDay: string = 'FULL'
 ): number {
   if (!start || !end) return 0
   let days = 0
   let current = new Date(start + 'T00:00:00')
   const last = new Date(end + 'T00:00:00')
+  const startDate = new Date(start + 'T00:00:00')
 
   while (current <= last) {
-    if (isWorkingDay(current, config, holidays)) {
-      days++
+    let dayValue = getDayWorkValue(current, config, holidays)
+
+    if (dayValue > 0) {
+      // Apply half-day restrictions for start/end dates
+      if (current.getTime() === startDate.getTime() && startHalfDay === 'AFTERNOON') {
+        dayValue = Math.max(dayValue - 0.5, 0)
+      }
+      if (current.getTime() === last.getTime() && endHalfDay === 'MORNING') {
+        dayValue = Math.max(dayValue - 0.5, 0)
+      }
     }
+
+    days += dayValue
     current = addDays(current, 1)
   }
   return days
@@ -191,6 +249,45 @@ export function nextWorkingDay(
   return d
 }
 
+// ─── Monthly Balance Accrual (Req #5) ────────────────────
+
+export interface MonthlyAccrualInfo {
+  annualTotal: number        // RH-set balance_conge (e.g. 22)
+  currentMonth: number       // 1-12
+  monthlyRate: number        // annualTotal / 12
+  cumulativeEarned: number   // monthlyRate * currentMonth
+  daysUsed: number           // approved CONGE days this year
+  daysPending: number        // pending CONGE days this year
+  availableNow: number       // cumulativeEarned - daysUsed - daysPending (what can be requested)
+}
+
+/**
+ * Calculates the monthly accrual balance for an employee.
+ * The RH-set balance_conge is the annual total.
+ * Available balance = (annualTotal / 12 * currentMonth) - daysUsed - daysPending
+ */
+export function calculateMonthlyAccrual(
+  annualTotal: number,
+  daysUsed: number = 0,
+  daysPending: number = 0,
+  month?: number
+): MonthlyAccrualInfo {
+  const currentMonth = month ?? (new Date().getMonth() + 1) // 1-based
+  const monthlyRate = Math.round((annualTotal / 12) * 100) / 100
+  const cumulativeEarned = Math.round(monthlyRate * currentMonth * 100) / 100
+  const availableNow = Math.max(cumulativeEarned - daysUsed - daysPending, 0)
+
+  return {
+    annualTotal,
+    currentMonth,
+    monthlyRate,
+    cumulativeEarned,
+    daysUsed,
+    daysPending,
+    availableNow,
+  }
+}
+
 // ─── Seniority & Entitlement (mirrors SQL RPC for frontend display) ───
 
 export interface SeniorityInfo {
@@ -204,9 +301,10 @@ export interface SeniorityInfo {
 /**
  * Moroccan law entitlement based on hire date.
  * Uses jours ouvrables: 18 days/year base + 1.5/5yr seniority, max 30.
+ * Supports category-based annual leave days (Req #3).
  */
-export function calculateSeniority(hireDateStr: string | null): SeniorityInfo {
-  const baseDays = 18 // jours ouvrables (Article 231)
+export function calculateSeniority(hireDateStr: string | null, categoryAnnualDays?: number): SeniorityInfo {
+  const baseDays = categoryAnnualDays ?? 18 // category-based or default (Article 231)
   const maxDays = 30  // max jours ouvrables (Article 232)
 
   if (!hireDateStr) {

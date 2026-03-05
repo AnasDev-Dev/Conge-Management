@@ -19,11 +19,12 @@ import Link from "next/link";
 import { Utilisateur } from "@/lib/types/database";
 import {
   MANAGER_ROLES,
+  MAX_LEAVE_BALANCE,
   PENDING_STATUSES,
   getStatusClass,
   getStatusLabel,
 } from "@/lib/constants";
-import { calculateSeniority } from "@/lib/leave-utils";
+import { calculateSeniority, calculateMonthlyAccrual } from "@/lib/leave-utils";
 import {
   format,
   startOfMonth,
@@ -95,6 +96,9 @@ export default function DashboardPage() {
     annual_entitlement: number;
     days_used_this_year: number;
     days_pending: number;
+    monthly_accrued: number;
+    monthly_rate: number;
+    available_now: number;
   } | null>(null);
   const supabase = createClient();
 
@@ -222,23 +226,32 @@ export default function DashboardPage() {
               </p>
               <CalendarIcon className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
             </div>
-            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
-              {user.balance_conge}
-              {balanceInfo ? (
-                <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
-                  / {balanceInfo.annual_entitlement} jours
-                </span>
-              ) : (
-                <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
-                  jours
-                </span>
-              )}
-            </p>
+            {(() => {
+              const accrual = balanceInfo
+                ? { availableNow: balanceInfo.available_now, monthlyRate: balanceInfo.monthly_rate, cumulativeEarned: balanceInfo.monthly_accrued, annualTotal: user.balance_conge }
+                : calculateMonthlyAccrual(user.balance_conge)
+              return (
+                <>
+                  <p className={`mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'text-red-600' : ''}`}>
+                    {accrual.availableNow}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
+                      / {user.balance_conge} jours/an
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-xs">
+                    {accrual.monthlyRate}j/mois — Cumulé: {accrual.cumulativeEarned}j
+                  </p>
+                </>
+              )
+            })()}
+            {user.balance_conge >= MAX_LEAVE_BALANCE && (
+              <p className="mt-0.5 text-[10px] font-medium text-red-600 sm:text-xs">Maximum atteint (52j)</p>
+            )}
             <div className="mt-2.5 h-1.5 w-full rounded-full bg-muted">
               <div
-                className="h-1.5 rounded-full bg-foreground/75 transition-all"
+                className={`h-1.5 rounded-full transition-all ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'bg-red-500' : 'bg-foreground/75'}`}
                 style={{
-                  width: `${Math.min((user.balance_conge / (balanceInfo?.annual_entitlement || 18)) * 100, 100)}%`,
+                  width: `${Math.min(((balanceInfo?.monthly_accrued ?? calculateMonthlyAccrual(user.balance_conge).cumulativeEarned) / (user.balance_conge || 18)) * 100, 100)}%`,
                 }}
               />
             </div>

@@ -16,6 +16,7 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import Image from 'next/image'
 import { calculateSeniority } from '@/lib/leave-utils'
+import { MAX_LEAVE_BALANCE } from '@/lib/constants'
 
 export default function ProfilePage() {
   const { user } = useCurrentUser()
@@ -338,11 +339,14 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-2xl border border-primary/25 bg-primary/9 p-6">
+            <div className={`rounded-2xl border p-6 ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'border-red-300 bg-red-50/30' : 'border-primary/25 bg-primary/9'}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-foreground">CONGÉ Annuel</p>
-                  <p className="mt-2 text-3xl font-bold text-primary">{user.balance_conge}</p>
+                  <p className={`mt-2 text-3xl font-bold ${user.balance_conge >= MAX_LEAVE_BALANCE ? 'text-red-600' : 'text-primary'}`}>{user.balance_conge}</p>
+                  {user.balance_conge >= MAX_LEAVE_BALANCE && (
+                    <p className="mt-1 text-sm font-medium text-red-600">Maximum atteint (52 jours)</p>
+                  )}
                   <p className="mt-1 text-sm text-muted-foreground">jours disponibles</p>
                 </div>
                 <Calendar className="h-12 w-12 text-primary/30" />

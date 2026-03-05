@@ -49,6 +49,7 @@ export interface Utilisateur {
   username: string | null
   company_id: number | null
   department_id: number | null
+  category_id: number | null
   job_title: string | null
   role: UserRole
   is_active: boolean
@@ -87,6 +88,9 @@ export interface LeaveRequest {
   status: LeaveStatus
   reason: string | null
   comments: string | null
+  start_half_day: 'FULL' | 'MORNING' | 'AFTERNOON'
+  end_half_day: 'FULL' | 'MORNING' | 'AFTERNOON'
+  is_mixed: boolean
   balance_before: number | null
   balance_conge_used: number | null
   balance_recuperation_used: number | null
@@ -142,6 +146,7 @@ export interface Holiday {
 export interface WorkingDays {
   id: number
   company_id: number | null
+  category_id: number | null
   monday: boolean
   tuesday: boolean
   wednesday: boolean
@@ -149,6 +154,99 @@ export interface WorkingDays {
   friday: boolean
   saturday: boolean
   sunday: boolean
+  // Half-day columns (Req #2)
+  monday_morning: boolean
+  monday_afternoon: boolean
+  tuesday_morning: boolean
+  tuesday_afternoon: boolean
+  wednesday_morning: boolean
+  wednesday_afternoon: boolean
+  thursday_morning: boolean
+  thursday_afternoon: boolean
+  friday_morning: boolean
+  friday_afternoon: boolean
+  saturday_morning: boolean
+  saturday_afternoon: boolean
+  sunday_morning: boolean
+  sunday_afternoon: boolean
+}
+
+// Req #1: Personnel Categories
+export interface PersonnelCategory {
+  id: number
+  company_id: number | null
+  name: string
+  description: string | null
+  annual_leave_days: number
+  created_at: string
+  updated_at: string
+}
+
+// Req #5: Monthly Balance Accrual
+export interface MonthlyBalanceAccrual {
+  id: number
+  user_id: string
+  year: number
+  month: number
+  accrued_days: number
+  cumulative_days: number
+  annual_entitlement: number
+  created_at: string
+}
+
+// Req #8: Recovery Requests
+export type RecoveryWorkType = 'JOUR_FERIE' | 'JOUR_REPOS' | 'SAMEDI' | 'DIMANCHE'
+
+export interface RecoveryRequest {
+  id: number
+  user_id: string
+  days: number
+  date_worked: string
+  work_type: RecoveryWorkType
+  reason: string | null
+  status: 'PENDING' | 'VALIDATED' | 'REJECTED'
+  validated_by: string | null
+  validated_at: string | null
+  rejection_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RecoveryRequestWithRelations extends RecoveryRequest {
+  user?: Utilisateur
+  validator?: Utilisateur
+}
+
+// Req #9: Leave Request Details (combined requests)
+export interface LeaveRequestDetail {
+  id: number
+  request_id: number
+  date: string
+  type: 'CONGE' | 'RECUPERATION'
+  half_day: 'FULL' | 'MORNING' | 'AFTERNOON'
+}
+
+// Req #10: Recovery Balance Lots
+export interface RecoveryBalanceLot {
+  id: number
+  user_id: string
+  days: number
+  remaining_days: number
+  year_acquired: number
+  expires_at: string
+  expired: boolean
+  source_request_id: number | null
+  created_at: string
+}
+
+// Req #12: User Company Roles
+export interface UserCompanyRole {
+  id: number
+  user_id: string
+  company_id: number
+  role: UserRole
+  is_active: boolean
+  created_at: string
 }
 
 export interface MissionRequest {

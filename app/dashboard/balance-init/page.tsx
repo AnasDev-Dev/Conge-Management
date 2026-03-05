@@ -24,7 +24,8 @@ import {
   Search,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
-import { calculateSeniority } from '@/lib/leave-utils'
+import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
+import { MAX_LEAVE_BALANCE } from '@/lib/constants'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -53,13 +54,25 @@ export default function BalanceInitPage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
+  // Track used/pending CONGE days per employee for monthly accrual display
+  const [usageByUser, setUsageByUser] = useState<Map<string, { used: number; pending: number }>>(new Map())
+
   const loadEmployees = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('utilisateurs')
-        .select('id, full_name, job_title, hire_date, balance_conge, department_id, departments(name)')
-        .eq('is_active', true)
-        .order('full_name')
+      const currentYear = new Date().getFullYear()
+      const [{ data, error }, { data: requestData }] = await Promise.all([
+        supabase
+          .from('utilisateurs')
+          .select('id, full_name, job_title, hire_date, balance_conge, department_id, departments(name)')
+          .eq('is_active', true)
+          .order('full_name'),
+        supabase
+          .from('leave_requests')
+          .select('user_id, status, days_count, request_type')
+          .eq('request_type', 'CONGE')
+          .gte('start_date', `${currentYear}-01-01`)
+          .lte('start_date', `${currentYear}-12-31`),
+      ])
 
       if (error) throw error
       const normalized = (data || []).map((row: Record<string, unknown>) => ({
@@ -67,6 +80,19 @@ export default function BalanceInitPage() {
         departments: Array.isArray(row.departments) ? row.departments[0] || null : row.departments,
       })) as EmployeeWithDept[]
       setEmployees(normalized)
+
+      // Build usage map
+      const usage = new Map<string, { used: number; pending: number }>()
+      for (const req of requestData || []) {
+        const current = usage.get(req.user_id) || { used: 0, pending: 0 }
+        if (req.status === 'APPROVED') {
+          current.used += req.days_count || 0
+        } else if (['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'].includes(req.status)) {
+          current.pending += req.days_count || 0
+        }
+        usage.set(req.user_id, current)
+      }
+      setUsageByUser(usage)
     } catch (error) {
       console.error('Error loading employees:', error)
       toast.error('Erreur lors du chargement des employés')
@@ -86,6 +112,16 @@ export default function BalanceInitPage() {
     }
     return map
   }, [employees])
+
+  // Monthly accrual info per employee
+  const accrualMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof calculateMonthlyAccrual>>()
+    for (const emp of employees) {
+      const usage = usageByUser.get(emp.id) || { used: 0, pending: 0 }
+      map.set(emp.id, calculateMonthlyAccrual(emp.balance_conge, usage.used, usage.pending))
+    }
+    return map
+  }, [employees, usageByUser])
 
   const filteredEmployees = useMemo(() => {
     const tokens = normalizeText(searchTerm).split(/\s+/).filter(Boolean)
@@ -115,7 +151,8 @@ export default function BalanceInitPage() {
     if (value === '' || isNaN(parsed)) {
       next.delete(employeeId)
     } else {
-      next.set(employeeId, parsed)
+      // Cap at MAX_LEAVE_BALANCE (52 days) - Req #7
+      next.set(employeeId, Math.min(parsed, MAX_LEAVE_BALANCE))
     }
     setEditedBalances(next)
   }
@@ -144,26 +181,19 @@ export default function BalanceInitPage() {
       if (!emp || newBalance === emp.balance_conge) continue
 
       try {
-        // Update the employee balance
-        const { error: updateError } = await supabase
-          .from('utilisateurs')
-          .update({ balance_conge: newBalance, updated_at: new Date().toISOString() })
-          .eq('id', id)
+        // Use the set_initial_balance RPC which enforces 52-day cap and records audit trail
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('set_initial_balance', {
+          p_user_id: id,
+          p_balance: newBalance,
+          p_year: currentYear,
+          p_reason: `Initialisation solde ${currentYear} par RH`,
+        })
 
-        if (updateError) throw updateError
+        if (rpcError) throw rpcError
 
-        // Record in balance history for audit trail
-        const { error: historyError } = await supabase
-          .from('leave_balance_history')
-          .insert({
-            user_id: id,
-            type: 'CONGE',
-            amount: newBalance,
-            reason: `Initialisation solde ${currentYear} par RH (ancien solde: ${emp.balance_conge})`,
-            year: currentYear,
-          })
-
-        if (historyError) console.error('History insert error:', historyError)
+        if (rpcResult?.capped) {
+          toast.warning(`${emp.full_name}: solde plafonné à 52 jours`)
+        }
 
         successCount++
       } catch (error) {
@@ -182,7 +212,7 @@ export default function BalanceInitPage() {
   }
 
   // Shared sticky-column classes
-  const stickyColBase = 'sticky left-0 z-[5] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border/40'
+  const stickyColBase = 'sticky left-0 z-[5] after:absolute after:-right-[6px] after:top-0 after:bottom-0 after:w-[6px] after:bg-gradient-to-r after:from-black/[0.06] after:to-transparent after:pointer-events-none dark:after:from-black/20'
 
   return (
     <div className="flex min-h-full flex-col gap-3 sm:gap-4">
@@ -192,7 +222,7 @@ export default function BalanceInitPage() {
           Initialisation des Soldes
         </h1>
         <p className="mt-1 text-xs text-muted-foreground sm:text-sm md:text-base">
-          Attribuez le solde de congé de chaque employé pour {new Date().getFullYear()}.
+          Attribuez le solde annuel de congé. Le systeme calcule automatiquement le solde mensuel disponible.
         </p>
       </div>
 
@@ -286,22 +316,43 @@ export default function BalanceInitPage() {
                   </div>
 
                   {/* Stats row */}
-                  <div className="mt-2.5 grid grid-cols-3 gap-1.5">
-                    <div className="rounded-lg bg-blue-50/60 px-2 py-1.5 ring-1 ring-inset ring-blue-100 dark:bg-blue-950/20 dark:ring-blue-900/30">
-                      <p className="text-[9px] uppercase tracking-wide text-blue-500 dark:text-blue-400">Ancienneté</p>
-                      <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
-                        {seniority.yearsOfService > 0 ? `${seniority.yearsOfService.toFixed(1)} an` : '—'}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-violet-50/60 px-2 py-1.5 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/20 dark:ring-violet-900/30">
-                      <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Droit/an</p>
-                      <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">{seniority.totalEntitlement} j</p>
-                    </div>
-                    <div className="rounded-lg bg-slate-50/80 px-2 py-1.5 ring-1 ring-inset ring-slate-200/70 dark:bg-slate-800/20 dark:ring-slate-700/30">
-                      <p className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Actuel</p>
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{emp.balance_conge} j</p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const accrual = accrualMap.get(emp.id)!
+                    return (
+                      <div className="mt-2.5 space-y-1.5">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <div className="rounded-lg bg-blue-50/60 px-2 py-1.5 ring-1 ring-inset ring-blue-100 dark:bg-blue-950/20 dark:ring-blue-900/30">
+                            <p className="text-[9px] uppercase tracking-wide text-blue-500 dark:text-blue-400">Ancienneté</p>
+                            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                              {seniority.yearsOfService > 0 ? `${seniority.yearsOfService.toFixed(1)} an` : '—'}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-violet-50/60 px-2 py-1.5 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/20 dark:ring-violet-900/30">
+                            <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Droit/an</p>
+                            <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">{seniority.totalEntitlement} j</p>
+                          </div>
+                          <div className="rounded-lg bg-slate-50/80 px-2 py-1.5 ring-1 ring-inset ring-slate-200/70 dark:bg-slate-800/20 dark:ring-slate-700/30">
+                            <p className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Solde RH</p>
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{emp.balance_conge} j</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <div className="rounded-lg bg-emerald-50/60 px-2 py-1.5 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/20 dark:ring-emerald-900/30">
+                            <p className="text-[9px] uppercase tracking-wide text-emerald-500 dark:text-emerald-400">/mois</p>
+                            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{accrual.monthlyRate} j</p>
+                          </div>
+                          <div className="rounded-lg bg-teal-50/60 px-2 py-1.5 ring-1 ring-inset ring-teal-100 dark:bg-teal-950/20 dark:ring-teal-900/30">
+                            <p className="text-[9px] uppercase tracking-wide text-teal-500 dark:text-teal-400">Cumulé</p>
+                            <p className="text-xs font-semibold text-teal-700 dark:text-teal-300">{accrual.cumulativeEarned} j</p>
+                          </div>
+                          <div className="rounded-lg bg-cyan-50/60 px-2 py-1.5 ring-1 ring-inset ring-cyan-100 dark:bg-cyan-950/20 dark:ring-cyan-900/30">
+                            <p className="text-[9px] uppercase tracking-wide text-cyan-500 dark:text-cyan-400">Disponible</p>
+                            <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">{accrual.availableNow} j</p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Input row */}
                   <div className="mt-2.5 flex items-center gap-2">
@@ -310,14 +361,20 @@ export default function BalanceInitPage() {
                       type="number"
                       step="0.5"
                       min="0"
+                      max={MAX_LEAVE_BALANCE}
                       value={getDisplayBalance(emp)}
                       onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
                       className={`h-9 flex-1 text-center text-sm font-medium transition-all ${
                         modified
                           ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30 dark:border-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400'
-                          : 'border-border/60'
+                          : parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE
+                            ? 'border-red-400 text-red-600'
+                            : 'border-border/60'
                       }`}
                     />
+                    {parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE && (
+                      <span className="shrink-0 text-[10px] font-semibold text-red-600">max</span>
+                    )}
                   </div>
                 </div>
               )
@@ -327,17 +384,20 @@ export default function BalanceInitPage() {
           {/* ── Desktop table with frozen first column ── */}
           <div className="hidden flex-1 md:block md:min-h-0">
             <div className="h-full overflow-auto rounded-2xl border border-border/70 overscroll-contain">
-              <table className="w-full min-w-[900px] border-separate border-spacing-0">
+              <table className="w-full min-w-[1100px] border-separate border-spacing-0">
                 <thead className="sticky top-0 z-20">
                   <tr className="text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-                    <th className={`${stickyColBase} z-30 w-[220px] min-w-[180px] whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold`}>
+                    <th className={`${stickyColBase} z-30 w-[220px] min-w-[180px] whitespace-nowrap border-b border-border/50 bg-muted px-4 py-3 font-semibold`}>
                       Employé
                     </th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold">Département</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold">Embauche</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Ancienneté</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Droit/an</th>
-                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Solde actuel</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Solde RH</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">/mois</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Cumulé</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Disponible</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Nouveau solde</th>
                   </tr>
                 </thead>
@@ -353,10 +413,17 @@ export default function BalanceInitPage() {
                         ? 'bg-card'
                         : 'bg-muted/20'
 
+                    // Opaque backgrounds for frozen column so scrolling content doesn't show through
+                    const stickyBg = modified
+                      ? 'bg-emerald-50 dark:bg-emerald-950'
+                      : isEven
+                        ? 'bg-card'
+                        : 'bg-muted'
+
                     return (
-                      <tr key={emp.id} className={`transition-colors hover:bg-muted/40 ${rowBg}`}>
+                      <tr key={emp.id} className={`group transition-colors hover:bg-muted/40 ${rowBg}`}>
                         {/* Frozen name column */}
-                        <td className={`${stickyColBase} border-b border-border/30 px-4 py-3 align-middle ${rowBg}`}>
+                        <td className={`${stickyColBase} border-b border-border/30 px-4 py-3 align-middle ${stickyBg} group-hover:bg-muted`}>
                           <p className="font-medium text-foreground text-sm leading-tight">{emp.full_name}</p>
                           <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{emp.job_title || '—'}</p>
                         </td>
@@ -391,21 +458,51 @@ export default function BalanceInitPage() {
                             {emp.balance_conge} j
                           </span>
                         </td>
+                        {(() => {
+                          const accrual = accrualMap.get(emp.id)!
+                          return (
+                            <>
+                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                                <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20">
+                                  {accrual.monthlyRate} j
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                                <span className="inline-flex items-center rounded-md bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-950/30 dark:text-teal-400 dark:ring-teal-500/20">
+                                  {accrual.cumulativeEarned} j
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                                <span className="inline-flex items-center rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20">
+                                  {accrual.availableNow} j
+                                </span>
+                              </td>
+                            </>
+                          )
+                        })()}
                         <td className="border-b border-border/30 px-4 py-2.5 align-middle">
                           <div className="flex items-center justify-center gap-2">
                             <Input
                               type="number"
                               step="0.5"
                               min="0"
+                              max={MAX_LEAVE_BALANCE}
                               value={getDisplayBalance(emp)}
                               onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
                               className={`h-9 w-24 text-center font-medium transition-all ${
                                 modified
                                   ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30 dark:border-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20'
-                                  : 'border-border/60'
+                                  : parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE
+                                    ? 'border-red-400 text-red-600 ring-1 ring-red-300/30'
+                                    : 'border-border/60'
                               }`}
                             />
-                            {modified && (
+                            {parseFloat(getDisplayBalance(emp)) >= MAX_LEAVE_BALANCE && (
+                              <Badge className="border-0 bg-red-100 text-red-700 text-[10px] px-1.5 dark:bg-red-950/40 dark:text-red-400">
+                                max
+                              </Badge>
+                            )}
+                            {modified && parseFloat(getDisplayBalance(emp)) < MAX_LEAVE_BALANCE && (
                               <Badge className="border-0 bg-emerald-100 text-emerald-700 text-[10px] px-1.5 dark:bg-emerald-950/40 dark:text-emerald-400">
                                 modifié
                               </Badge>
