@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, DragEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -75,6 +76,8 @@ function inferPreRejectStatus(r: RequestWithUser): string {
 
 export default function ValidationsPage() {
   const { user } = useCurrentUser()
+  const { activeRole } = useCompanyContext()
+  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [allRequests, setAllRequests] = useState<RequestWithUser[]>([])
   const [rejectedRequests, setRejectedRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -198,9 +201,9 @@ export default function ValidationsPage() {
   // Determine which stage the current user can act on
   const userActiveStage = useMemo(() => {
     if (!user) return null
-    if (user.role === 'ADMIN') return 'ALL'
-    return PIPELINE_STAGES.find(s => s.role === user.role) || null
-  }, [user])
+    if (effectiveRole === 'ADMIN') return 'ALL'
+    return PIPELINE_STAGES.find(s => s.role === effectiveRole) || null
+  }, [user, effectiveRole])
 
   const canActOnStage = useCallback((stageStatus: string): boolean => {
     if (!userActiveStage) return false
@@ -472,9 +475,9 @@ export default function ValidationsPage() {
 
   if (!user) return null
 
-  const isAdmin = user.role === 'ADMIN'
-  const isRh = user.role === 'RH'
-  const canValidate = !!PIPELINE_STAGES.find(s => s.role === user.role) || isAdmin
+  const isAdmin = effectiveRole === 'ADMIN'
+  const isRh = effectiveRole === 'RH'
+  const canValidate = !!PIPELINE_STAGES.find(s => s.role === effectiveRole) || isAdmin
 
   if (!canValidate) {
     return (

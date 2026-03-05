@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +47,8 @@ export default function NewRequestPage() {
     searchParams.get('tab') === 'mission' ? 'mission' : 'conge'
   )
   const { user } = useCurrentUser()
+  const { activeRole } = useCompanyContext()
+  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [currentStep, setCurrentStep] = useState(1)
   const [requestType, setRequestType] = useState<'CONGE' | 'RECUPERATION'>('CONGE')
   const [startDate, setStartDate] = useState('')
@@ -98,7 +101,7 @@ export default function NewRequestPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const isManager = user ? MANAGER_ROLES.includes(user.role) : false
+  const isManager = MANAGER_ROLES.includes(effectiveRole)
 
   // The target employee for the request (self or selected employee)
   const targetEmployee = useMemo((): EmployeeOption | null => {

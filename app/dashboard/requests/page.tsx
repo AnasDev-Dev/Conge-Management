@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +40,8 @@ const STATUS_TABS = [
 
 export default function RequestsPage() {
   const { user } = useCurrentUser()
+  const { activeRole } = useCompanyContext()
+  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [requests, setRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -71,7 +74,7 @@ export default function RequestsPage() {
     }
   }
 
-  const isManagerView = user ? MANAGER_ROLES.includes(user.role) : false
+  const isManagerView = MANAGER_ROLES.includes(effectiveRole)
 
   const filteredRequests = useMemo(() => {
     let filtered = requests

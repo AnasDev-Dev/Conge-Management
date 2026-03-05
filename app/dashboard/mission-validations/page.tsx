@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -57,6 +58,8 @@ const ALL_MISSION_STATUSES: string[] = MISSION_PIPELINE.map(s => s.status)
 
 export default function MissionValidationsPage() {
   const { user } = useCurrentUser()
+  const { activeRole } = useCompanyContext()
+  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [allMissions, setAllMissions] = useState<MissionWithUser[]>([])
   const [rejectedMissions, setRejectedMissions] = useState<MissionWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -155,8 +158,8 @@ export default function MissionValidationsPage() {
   // User permissions
   const userActiveStage = useMemo(() => {
     if (!user) return null
-    if (user.role === 'ADMIN') return 'ALL'
-    return MISSION_PIPELINE.find(s => s.role === user.role) || null
+    if (effectiveRole === 'ADMIN') return 'ALL'
+    return MISSION_PIPELINE.find(s => s.role === effectiveRole) || null
   }, [user])
 
   const canActOnStage = useCallback((stageStatus: string): boolean => {
@@ -291,7 +294,7 @@ export default function MissionValidationsPage() {
   const canUndoApprove = (mission: MissionWithUser): boolean => {
     if (!user) return false
     if (mission.initial_status && mission.status === mission.initial_status) return false
-    if (user.role === 'ADMIN') return true
+    if (effectiveRole === 'ADMIN') return true
     const stage = MISSION_PIPELINE.find(s => s.setsTo === mission.status || (mission.status === 'APPROVED' && s.setsTo === 'APPROVED'))
     if (!stage) return false
     const approvedByField = `approved_by_${stage.field}` as keyof MissionWithUser
@@ -300,7 +303,7 @@ export default function MissionValidationsPage() {
 
   const canUndoReject = (mission: MissionWithUser): boolean => {
     if (!user) return false
-    return user.role === 'ADMIN' || mission.rejected_by === user.id
+    return effectiveRole === 'ADMIN' || mission.rejected_by === user.id
   }
 
   // ── Render ──

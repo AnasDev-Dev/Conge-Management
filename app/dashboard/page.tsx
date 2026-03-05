@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
+import { useCompanyContext } from "@/lib/hooks/use-company-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -88,6 +89,7 @@ const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
+  const { activeRole, isHome } = useCompanyContext();
   const [requests, setRequests] = useState<DashboardRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -113,11 +115,13 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  const managerRoles = MANAGER_ROLES;
+  // Use company-aware role: activeRole from company context, fallback to user.role
+  const effectiveRole = activeRole || user?.role || 'EMPLOYEE';
+  const isManagerView = MANAGER_ROLES.includes(effectiveRole);
 
   const loadRequests = async (userData: Utilisateur) => {
     try {
-      const isManager = managerRoles.includes(userData.role);
+      const isManager = MANAGER_ROLES.includes(effectiveRole);
 
       let query = supabase
         .from("leave_requests")
@@ -179,8 +183,6 @@ export default function DashboardPage() {
   }, [calendarDays, requests]);
 
   if (!user) return null;
-
-  const isManagerView = managerRoles.includes(user.role);
 
   const pendingStatuses = PENDING_STATUSES;
   const pendingCount = requests.filter((r) =>
