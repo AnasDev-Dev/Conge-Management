@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.recovery_requests (
     days float NOT NULL,
     date_worked date NOT NULL,
     work_type public.recovery_work_type NOT NULL,
+    period text DEFAULT 'FULL' CHECK (period IN ('MORNING', 'AFTERNOON', 'FULL')),
     reason text,
     status text DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'VALIDATED', 'REJECTED')),
     validated_by uuid REFERENCES public.utilisateurs(id),
@@ -97,6 +98,9 @@ CREATE TABLE IF NOT EXISTS public.recovery_requests (
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL
 );
+
+-- Add period column if table already exists
+ALTER TABLE public.recovery_requests ADD COLUMN IF NOT EXISTS period text DEFAULT 'FULL' CHECK (period IN ('MORNING', 'AFTERNOON', 'FULL'));
 
 CREATE INDEX IF NOT EXISTS idx_recovery_requests_user ON public.recovery_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_recovery_requests_status ON public.recovery_requests(status);
@@ -655,7 +659,8 @@ CREATE OR REPLACE FUNCTION submit_recovery_request(
   p_days       FLOAT,
   p_date_worked DATE,
   p_work_type  TEXT,
-  p_reason     TEXT
+  p_reason     TEXT,
+  p_period     TEXT DEFAULT 'FULL'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -664,18 +669,35 @@ AS $$
 DECLARE
   v_user    utilisateurs%ROWTYPE;
   v_request recovery_requests%ROWTYPE;
+  v_days    FLOAT;
 BEGIN
   SELECT * INTO v_user FROM utilisateurs WHERE id = p_user_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Utilisateur introuvable';
   END IF;
 
-  IF p_days <= 0 OR p_days > 5 THEN
+  -- Validate period
+  IF p_period NOT IN ('MORNING', 'AFTERNOON', 'FULL') THEN
+    RAISE EXCEPTION 'La periode doit etre MORNING, AFTERNOON ou FULL';
+  END IF;
+
+  -- Auto-calculate days from period if p_days is 0 or NULL
+  IF p_days IS NULL OR p_days = 0 THEN
+    IF p_period = 'FULL' THEN
+      v_days := 1.0;
+    ELSE
+      v_days := 0.5;
+    END IF;
+  ELSE
+    v_days := p_days;
+  END IF;
+
+  IF v_days <= 0 OR v_days > 5 THEN
     RAISE EXCEPTION 'Le nombre de jours doit etre entre 0.5 et 5';
   END IF;
 
-  INSERT INTO recovery_requests (user_id, days, date_worked, work_type, reason)
-  VALUES (p_user_id, p_days, p_date_worked, p_work_type::recovery_work_type, p_reason)
+  INSERT INTO recovery_requests (user_id, days, date_worked, work_type, period, reason)
+  VALUES (p_user_id, v_days, p_date_worked, p_work_type::recovery_work_type, p_period, p_reason)
   RETURNING * INTO v_request;
 
   RETURN to_jsonb(v_request);
@@ -872,7 +894,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION count_working_days(DATE, DATE, BIGINT, BIGINT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION accrue_monthly_balance(INT, INT) TO authenticated;
-GRANT EXECUTE ON FUNCTION submit_recovery_request(UUID, FLOAT, DATE, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION submit_recovery_request(UUID, FLOAT, DATE, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION validate_recovery_request(BIGINT, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION reject_recovery_request(BIGINT, UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION expire_recovery_days() TO authenticated;

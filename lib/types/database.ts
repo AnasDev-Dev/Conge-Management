@@ -197,12 +197,15 @@ export interface MonthlyBalanceAccrual {
 // Req #8: Recovery Requests
 export type RecoveryWorkType = 'JOUR_FERIE' | 'JOUR_REPOS' | 'SAMEDI' | 'DIMANCHE'
 
+export type RecoveryPeriod = 'MORNING' | 'AFTERNOON' | 'FULL'
+
 export interface RecoveryRequest {
   id: number
   user_id: string
   days: number
   date_worked: string
   work_type: RecoveryWorkType
+  period: RecoveryPeriod
   reason: string | null
   status: 'PENDING' | 'VALIDATED' | 'REJECTED'
   validated_by: string | null

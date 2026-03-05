@@ -44,3 +44,4 @@ next-env.d.ts
 # local private files (not pushed to GitHub)
 /private/
 .claude/
+context/
