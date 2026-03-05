@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://database.backends.space'
+// For the browser proxy: route through the internal Docker network to Supabase Kong,
+// bypassing Traefik and its broken SSL certificates entirely.
+const supabaseInternalUrl = process.env.SUPABASE_INTERNAL_URL || 'http://cogneapp-kong:8000'
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -8,7 +10,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/supabase-proxy/:path*',
-        destination: `${supabaseUrl}/:path*`,
+        destination: `${supabaseInternalUrl}/:path*`,
       },
     ]
   },
