@@ -12,9 +12,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText } from 'lucide-react'
+import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
-import { Utilisateur, Holiday, WorkingDays, MissionScope } from '@/lib/types/database'
+import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot } from '@/lib/types/database'
 import { MANAGER_ROLES, TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -32,13 +32,12 @@ type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'bala
 type Colleague = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'department_id'>
 type Tab = 'conge' | 'mission'
 
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 3
 
 const steps = [
-  { number: 1, label: 'Type', description: 'Type de demande' },
-  { number: 2, label: 'Dates', description: 'Periode du conge' },
-  { number: 3, label: 'Details', description: 'Infos complementaires' },
-  { number: 4, label: 'Resume', description: 'Verification et envoi' },
+  { number: 1, label: 'Demande', description: 'Periode et soldes' },
+  { number: 2, label: 'Details', description: 'Infos complementaires' },
+  { number: 3, label: 'Resume', description: 'Verification et envoi' },
 ]
 
 export default function NewRequestPage() {
@@ -50,7 +49,6 @@ export default function NewRequestPage() {
   const { activeRole, activeCompany, isHome } = useCompanyContext()
   const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
   const [currentStep, setCurrentStep] = useState(1)
-  const [requestType, setRequestType] = useState<'CONGE' | 'RECUPERATION'>('CONGE')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [startHalfDay, setStartHalfDay] = useState<'FULL' | 'MORNING' | 'AFTERNOON'>('FULL')
@@ -98,6 +96,10 @@ export default function NewRequestPage() {
   const [congeUsedDays, setCongeUsedDays] = useState(0)
   const [congePendingDays, setCongePendingDays] = useState(0)
 
+  // Recovery/Congé split
+  const [recupDaysToUse, setRecupDaysToUse] = useState(0)
+  const [recoveryLots, setRecoveryLots] = useState<RecoveryBalanceLot[]>([])
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -140,12 +142,12 @@ export default function NewRequestPage() {
     }
   }, [isHome, isManager])
 
-  // Fetch used/pending CONGE days for the target employee (for monthly accrual)
+  // Fetch used/pending CONGE days + recovery lots for the target employee
   useEffect(() => {
     if (!targetEmployee) return
     const currentYear = new Date().getFullYear()
     const fetchUsage = async () => {
-      const [{ data: usedData }, { data: pendingData }] = await Promise.all([
+      const [{ data: usedData }, { data: pendingData }, { data: lotsData }] = await Promise.all([
         supabase
           .from('leave_requests')
           .select('days_count')
@@ -162,9 +164,17 @@ export default function NewRequestPage() {
           .in('status', ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'])
           .gte('start_date', `${currentYear}-01-01`)
           .lte('start_date', `${currentYear}-12-31`),
+        supabase
+          .from('recovery_balance_lots')
+          .select('*')
+          .eq('user_id', targetEmployee.id)
+          .eq('expired', false)
+          .gt('remaining_days', 0)
+          .order('expires_at', { ascending: true }),
       ])
       setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.days_count || 0), 0))
       setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.days_count || 0), 0))
+      setRecoveryLots((lotsData || []) as RecoveryBalanceLot[])
     }
     fetchUsage()
   }, [targetEmployee?.id])
@@ -265,21 +275,38 @@ export default function NewRequestPage() {
     return calculateMonthlyAccrual(annual, congeUsedDays, congePendingDays)
   }, [targetEmployee?.balance_conge, congeUsedDays, congePendingDays])
 
-  const availableBalance = requestType === 'CONGE'
-    ? congeAccrual.availableNow
-    : targetEmployee?.balance_recuperation || 0
-  const balanceAfter = availableBalance - workingDays
+  const availableRecup = targetEmployee?.balance_recuperation || 0
+  const availableConge = congeAccrual.availableNow
+
+  // Max recovery days in a single request: 5 or available, whichever is less
+  const maxRecupForRequest = Math.min(MAX_CONSECUTIVE_RECOVERY_DAYS, availableRecup, workingDays)
+
+  // Auto-suggest: use recovery first (they expire), then congé
+  useEffect(() => {
+    if (workingDays > 0) {
+      setRecupDaysToUse(Math.min(maxRecupForRequest, workingDays))
+    } else {
+      setRecupDaysToUse(0)
+    }
+  }, [workingDays, maxRecupForRequest])
+
+  const congeDaysToUse = Math.max(workingDays - recupDaysToUse, 0)
+  const totalAvailable = availableConge + Math.min(availableRecup, MAX_CONSECUTIVE_RECOVERY_DAYS)
+  const balanceOk = congeDaysToUse <= availableConge && recupDaysToUse <= availableRecup
+  const balanceAfterConge = availableConge - congeDaysToUse
+  const balanceAfterRecup = availableRecup - recupDaysToUse
+
+  // Nearest recovery expiration
+  const nearestExpiration = recoveryLots.length > 0 ? recoveryLots[0].expires_at : null
 
   const canProceedToNext = (): boolean => {
     switch (currentStep) {
       case 1:
-        return true
+        return !!startDate && !!endDate && workingDays > 0 && balanceOk
       case 2:
-        return !!startDate && !!endDate && workingDays > 0 && balanceAfter >= 0
-      case 3:
         return true
-      case 4:
-        return balanceAfter >= 0 && workingDays > 0
+      case 3:
+        return balanceOk && workingDays > 0
       default:
         return false
     }
@@ -307,13 +334,13 @@ export default function NewRequestPage() {
       return
     }
 
-    if (balanceAfter < 0) {
-      toast.error(`Solde insuffisant. Il n'y a que ${availableBalance} jours disponibles.`)
+    if (!balanceOk) {
+      toast.error('Solde insuffisant. Veuillez ajuster la repartition ou les dates.')
       return
     }
 
-    if (requestType === 'RECUPERATION' && workingDays > MAX_CONSECUTIVE_RECOVERY_DAYS) {
-      toast.error(`La récupération ne peut pas dépasser ${MAX_CONSECUTIVE_RECOVERY_DAYS} jours consécutifs. Veuillez combiner avec des jours de congé.`)
+    if (recupDaysToUse > MAX_CONSECUTIVE_RECOVERY_DAYS) {
+      toast.error(`La recuperation ne peut pas depasser ${MAX_CONSECUTIVE_RECOVERY_DAYS} jours par demande.`)
       return
     }
 
@@ -322,9 +349,9 @@ export default function NewRequestPage() {
     try {
       const returnDate = nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays)
       const targetUserId = targetEmployee.id
+      const isMixed = recupDaysToUse > 0 && congeDaysToUse > 0
+      const requestType = recupDaysToUse > 0 && congeDaysToUse === 0 ? 'RECUPERATION' : 'CONGE'
 
-      // Status is computed by the DB trigger based on creator's role.
-      // Do NOT send status — the trigger overrides it.
       const { data: insertedRequest, error } = await supabase
         .from('leave_requests')
         .insert({
@@ -338,9 +365,10 @@ export default function NewRequestPage() {
           return_date: format(returnDate, 'yyyy-MM-dd'),
           replacement_user_id: replacementId || null,
           reason: reason || null,
-          balance_before: availableBalance,
-          balance_conge_used: requestType === 'CONGE' ? workingDays : 0,
-          balance_recuperation_used: requestType === 'RECUPERATION' ? workingDays : 0,
+          is_mixed: isMixed,
+          balance_before: availableConge,
+          balance_conge_used: congeDaysToUse,
+          balance_recuperation_used: recupDaysToUse,
         })
         .select()
         .single()
@@ -351,7 +379,10 @@ export default function NewRequestPage() {
 
       // If created on behalf of someone, notify that employee
       if (isOnBehalf && insertedRequest) {
-        const typeLabel = requestType === 'CONGE' ? 'conge' : 'recuperation'
+        const parts = []
+        if (congeDaysToUse > 0) parts.push(`${congeDaysToUse}j conge`)
+        if (recupDaysToUse > 0) parts.push(`${recupDaysToUse}j recuperation`)
+        const typeLabel = parts.join(' + ')
         await supabase.from('notifications').insert({
           user_id: targetUserId,
           title: wasAutoApproved ? 'Demande approuvee automatiquement' : 'Nouvelle demande creee pour vous',
@@ -457,7 +488,7 @@ export default function NewRequestPage() {
               Demande pour {targetEmployee.full_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {targetEmployee.job_title || 'Employe'} — Acquis: {congeAccrual.availableNow}j/{congeAccrual.annualTotal}j, Recup: {targetEmployee.balance_recuperation}j
+              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j/{congeAccrual.annualTotal}j, Recup: {targetEmployee.balance_recuperation}j
             </p>
           </div>
           <Button
@@ -525,7 +556,7 @@ export default function NewRequestPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="w-full">
-        {/* Step 1: Request Type + On-behalf selector for managers */}
+        {/* Step 1: Period + Balances + On-behalf */}
         {currentStep === 1 && (
           <div key="step-1" className="animate-in fade-in duration-300 space-y-6">
             {/* Manager: create on behalf of employee */}
@@ -539,8 +570,6 @@ export default function NewRequestPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Toggle: self vs on-behalf */}
-                    {/* When on non-home company, manager can only create on behalf of employees */}
                     {!isHome && isManager && activeTab === 'conge' && (
                       <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -578,7 +607,6 @@ export default function NewRequestPage() {
                       </button>
                     </div>
 
-                    {/* Employee picker (when "for employee" is selected) */}
                     {onBehalfOfId && (
                       <div className="space-y-3">
                         <div className="relative">
@@ -633,115 +661,55 @@ export default function NewRequestPage() {
               </Card>
             )}
 
-            <Card className="border-border/70">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sun className="h-5 w-5 text-primary" />
-                  Quel type de conge {isOnBehalf ? `pour ${selectedEmployeeName}` : 'souhaitez-vous'} ?
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setRequestType('CONGE')}
-                    className={cn(
-                      'group relative rounded-2xl border-2 p-3 sm:p-5 text-left transition-all duration-200',
-                      requestType === 'CONGE'
-                        ? 'border-primary/50 bg-primary/5 shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_15%,transparent)]'
-                        : 'border-border/70 hover:border-border hover:bg-accent/30'
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2 sm:gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 sm:gap-2.5">
-                          <div className={cn(
-                            'flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
-                            requestType === 'CONGE' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                          )}>
-                            <Sun className="h-4 w-4" />
-                          </div>
-                          <div className="font-semibold text-sm sm:text-lg">Conge</div>
-                        </div>
-                        <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-muted-foreground">Conge annuel paye</p>
-                      </div>
-                      <div className={cn(
-                        'mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all',
-                        requestType === 'CONGE' ? 'border-primary bg-primary' : 'border-border'
-                      )}>
-                        {requestType === 'CONGE' && <Check className="h-3 w-3 text-primary-foreground" />}
-                      </div>
-                    </div>
-                    <div className={cn(
-                      'mt-3 sm:mt-4 rounded-xl border px-2.5 sm:px-3.5 py-2 sm:py-2.5 text-xs sm:text-sm',
-                      requestType === 'CONGE'
-                        ? 'border-primary/20 bg-primary/5'
-                        : 'border-border/50 bg-muted/40'
-                    )}>
-                      <span className="text-muted-foreground">Acquis ce mois:</span>{' '}
-                      <span className="font-semibold text-foreground">
-                        {congeAccrual.availableNow}
-                      </span>
-                      <span className="text-muted-foreground"> / {congeAccrual.annualTotal} jours/an</span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRequestType('RECUPERATION')}
-                    className={cn(
-                      'group relative rounded-2xl border-2 p-3 sm:p-5 text-left transition-all duration-200',
-                      requestType === 'RECUPERATION'
-                        ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] shadow-[0_0_0_1px_color-mix(in_oklab,var(--status-success-border)_30%,transparent)]'
-                        : 'border-border/70 hover:border-border hover:bg-accent/30'
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2 sm:gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 sm:gap-2.5">
-                          <div className={cn(
-                            'flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl transition-colors',
-                            requestType === 'RECUPERATION' ? 'bg-[var(--status-success-bg)] text-[var(--status-success-text)]' : 'bg-muted text-muted-foreground'
-                          )}>
-                            <RotateCcw className="h-4 w-4" />
-                          </div>
-                          <div className="font-semibold text-sm sm:text-lg">Recuperation</div>
-                        </div>
-                        <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-muted-foreground">Jours de recuperation</p>
-                      </div>
-                      <div className={cn(
-                        'mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all',
-                        requestType === 'RECUPERATION' ? 'border-[var(--status-success-text)] bg-[var(--status-success-text)]' : 'border-border'
-                      )}>
-                        {requestType === 'RECUPERATION' && <Check className="h-3 w-3 text-white" />}
-                      </div>
-                    </div>
-                    <div className={cn(
-                      'mt-3 sm:mt-4 rounded-xl border px-2.5 sm:px-3.5 py-2 sm:py-2.5 text-xs sm:text-sm',
-                      requestType === 'RECUPERATION'
-                        ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)]'
-                        : 'border-border/50 bg-muted/40'
-                    )}>
-                      <span className="text-muted-foreground">Solde disponible:</span>{' '}
-                      <span className="font-semibold text-foreground">
-                        {targetEmployee?.balance_recuperation ?? user.balance_recuperation} jours
-                      </span>
-                    </div>
-                  </button>
+            {/* Compact balance bar */}
+            <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-foreground">
+                  Soldes {isOnBehalf ? `de ${selectedEmployeeName}` : 'disponibles'}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                {/* Congé pill */}
+                <div className="flex-1 flex items-center gap-2.5 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5">
+                  <Sun className="h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Conge</p>
+                    <p className="text-sm font-semibold text-foreground">{congeAccrual.availableNow}j <span className="text-xs font-normal text-muted-foreground">/ {congeAccrual.annualTotal}j</span></p>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                {/* Récupération pill */}
+                <div className="flex-1 flex items-center gap-2.5 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5">
+                  <RotateCcw className="h-4 w-4 shrink-0 text-[var(--status-success-text)]" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Recuperation</p>
+                    <div className="flex items-baseline gap-1">
+                      <p className="text-sm font-semibold text-foreground">{availableRecup}j</p>
+                      {nearestExpiration && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                          exp. {format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yy')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {recoveryLots.length > 1 && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 pl-1">
+                  {recoveryLots.map(lot => (
+                    <span key={lot.id} className="text-[10px] text-muted-foreground">
+                      {lot.remaining_days}j (acquis {lot.year_acquired}) — exp. {format(new Date(lot.expires_at + 'T00:00:00'), 'dd/MM/yy')}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
 
-        {/* Step 2: Dates */}
-        {currentStep === 2 && (
-          <div key="step-2" className="animate-in fade-in duration-300 space-y-6">
+            {/* Dates */}
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-primary" />
-                  Selectionnez la periode
+                  Periode du conge
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -756,7 +724,6 @@ export default function NewRequestPage() {
                       placeholder="Date de debut"
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="endDate">Date de fin</Label>
                     <DatePicker
@@ -771,28 +738,29 @@ export default function NewRequestPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Demi-journée début</Label>
+                    <Label>Demi-journee debut</Label>
                     <div className="flex gap-2">
                       {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
                         <button key={hd} type="button"
                           onClick={() => setStartHalfDay(hd)}
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                          className={cn(
+                            'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
                             startHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
-                          }`}
+                          )}
                         >{HALF_DAY_LABELS[hd]}</button>
                       ))}
                     </div>
                   </div>
-
                   <div className="space-y-2">
-                    <Label>Demi-journée fin</Label>
+                    <Label>Demi-journee fin</Label>
                     <div className="flex gap-2">
                       {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
                         <button key={hd} type="button"
                           onClick={() => setEndHalfDay(hd)}
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                          className={cn(
+                            'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
                             endHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
-                          }`}
+                          )}
                         >{HALF_DAY_LABELS[hd]}</button>
                       ))}
                     </div>
@@ -820,7 +788,7 @@ export default function NewRequestPage() {
                       {excludedHolidays.length > 0 && (
                         <div className="rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3">
                           <p className="text-sm font-medium text-[var(--status-success-text)]">
-                            {excludedHolidays.length} jour(s) ferié(s) exclu(s) du décompte :
+                            {excludedHolidays.length} jour(s) ferie(s) exclu(s) du decompte :
                           </p>
                           <ul className="mt-1.5 space-y-0.5">
                             {excludedHolidays.map(h => (
@@ -834,50 +802,94 @@ export default function NewRequestPage() {
                     </>
                   )
                 })()}
-
-                {startDate && endDate && workingDays > 0 && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                      <p className="text-xs text-muted-foreground">{requestType === 'CONGE' ? 'Acquis' : 'Solde'}</p>
-                      <p className="mt-1 text-lg font-semibold text-foreground">{availableBalance}j</p>
-                      {requestType === 'CONGE' && (
-                        <p className="text-[10px] text-muted-foreground">/ {congeAccrual.annualTotal}j an</p>
-                      )}
-                    </div>
-                    <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                      <p className="text-xs text-muted-foreground">Demandes</p>
-                      <p className="mt-1 text-lg font-semibold text-foreground">{workingDays}j</p>
-                    </div>
-                    <div className={cn(
-                      'rounded-xl border p-3 text-center',
-                      balanceAfter >= 0
-                        ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)]'
-                        : 'border-[var(--status-alert-border)] bg-[var(--status-alert-bg)]'
-                    )}>
-                      <p className="text-xs text-muted-foreground">Reste</p>
-                      <p className={cn(
-                        'mt-1 text-lg font-semibold',
-                        balanceAfter >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]'
-                      )}>{balanceAfter}j</p>
-                    </div>
-                  </div>
-                )}
-
-                {balanceAfter < 0 && startDate && endDate && (
-                  <div className="status-rejected rounded-2xl border p-3">
-                    <p className="text-sm font-medium">
-                      Solde insuffisant ! Veuillez reduire la duree ou changer le type de demande.
-                    </p>
-                  </div>
-                )}
               </CardContent>
             </Card>
+
+            {/* Balance split controls — only when dates are selected */}
+            {startDate && endDate && workingDays > 0 && (
+              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 space-y-4">
+                <p className="text-sm font-medium text-foreground">
+                  Repartition des {workingDays} jours demandes
+                </p>
+
+                {/* Recovery days control */}
+                {availableRecup > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RotateCcw className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
+                        <span className="text-xs sm:text-sm text-muted-foreground">Recuperation</span>
+                        <span className="text-[10px] text-muted-foreground">(max {MAX_CONSECUTIVE_RECOVERY_DAYS}j/demande)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRecupDaysToUse(Math.max(0, recupDaysToUse - 0.5))}
+                          disabled={recupDaysToUse <= 0}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-accent disabled:opacity-30"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="w-10 text-center text-sm font-semibold">{recupDaysToUse}j</span>
+                        <button
+                          type="button"
+                          onClick={() => setRecupDaysToUse(Math.min(maxRecupForRequest, recupDaysToUse + 0.5))}
+                          disabled={recupDaysToUse >= maxRecupForRequest}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-accent disabled:opacity-30"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    {nearestExpiration && recupDaysToUse > 0 && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        Recuperation expire le {format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yyyy')} — utilisez-la en priorite
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Congé days (auto-calculated) */}
+                <div className="flex items-center justify-between pt-3 border-t border-border/50">
+                  <div className="flex items-center gap-2">
+                    <Sun className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs sm:text-sm text-muted-foreground">Conge annuel</span>
+                  </div>
+                  <span className="text-sm font-semibold">{congeDaysToUse}j</span>
+                </div>
+
+                {/* Inline balance after */}
+                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Conge apres</span>
+                    <span className={cn('font-semibold', balanceAfterConge >= 0 ? 'text-foreground' : 'text-[var(--status-alert-text)]')}>
+                      {balanceAfterConge}j / {availableConge}j
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Recup. apres</span>
+                    <span className={cn('font-semibold', balanceAfterRecup >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
+                      {balanceAfterRecup}j / {availableRecup}j
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!balanceOk && startDate && endDate && workingDays > 0 && (
+              <div className="status-rejected rounded-2xl border p-3">
+                <p className="text-sm font-medium">
+                  Solde insuffisant ! Veuillez reduire la duree ou ajuster la repartition.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Step 3: Additional Info */}
-        {currentStep === 3 && (
-          <div key="step-3" className="animate-in fade-in duration-300 space-y-6">
+        {/* Step 2: Additional Info */}
+        {currentStep === 2 && (
+          <div key="step-2" className="animate-in fade-in duration-300 space-y-6">
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -933,9 +945,9 @@ export default function NewRequestPage() {
           </div>
         )}
 
-        {/* Step 4: Summary */}
-        {currentStep === 4 && (
-          <div key="step-4" className="animate-in fade-in duration-300 space-y-6">
+        {/* Step 3: Summary */}
+        {currentStep === 3 && (
+          <div key="step-3" className="animate-in fade-in duration-300 space-y-6">
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -956,7 +968,9 @@ export default function NewRequestPage() {
                   <div className="flex items-center justify-between py-3.5">
                     <span className="text-sm text-muted-foreground">Type de demande</span>
                     <span className="text-sm font-medium text-foreground">
-                      {requestType === 'CONGE' ? 'Conge annuel' : 'Recuperation'}
+                      {recupDaysToUse > 0 && congeDaysToUse > 0
+                        ? 'Combine (Conge + Recuperation)'
+                        : recupDaysToUse > 0 ? 'Recuperation' : 'Conge annuel'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-3.5">
@@ -1005,50 +1019,86 @@ export default function NewRequestPage() {
 
             <Card className={cn(
               'border-border/70',
-              balanceAfter >= 0 ? 'bg-[var(--status-success-bg)]/30' : 'bg-[var(--status-alert-bg)]/30'
+              balanceOk ? 'bg-[var(--status-success-bg)]/30' : 'bg-[var(--status-alert-bg)]/30'
             )}>
               <CardHeader>
-                <CardTitle className="text-base">Impact sur le solde {isOnBehalf ? `de ${selectedEmployeeName}` : ''}</CardTitle>
+                <CardTitle className="text-base">Impact sur les soldes {isOnBehalf ? `de ${selectedEmployeeName}` : ''}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {requestType === 'CONGE' && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Solde annuel (RH)</span>
-                    <span className="font-medium">{congeAccrual.annualTotal} jours</span>
-                  </div>
+                {/* Congé section */}
+                {congeDaysToUse > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Sun className="h-3.5 w-3.5 text-primary" />
+                      Conge annuel
+                    </div>
+                    <div className="flex justify-between text-sm pl-5">
+                      <span className="text-muted-foreground">Acquis (mois {congeAccrual.currentMonth}/12)</span>
+                      <span className="font-medium">{congeAccrual.cumulativeEarned}j</span>
+                    </div>
+                    {(congeUsedDays > 0 || congePendingDays > 0) && (
+                      <div className="flex justify-between text-sm pl-5">
+                        <span className="text-muted-foreground">Deja utilise/en cours</span>
+                        <span className="font-medium">- {congeUsedDays + congePendingDays}j</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm pl-5">
+                      <span className="text-muted-foreground">Disponible</span>
+                      <span className="font-medium">{availableConge}j</span>
+                    </div>
+                    <div className="flex justify-between text-sm pl-5">
+                      <span className="text-muted-foreground">Jours conge demandes</span>
+                      <span className="font-medium">- {congeDaysToUse}j</span>
+                    </div>
+                    <div className="flex justify-between text-sm pl-5 border-t border-border/30 pt-1">
+                      <span className="font-medium">Solde conge apres</span>
+                      <span className={cn('font-bold', balanceAfterConge >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
+                        {balanceAfterConge}j
+                      </span>
+                    </div>
+                  </>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{requestType === 'CONGE' ? `Acquis (mois ${congeAccrual.currentMonth}/12)` : 'Solde actuel'}</span>
-                  <span className="font-medium">{requestType === 'CONGE' ? congeAccrual.cumulativeEarned : availableBalance} jours</span>
-                </div>
-                {requestType === 'CONGE' && (congeUsedDays > 0 || congePendingDays > 0) && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Deja utilise/en cours</span>
-                    <span className="font-medium">- {congeUsedDays + congePendingDays} jours</span>
-                  </div>
+
+                {/* Récupération section */}
+                {recupDaysToUse > 0 && (
+                  <>
+                    <div className={cn('flex items-center gap-2 text-sm font-medium text-foreground', congeDaysToUse > 0 && 'mt-2 pt-3 border-t border-border/50')}>
+                      <RotateCcw className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
+                      Recuperation
+                    </div>
+                    <div className="flex justify-between text-sm pl-5">
+                      <span className="text-muted-foreground">Disponible</span>
+                      <span className="font-medium">{availableRecup}j</span>
+                    </div>
+                    <div className="flex justify-between text-sm pl-5">
+                      <span className="text-muted-foreground">Jours recup. demandes</span>
+                      <span className="font-medium">- {recupDaysToUse}j</span>
+                    </div>
+                    <div className="flex justify-between text-sm pl-5 border-t border-border/30 pt-1">
+                      <span className="font-medium">Solde recup. apres</span>
+                      <span className={cn('font-bold', balanceAfterRecup >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
+                        {balanceAfterRecup}j
+                      </span>
+                    </div>
+                    {nearestExpiration && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 pl-5">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        Prochaine expiration: {format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yyyy')}
+                      </div>
+                    )}
+                  </>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Disponible</span>
-                  <span className="font-medium">{availableBalance} jours</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Jours demandes</span>
-                  <span className="font-medium">- {workingDays} jours</span>
-                </div>
+
+                {/* Total */}
                 <div className="flex justify-between border-t border-border/50 pt-3 text-sm">
-                  <span className="font-medium text-foreground">Solde apres demande</span>
-                  <span className={cn(
-                    'font-bold',
-                    balanceAfter >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]'
-                  )}>
-                    {balanceAfter} jours
-                  </span>
+                  <span className="font-medium text-foreground">Total jours demandes</span>
+                  <span className="font-bold text-foreground">{workingDays}j</span>
                 </div>
 
-                {balanceAfter < 0 && (
+                {!balanceOk && (
                   <div className="status-rejected rounded-2xl border p-3 mt-2">
                     <p className="text-sm font-medium">
-                      Solde insuffisant ! Veuillez revenir en arriere et ajuster les dates.
+                      Solde insuffisant ! Veuillez revenir en arriere et ajuster la repartition.
                     </p>
                   </div>
                 )}
@@ -1094,7 +1144,7 @@ export default function NewRequestPage() {
             <Button
               type="submit"
               className="h-11 w-full"
-              disabled={isSubmitting || balanceAfter < 0 || workingDays <= 0}
+              disabled={isSubmitting || !balanceOk || workingDays <= 0}
             >
               {isSubmitting ? (
                 <>
