@@ -145,22 +145,42 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
   const { canSee } = usePermissions(user.role)
 
   // Full nav definition — filtered by permissions below
-  const allNavItems: { name: string; href: string; icon: typeof LayoutDashboard; key: SidebarItem }[] = [
+  type NavItem = {
+    name: string
+    href: string
+    icon: typeof LayoutDashboard
+    key: SidebarItem
+  }
+
+  type NavGroup = {
+    title: string
+    items: NavItem[]
+  }
+
+  const navStructure: (NavItem | NavGroup)[] = [
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard, key: 'dashboard' },
     { name: 'Employes', href: '/dashboard/employees', icon: Users, key: 'employees' },
-    { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck, key: 'validations' },
-    { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList, key: 'mission-validations' },
-    { name: 'Demandes', href: '/dashboard/requests', icon: FileText, key: 'requests' },
-    { name: 'Missions', href: '/dashboard/missions', icon: Briefcase, key: 'missions' },
-    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
-    { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw, key: 'recovery-requests' },
-    { name: 'Parametres', href: '/dashboard/settings', icon: Settings, key: 'settings' },
     { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck, key: 'balance-init' },
+    {
+      title: 'Congé',
+      items: [
+        { name: 'Demandes', href: '/dashboard/requests', icon: FileText, key: 'requests' },
+        { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck, key: 'validations' },
+        { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw, key: 'recovery-requests' },
+      ]
+    },
+    {
+      title: 'Ordre de mission',
+      items: [
+        { name: 'Missions', href: '/dashboard/missions', icon: Briefcase, key: 'missions' },
+        { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList, key: 'mission-validations' },
+      ]
+    },
+    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
+    { name: 'Parametres', href: '/dashboard/settings', icon: Settings, key: 'settings' },
     { name: 'Profil', href: '/dashboard/profile', icon: User, key: 'profile' },
     { name: 'Notifications', href: '/dashboard/notifications', icon: Bell, key: 'notifications' },
   ]
-
-  const navigation = allNavItems.filter(item => canSee(item.key))
 
   const isNavItemActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
@@ -223,25 +243,63 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
               </Link>
 
               <nav className="mt-4 flex-1 space-y-1.5 overflow-y-auto pr-1 overscroll-contain">
-                {navigation.map((item) => {
-                  const Icon = item.icon
-                  const isActive = isNavItemActive(item.href)
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={cn(
-                        'flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-sm font-medium transition-all',
-                        isActive
-                          ? 'border-border bg-background text-foreground'
-                          : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
-                      )}
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.name}</span>
-                    </Link>
-                  )
+                {navStructure.map((item, index) => {
+                  if ('items' in item) {
+                    // Group
+                    const filteredItems = item.items.filter(subItem => canSee(subItem.key))
+                    if (filteredItems.length === 0) return null
+
+                    return (
+                      <div key={`group-${index}`} className="pt-2 pb-1">
+                        <div className="px-3.5 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider opacity-80">
+                          {item.title}
+                        </div>
+                        <div className="space-y-1">
+                          {filteredItems.map(subItem => {
+                            const Icon = subItem.icon
+                            const isActive = isNavItemActive(subItem.href)
+                            return (
+                              <Link
+                                key={subItem.name}
+                                href={subItem.href}
+                                className={cn(
+                                  'flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-sm font-medium transition-all ml-2',
+                                  isActive
+                                    ? 'border-border bg-background text-foreground'
+                                    : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
+                                )}
+                                onClick={() => setSidebarOpen(false)}
+                              >
+                                <Icon className="h-4 w-4" />
+                                <span>{subItem.name}</span>
+                              </Link>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  } else {
+                    // Single Item
+                    if (!canSee(item.key)) return null
+                    const Icon = item.icon
+                    const isActive = isNavItemActive(item.href)
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className={cn(
+                          'flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-sm font-medium transition-all',
+                          isActive
+                            ? 'border-border bg-background text-foreground'
+                            : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
+                        )}
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{item.name}</span>
+                      </Link>
+                    )
+                  }
                 })}
               </nav>
 
