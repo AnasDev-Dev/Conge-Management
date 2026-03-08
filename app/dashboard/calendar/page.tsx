@@ -37,9 +37,6 @@ import {
   CalendarDays,
   Users,
   UserRound,
-  Clock,
-  CheckCircle2,
-  XCircle,
   Palmtree,
   Briefcase,
   RotateCcw,
@@ -203,23 +200,6 @@ export default function CalendarPage() {
     [holidays]
   )
 
-  // Monthly statistics
-  const monthStats = useMemo(() => {
-    const approved = filteredRequests.filter((r) => r.status === 'APPROVED')
-    const inProgress = filteredRequests.filter((r) =>
-      ['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'].includes(r.status)
-    )
-    const uniqueEmployees = new Set(filteredRequests.map((r) => r.user_id))
-    const totalDays = approved.reduce((sum, r) => sum + r.days_count, 0)
-
-    return {
-      approved: approved.length,
-      inProgress: inProgress.length,
-      uniqueEmployees: uniqueEmployees.size,
-      totalDays,
-    }
-  }, [filteredRequests])
-
   // Navigation
   const goToPreviousMonth = () => setCurrentMonth((prev) => subMonths(prev, 1))
   const goToNextMonth = () => setCurrentMonth((prev) => addMonths(prev, 1))
@@ -285,27 +265,6 @@ export default function CalendarPage() {
               </button>
             </div>
             <div className="flex items-center gap-3">
-              {/* Inline stats */}
-              <div className="hidden sm:flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-[var(--status-success-text)]" />
-                  <span className="font-semibold text-foreground">{monthStats.approved}</span> approuv\u00e9s
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-[var(--status-pending-text)]" />
-                  <span className="font-semibold text-foreground">{monthStats.inProgress}</span> en cours
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <CalendarDays className="h-4 w-4 text-[var(--status-progress-text)]" />
-                  <span className="font-semibold text-foreground">{monthStats.totalDays}</span> jours
-                </span>
-                {isManager && (
-                  <span className="flex items-center gap-1.5">
-                    <Users className="h-4 w-4" />
-                    <span className="font-semibold text-foreground">{monthStats.uniqueEmployees}</span> employ\u00e9s
-                  </span>
-                )}
-              </div>
               {isManager ? (
                 <Badge variant="secondary" className="border border-border gap-1.5">
                   <Users className="h-3 w-3" />
@@ -318,22 +277,6 @@ export default function CalendarPage() {
                 </Badge>
               )}
             </div>
-          </div>
-
-          {/* Mobile stats (visible on small screens) */}
-          <div className="flex sm:hidden items-center gap-4 mt-3 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-[var(--status-success-text)]" />
-              <span className="font-semibold text-foreground">{monthStats.approved}</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-4 w-4 text-[var(--status-pending-text)]" />
-              <span className="font-semibold text-foreground">{monthStats.inProgress}</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <CalendarDays className="h-4 w-4 text-[var(--status-progress-text)]" />
-              <span className="font-semibold text-foreground">{monthStats.totalDays}</span>
-            </span>
           </div>
 
           {/* Row 2: Filter pills */}
