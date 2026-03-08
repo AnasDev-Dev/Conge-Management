@@ -1,9 +1,11 @@
 'use client'
 
+import Image from 'next/image'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { getRoleLabel } from '@/lib/constants'
+import { getCompanyLogo, getCompanyFullName } from '@/lib/company-logos'
 import { Badge } from '@/components/ui/badge'
-import { Building2, ChevronDown, Home } from 'lucide-react'
+import { ChevronDown, Home } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 
 export function CompanySwitcher() {
@@ -21,34 +23,45 @@ export function CompanySwitcher() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Only show if user has roles in multiple companies
   const accessibleCompanyIds = new Set(userRoles.map(r => r.company_id))
   const accessibleCompanies = companies.filter(c => accessibleCompanyIds.has(c.id))
-
-  if (accessibleCompanies.length <= 1) return null
+  const hasMultiple = accessibleCompanies.length > 1
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2.5 rounded-2xl border border-border bg-background/90 px-3 py-2.5 text-left transition-colors hover:bg-accent"
+        onClick={() => hasMultiple && setOpen(!open)}
+        className={`flex w-full items-center gap-3 rounded-2xl border border-border bg-background p-3.5 text-left transition-colors ${
+          hasMultiple ? 'cursor-pointer hover:bg-accent' : 'cursor-default'
+        }`}
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-          <Building2 className="h-4 w-4 text-primary" />
-        </div>
+        <Image
+          src={getCompanyLogo(activeCompany?.name)}
+          alt={activeCompany?.name || 'FRMG'}
+          width={44}
+          height={44}
+          className="h-11 w-11 shrink-0 object-contain"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-semibold">{activeCompany?.name || 'Selectionner'}</p>
+            <p className="text-sm font-bold tracking-tight text-foreground leading-tight">
+              {activeCompany?.name || 'FRMG'}
+            </p>
             {isHome && <Home className="h-3 w-3 text-muted-foreground" />}
           </div>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            {getCompanyFullName(activeCompany?.name) || 'Gestion des conges'}
+          </p>
           {activeRole && (
-            <p className="text-[10px] text-muted-foreground">{getRoleLabel(activeRole)}</p>
+            <p className="text-[10px] font-medium text-primary/70">{getRoleLabel(activeRole)}</p>
           )}
         </div>
-        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+        {hasMultiple && (
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+        )}
       </button>
 
-      {open && (
+      {open && hasMultiple && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border bg-background shadow-lg">
           {accessibleCompanies.map(company => {
             const roleRecord = userRoles.find(r => r.company_id === company.id)
@@ -61,12 +74,21 @@ export function CompanySwitcher() {
                   isActive ? 'bg-accent/50 font-medium' : ''
                 }`}
               >
-                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <Image
+                  src={getCompanyLogo(company.name)}
+                  alt={company.name}
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 shrink-0 rounded object-contain"
+                />
                 <div className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate">{company.name}</span>
+                    <span className="truncate font-semibold">{company.name}</span>
                     {roleRecord?.is_home && <Home className="h-3 w-3 text-amber-500" />}
                   </div>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {getCompanyFullName(company.name)}
+                  </p>
                   {roleRecord && (
                     <p className="text-[10px] text-muted-foreground">{getRoleLabel(roleRecord.role)}</p>
                   )}

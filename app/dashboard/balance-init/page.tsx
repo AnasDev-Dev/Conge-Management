@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +25,7 @@ import {
   Search,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
+import { PageGuard } from '@/components/role-gate'
 import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
 import { MAX_LEAVE_BALANCE } from '@/lib/constants'
 import { format } from 'date-fns'
@@ -46,6 +48,7 @@ function normalizeText(value: string | null | undefined): string {
 }
 
 export default function BalanceInitPage() {
+  const { user } = useCurrentUser()
   const [employees, setEmployees] = useState<EmployeeWithDept[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -215,6 +218,7 @@ export default function BalanceInitPage() {
   const stickyColBase = 'sticky left-0 z-[5] after:absolute after:-right-[6px] after:top-0 after:bottom-0 after:w-[6px] after:bg-gradient-to-r after:from-black/[0.06] after:to-transparent after:pointer-events-none dark:after:from-black/20'
 
   return (
+    <PageGuard userRole={user?.role || 'EMPLOYEE'} page="balance-init">
     <div className="flex min-h-full flex-col gap-3 sm:gap-4">
       {/* Header */}
       <div className="shrink-0">
@@ -569,5 +573,6 @@ export default function BalanceInitPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageGuard>
   )
 }

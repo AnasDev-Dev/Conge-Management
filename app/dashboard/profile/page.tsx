@@ -17,9 +17,12 @@ import { fr } from 'date-fns/locale'
 import Image from 'next/image'
 import { calculateSeniority } from '@/lib/leave-utils'
 import { MAX_LEAVE_BALANCE } from '@/lib/constants'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { getCompanyLogo } from '@/lib/company-logos'
 
 export default function ProfilePage() {
   const { user } = useCurrentUser()
+  const { activeCompany } = useCompanyContext()
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -84,8 +87,8 @@ export default function ProfilePage() {
                 </div>
                 <div className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-background bg-white shadow-sm">
                   <Image
-                    src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
-                    alt="FRMG"
+                    src={getCompanyLogo(activeCompany?.name)}
+                    alt={activeCompany?.name || 'FRMG'}
                     width={28}
                     height={28}
                     className="h-7 w-7 object-contain"

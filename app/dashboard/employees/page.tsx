@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Calendar, ChevronRight, Clock, Search, UserPlus, Users } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { usePermissions } from '@/lib/hooks/use-permissions'
+import { PageGuard } from '@/components/role-gate'
 import { AddEmployeeDialog } from '@/components/add-employee-dialog'
 
 type EmployeeRow = Pick<
@@ -96,9 +98,9 @@ export default function EmployeesPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   const { user: currentUser } = useCurrentUser()
-  const { activeRole, activeCompany } = useCompanyContext()
-  const effectiveRole = activeRole || currentUser?.role || 'EMPLOYEE'
-  const canCreateEmployee = currentUser && effectiveRole !== 'EMPLOYEE'
+  const { activeCompany } = useCompanyContext()
+  const { can } = usePermissions(currentUser?.role || 'EMPLOYEE')
+  const canCreateEmployee = currentUser && can('employees.create')
 
   const loadData = useCallback(async () => {
     try {
@@ -112,10 +114,22 @@ export default function EmployeesPage() {
         empQuery = empQuery.eq('company_id', activeCompany.id)
       }
 
-      const [{ data: employeeData, error: employeeError }, { data: requestData, error: requestError }] = await Promise.all([
-        empQuery,
-        supabase.from('leave_requests').select('id, user_id, status, days_count, created_at'),
-      ])
+      // First fetch employees, then fetch only their leave requests
+      const { data: employeeData, error: employeeError } = await empQuery
+      if (employeeError) throw employeeError
+
+      const empIds = (employeeData || []).map((e: { id: string }) => e.id)
+      let requestData: LeaveRow[] = []
+      let requestError = null
+
+      if (empIds.length > 0) {
+        const result = await supabase
+          .from('leave_requests')
+          .select('id, user_id, status, days_count, created_at')
+          .in('user_id', empIds)
+        requestData = (result.data || []) as LeaveRow[]
+        requestError = result.error
+      }
 
       if (employeeError) throw employeeError
       if (requestError) throw requestError

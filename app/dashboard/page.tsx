@@ -20,12 +20,12 @@ import {
 import Link from "next/link";
 import { Utilisateur } from "@/lib/types/database";
 import {
-  MANAGER_ROLES,
   MAX_LEAVE_BALANCE,
   PENDING_STATUSES,
   getStatusClass,
   getStatusLabel,
 } from "@/lib/constants";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import { calculateSeniority, calculateMonthlyAccrual } from "@/lib/leave-utils";
 import {
   format,
@@ -90,7 +90,8 @@ const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
-  const { activeRole, isHome } = useCompanyContext();
+  const { isHome, activeCompany } = useCompanyContext();
+  const { can, isManager: isManagerView } = usePermissions(user?.role || 'EMPLOYEE');
   const [requests, setRequests] = useState<DashboardRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -114,27 +115,26 @@ export default function DashboardPage() {
           if (balanceData) setBalanceInfo(balanceData);
         });
     }
-  }, [user]);
-
-  // Use company-aware role: activeRole from company context, fallback to user.role
-  const effectiveRole = activeRole || user?.role || 'EMPLOYEE';
-  const isManagerView = MANAGER_ROLES.includes(effectiveRole);
+  }, [user, activeCompany]);
 
   const loadRequests = async (userData: Utilisateur) => {
     try {
-      const isManager = MANAGER_ROLES.includes(effectiveRole);
 
       let query = supabase
         .from("leave_requests")
         .select(
           `
           *,
-          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, company_id)
         `,
         )
         .order("created_at", { ascending: false });
 
-      if (!isManager) {
+      if (activeCompany) {
+        query = query.eq("user.company_id", activeCompany.id);
+      }
+
+      if (!isManagerView) {
         query = query.eq("user_id", userData.id);
       }
 

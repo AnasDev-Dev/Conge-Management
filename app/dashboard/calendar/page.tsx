@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -14,7 +15,8 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { LeaveRequestWithRelations, Utilisateur, Holiday } from '@/lib/types/database'
-import { MANAGER_ROLES, CALENDAR_STATUS_FILTERS } from '@/lib/constants'
+import { CALENDAR_STATUS_FILTERS } from '@/lib/constants'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import {
   format,
   startOfMonth,
@@ -79,10 +81,12 @@ export default function CalendarPage() {
   const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'APPROVED', 'REJECTED']))
   const [allFilters, setAllFilters] = useState(true)
   const { user } = useCurrentUser()
+  const { activeCompany } = useCompanyContext()
+  const { can } = usePermissions(user?.role || 'EMPLOYEE')
 
   const supabase = createClient()
 
-  const isManager = user ? MANAGER_ROLES.includes(user.role) : false
+  const isManager = can('calendar.viewTeam')
 
   const loadData = useCallback(async () => {
     if (!user) return
@@ -98,10 +102,14 @@ export default function CalendarPage() {
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, role, department_id)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, role, department_id, company_id)
         `)
         .lte('start_date', endStr)
         .gte('end_date', startStr)
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
 
       // Role-based filtering: employees see only their own
       if (!isManager) {
@@ -125,7 +133,7 @@ export default function CalendarPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentMonth, user, isManager])
+  }, [currentMonth, user, isManager, activeCompany])
 
   useEffect(() => {
     if (user) loadData()
@@ -223,153 +231,141 @@ export default function CalendarPage() {
 
   if (!user) return null
 
+  const FILTER_PILL_STYLES: Record<string, { active: string; dot: string }> = {
+    PENDING: { active: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700', dot: 'bg-amber-500' },
+    VALIDATED_DC: { active: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700', dot: 'bg-purple-500' },
+    VALIDATED_RP: { active: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700', dot: 'bg-purple-500' },
+    APPROVED: { active: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700', dot: 'bg-emerald-500' },
+    REJECTED: { active: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700', dot: 'bg-red-500' },
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            {isManager ? "Calendrier d\u2019\u00e9quipe" : 'Mon calendrier'}
-          </h1>
-          <p className="mt-1.5 text-muted-foreground">
-            {isManager
-              ? 'Vue globale des absences de tous les collaborateurs'
-              : 'Visualisez vos cong\u00e9s et r\u00e9cup\u00e9rations'}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={goToPreviousMonth}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/80 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Mois pr\u00e9c\u00e9dent"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            onClick={goToToday}
-            className="rounded-xl border border-border/70 bg-background/80 px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            Aujourd&apos;hui
-          </button>
-          <button
-            onClick={goToNextMonth}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/80 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Mois suivant"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+    <div className="space-y-4">
+      {/* Page title */}
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          {isManager ? "Calendrier d\u2019\u00e9quipe" : 'Mon calendrier'}
+        </h1>
+        <p className="mt-1 text-muted-foreground">
+          {isManager
+            ? 'Vue globale des absences de tous les collaborateurs'
+            : 'Visualisez vos cong\u00e9s et r\u00e9cup\u00e9rations'}
+        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="border-border/70">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--status-success-bg)]">
-              <CheckCircle2 className="h-5 w-5 text-[var(--status-success-text)]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold leading-none">{monthStats.approved}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Approuv\u00e9s</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--status-pending-bg)]">
-              <Clock className="h-5 w-5 text-[var(--status-pending-text)]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold leading-none">{monthStats.inProgress}</p>
-              <p className="mt-1 text-xs text-muted-foreground">En cours</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--status-progress-bg)]">
-              <CalendarDays className="h-5 w-5 text-[var(--status-progress-text)]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold leading-none">{monthStats.totalDays}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Jours pris</p>
-            </div>
-          </CardContent>
-        </Card>
-        {isManager && (
-          <Card className="border-border/70">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted">
-                <Users className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none">{monthStats.uniqueEmployees}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Employ\u00e9s concern\u00e9s</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Status Filters */}
+      {/* Calendar Card — contains everything */}
       <Card className="border-border/70">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={allFilters}
-                onChange={toggleAllFilters}
-                className="accent-primary h-4 w-4 rounded"
-              />
-              <span className="font-semibold text-foreground">Tous</span>
-            </label>
-            <span className="h-5 w-px bg-border/70" />
-            {CALENDAR_STATUS_FILTERS.map((filter) => {
-              const dotColor: Record<string, string> = {
-                PENDING: 'bg-amber-500',
-                VALIDATED_DC: 'bg-purple-500',
-                VALIDATED_RP: 'bg-purple-500',
-                APPROVED: 'bg-emerald-500',
-                REJECTED: 'bg-red-500',
-              }
-              return (
-                <label key={filter.key} className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={statusFilters.has(filter.key)}
-                    onChange={() => toggleStatusFilter(filter.key)}
-                    className="accent-primary h-4 w-4 rounded"
-                  />
-                  <span className={`h-2.5 w-2.5 rounded-full ${dotColor[filter.key] || 'bg-gray-400'}`} />
-                  <span className="text-muted-foreground">{filter.label}</span>
-                </label>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Calendar */}
-      <Card className="border-border/70">
-        <CardHeader className="pb-3">
+        {/* Calendar header: month nav + stats */}
+        <CardHeader className="pb-2">
+          {/* Row 1: Month navigation */}
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xl capitalize">
-              {format(currentMonth, 'MMMM yyyy', { locale: fr })}
-            </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={goToPreviousMonth}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/80 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Mois pr\u00e9c\u00e9dent"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <CardTitle className="min-w-[10rem] text-center text-xl capitalize">
+                {format(currentMonth, 'MMMM yyyy', { locale: fr })}
+              </CardTitle>
+              <button
+                onClick={goToNextMonth}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/80 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Mois suivant"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={goToToday}
+                className="ml-1 rounded-xl border border-border/70 bg-background/80 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                Aujourd&apos;hui
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Inline stats */}
+              <div className="hidden sm:flex items-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-[var(--status-success-text)]" />
+                  <span className="font-semibold text-foreground">{monthStats.approved}</span> approuv\u00e9s
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-[var(--status-pending-text)]" />
+                  <span className="font-semibold text-foreground">{monthStats.inProgress}</span> en cours
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="h-4 w-4 text-[var(--status-progress-text)]" />
+                  <span className="font-semibold text-foreground">{monthStats.totalDays}</span> jours
+                </span>
+                {isManager && (
+                  <span className="flex items-center gap-1.5">
+                    <Users className="h-4 w-4" />
+                    <span className="font-semibold text-foreground">{monthStats.uniqueEmployees}</span> employ\u00e9s
+                  </span>
+                )}
+              </div>
               {isManager ? (
                 <Badge variant="secondary" className="border border-border gap-1.5">
                   <Users className="h-3 w-3" />
-                  Vue \u00e9quipe
+                  \u00c9quipe
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="border border-border gap-1.5">
                   <UserRound className="h-3 w-3" />
-                  Vue personnelle
+                  Personnel
                 </Badge>
               )}
             </div>
+          </div>
+
+          {/* Mobile stats (visible on small screens) */}
+          <div className="flex sm:hidden items-center gap-4 mt-3 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-[var(--status-success-text)]" />
+              <span className="font-semibold text-foreground">{monthStats.approved}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-[var(--status-pending-text)]" />
+              <span className="font-semibold text-foreground">{monthStats.inProgress}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CalendarDays className="h-4 w-4 text-[var(--status-progress-text)]" />
+              <span className="font-semibold text-foreground">{monthStats.totalDays}</span>
+            </span>
+          </div>
+
+          {/* Row 2: Filter pills */}
+          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border/50">
+            <button
+              onClick={toggleAllFilters}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                allFilters
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-background text-muted-foreground border-border/70 hover:bg-accent'
+              }`}
+            >
+              Tous
+            </button>
+            {CALENDAR_STATUS_FILTERS.map((filter) => {
+              const isActive = statusFilters.has(filter.key)
+              const pill = FILTER_PILL_STYLES[filter.key]
+              return (
+                <button
+                  key={filter.key}
+                  onClick={() => toggleStatusFilter(filter.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    isActive
+                      ? pill?.active || 'bg-accent text-foreground border-border'
+                      : 'bg-background text-muted-foreground/60 border-border/50 hover:bg-accent/50'
+                  }`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${isActive ? (pill?.dot || 'bg-gray-400') : 'bg-gray-300'}`} />
+                  {filter.label}
+                </button>
+              )
+            })}
           </div>
         </CardHeader>
         <CardContent>
@@ -515,37 +511,31 @@ export default function CalendarPage() {
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Legend */}
-      <Card className="border-border/70">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-            <span className="font-semibold text-muted-foreground uppercase tracking-wider">L\u00e9gende</span>
+          {/* Legend (inside calendar card) */}
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/50 pt-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <span className={`h-3 w-3 rounded-full ${TYPE_COLORS.CONGE.dot}`} />
-              <span className="text-muted-foreground">Cong\u00e9</span>
+              <span className={`h-2.5 w-2.5 rounded-full ${TYPE_COLORS.CONGE.dot}`} />
+              <span>Cong\u00e9</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className={`h-3 w-3 rounded-full ${TYPE_COLORS.RECUPERATION.dot}`} />
-              <span className="text-muted-foreground">R\u00e9cup\u00e9ration</span>
+              <span className={`h-2.5 w-2.5 rounded-full ${TYPE_COLORS.RECUPERATION.dot}`} />
+              <span>R\u00e9cup\u00e9ration</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-full bg-[var(--status-pending-text)]" />
-              <span className="text-muted-foreground">En attente</span>
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--status-pending-text)]" />
+              <span>En attente</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded border border-primary/40 bg-primary/10" />
-              <span className="text-muted-foreground">Aujourd&apos;hui</span>
+              <span className="h-2.5 w-2.5 rounded border border-primary/40 bg-primary/10" />
+              <span>Aujourd&apos;hui</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-secondary/60" />
-              <span className="text-muted-foreground">Week-end</span>
+              <span className="h-2.5 w-2.5 rounded bg-secondary/60" />
+              <span>Week-end</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Palmtree className="h-3 w-3 text-[var(--status-alert-text)]" />
-              <span className="text-muted-foreground">Jour f\u00e9ri\u00e9</span>
+              <Palmtree className="h-2.5 w-2.5 text-[var(--status-alert-text)]" />
+              <span>Jour f\u00e9ri\u00e9</span>
             </div>
           </div>
         </CardContent>

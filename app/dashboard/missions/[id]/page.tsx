@@ -35,7 +35,8 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { MissionRequestWithRelations, Utilisateur } from '@/lib/types/database'
-import { TRANSPORT_LABELS, getStatusClass, getStatusLabel, MANAGER_ROLES } from '@/lib/constants'
+import { TRANSPORT_LABELS, getStatusClass, getStatusLabel } from '@/lib/constants'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
@@ -56,6 +57,7 @@ export default function MissionDetailPage() {
   const [mission, setMission] = useState<MissionRequestWithRelations | null>(null)
   const [missionUser, setMissionUser] = useState<Utilisateur | null>(null)
   const { user: currentUser } = useCurrentUser()
+  const { isManager } = usePermissions(currentUser?.role || 'EMPLOYEE')
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [showPrint, setShowPrint] = useState(false)
@@ -209,7 +211,6 @@ export default function MissionDetailPage() {
 
   const getActionInfo = () => {
     if (!currentUser || !mission) return null
-    const isManager = MANAGER_ROLES.includes(currentUser.role)
     if (!isManager) return null
     // Can't act on own mission
     if (mission.user_id === currentUser.id) return null

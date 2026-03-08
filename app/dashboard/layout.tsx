@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { MANAGER_ROLES } from '@/lib/constants'
 import {
   LayoutDashboard,
   FileText,
@@ -29,6 +28,10 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { CompanySwitcher } from '@/components/company-switcher'
 import { CompanyProvider, useCompanyContext } from '@/lib/hooks/use-company-context'
+import { DbPermissionsProvider } from '@/lib/hooks/use-db-permissions'
+import { usePermissions } from '@/lib/hooks/use-permissions'
+import { type SidebarItem } from '@/lib/permissions'
+import { getCompanyLogo } from '@/lib/company-logos'
 
 export default function DashboardLayout({
   children,
@@ -126,9 +129,11 @@ export default function DashboardLayout({
 
   return (
     <CompanyProvider userId={user.id}>
-      <DashboardShell user={user} onLogout={handleLogout}>
-        {children}
-      </DashboardShell>
+      <DbPermissionsProvider>
+        <DashboardShell user={user} onLogout={handleLogout}>
+          {children}
+        </DashboardShell>
+      </DbPermissionsProvider>
     </CompanyProvider>
   )
 }
@@ -136,30 +141,26 @@ export default function DashboardLayout({
 function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLogout: () => void; children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
-  const { activeRole, activeCompany } = useCompanyContext()
+  const { activeCompany } = useCompanyContext()
+  const { canSee } = usePermissions(user.role)
 
-  // Use company-aware role: activeRole from company context, fallback to user.role
-  const effectiveRole = activeRole || user.role
-  const isManager = MANAGER_ROLES.includes(effectiveRole)
-
-  const navigation = [
-    { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Employes', href: '/dashboard/employees', icon: Users },
-    ...(isManager ? [
-      { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck },
-      { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList },
-    ] : []),
-    { name: 'Demandes', href: '/dashboard/requests', icon: FileText },
-    { name: 'Missions', href: '/dashboard/missions', icon: Briefcase },
-    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar },
-    { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw },
-    ...(isManager ? [
-      { name: 'Parametres', href: '/dashboard/settings', icon: Settings },
-      { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck },
-    ] : []),
-    { name: 'Profil', href: '/dashboard/profile', icon: User },
-    { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
+  // Full nav definition — filtered by permissions below
+  const allNavItems: { name: string; href: string; icon: typeof LayoutDashboard; key: SidebarItem }[] = [
+    { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard, key: 'dashboard' },
+    { name: 'Employes', href: '/dashboard/employees', icon: Users, key: 'employees' },
+    { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck, key: 'validations' },
+    { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList, key: 'mission-validations' },
+    { name: 'Demandes', href: '/dashboard/requests', icon: FileText, key: 'requests' },
+    { name: 'Missions', href: '/dashboard/missions', icon: Briefcase, key: 'missions' },
+    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
+    { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw, key: 'recovery-requests' },
+    { name: 'Parametres', href: '/dashboard/settings', icon: Settings, key: 'settings' },
+    { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck, key: 'balance-init' },
+    { name: 'Profil', href: '/dashboard/profile', icon: User, key: 'profile' },
+    { name: 'Notifications', href: '/dashboard/notifications', icon: Bell, key: 'notifications' },
   ]
+
+  const navigation = allNavItems.filter(item => canSee(item.key))
 
   const isNavItemActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
@@ -183,8 +184,8 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
                   </button>
                   <div className="flex items-center gap-2.5">
                     <Image
-                      src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
-                      alt="FRMG"
+                      src={getCompanyLogo(activeCompany?.name)}
+                      alt={activeCompany?.name || 'FRMG'}
                       width={36}
                       height={36}
                       className="h-9 w-9 object-contain"
@@ -210,34 +211,16 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
             )}
           >
             <div className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-border bg-sidebar p-4 shadow-none">
-              <div className="rounded-2xl border border-border bg-background p-3.5">
-                <div className="flex items-center gap-3">
-                  <Image
-                    src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
-                    alt="FRMG"
-                    width={44}
-                    height={44}
-                    className="h-11 w-11 shrink-0 object-contain"
-                  />
-                  <div className="min-w-0">
-                    <h1 className="text-sm font-bold tracking-tight text-foreground leading-tight">Federation Royale Marocaine de Golf</h1>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">Gestion des conges</p>
-                  </div>
-                </div>
-              </div>
+              <CompanySwitcher />
 
               <Link
                 href="/dashboard/new-request"
                 onClick={() => setSidebarOpen(false)}
-                className="mt-4 flex items-center gap-2.5 rounded-2xl bg-foreground px-4 py-3 text-sm font-semibold text-background transition-opacity hover:opacity-90"
+                className="mt-3 flex items-center gap-2.5 rounded-2xl bg-foreground px-4 py-3 text-sm font-semibold text-background transition-opacity hover:opacity-90"
               >
                 <PlusCircle className="h-4.5 w-4.5" />
                 Nouvelle demande
               </Link>
-
-              <div className="mt-3">
-                <CompanySwitcher />
-              </div>
 
               <nav className="mt-4 flex-1 space-y-1.5 overflow-y-auto pr-1 overscroll-contain">
                 {navigation.map((item) => {

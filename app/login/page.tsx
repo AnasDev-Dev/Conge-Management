@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
@@ -16,8 +16,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [logoIndex, setLogoIndex] = useState(0)
   const router = useRouter()
   const supabase = createClient()
+
+  const logos = [
+    { src: '/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png', alt: 'FRMG' },
+    { src: '/logo/ath_logo.png', alt: 'ATH' },
+  ]
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLogoIndex(prev => (prev + 1) % logos.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -123,15 +136,20 @@ export default function LoginPage() {
           <div className="relative z-10 flex flex-1 flex-col justify-between p-10">
             {/* Top: Logo */}
             <div>
-              <div className="mb-8">
-                <Image
-                  src="/logo-frmg.png"
-                  alt="Fédération Royale Marocaine de Golf"
-                  width={220}
-                  height={80}
-                  className="h-auto w-[200px]"
-                  priority
-                />
+              <div className="relative mb-8 h-[120px] w-[240px] overflow-hidden">
+                {logos.map((logo, i) => (
+                  <Image
+                    key={logo.alt}
+                    src={logo.src}
+                    alt={logo.alt}
+                    width={280}
+                    height={120}
+                    className={`absolute left-0 top-0 h-[120px] w-[240px] object-contain object-left transition-opacity duration-700 ease-in-out ${
+                      i === logoIndex ? 'opacity-100' : 'opacity-0'
+                    }`}
+                    priority={i === 0}
+                  />
+                ))}
               </div>
 
               <h1 className="max-w-[300px] text-[2.4rem] font-semibold leading-[1.1] tracking-[-0.03em] text-foreground">
@@ -142,7 +160,7 @@ export default function LoginPage() {
               </h1>
 
               <p className="mt-5 max-w-[280px] text-sm leading-relaxed text-muted-foreground">
-                Plateforme de gestion des congés de la Fédération Royale Marocaine de Golf. Simple, fluide, élégant.
+                Plateforme de gestion des congés. Simple, fluide, élégant.
               </p>
             </div>
 
@@ -234,7 +252,7 @@ export default function LoginPage() {
               <User className="h-7 w-7" />
             </div>
             <CardTitle className="text-2xl font-semibold tracking-tight">Connexion</CardTitle>
-            <CardDescription className="text-sm">Accedez a votre espace FRMG</CardDescription>
+            <CardDescription className="text-sm">Accedez a votre espace</CardDescription>
           </CardHeader>
 
           <CardContent className="px-8 pb-10">

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback, DragEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -76,8 +77,8 @@ function inferPreRejectStatus(r: RequestWithUser): string {
 
 export default function ValidationsPage() {
   const { user } = useCurrentUser()
-  const { activeRole } = useCompanyContext()
-  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
+  const { activeRole, activeCompany } = useCompanyContext()
+  const { effectiveRole } = usePermissions(user?.role || 'EMPLOYEE')
   const [allRequests, setAllRequests] = useState<RequestWithUser[]>([])
   const [rejectedRequests, setRejectedRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -120,7 +121,7 @@ export default function ValidationsPage() {
       fetchHolidays(companyId).then(setHolidays)
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
-  }, [user])
+  }, [user, activeCompany])
 
   const loadAllRequests = async (currentUserId?: string) => {
     try {
@@ -128,10 +129,14 @@ export default function ValidationsPage() {
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title, email, balance_conge, balance_recuperation, gender)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, email, balance_conge, balance_recuperation, gender, company_id)
         `)
         .in('status', ALL_KANBAN_STATUSES)
         .order('created_at', { ascending: false })
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
 
       // Exclude own requests — you can never approve your own leave
       if (currentUserId) {
@@ -155,11 +160,15 @@ export default function ValidationsPage() {
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title, email, balance_conge, balance_recuperation, gender)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, email, balance_conge, balance_recuperation, gender, company_id)
         `)
         .eq('status', 'REJECTED')
         .order('rejected_at', { ascending: false })
         .limit(20)
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
 
       if (currentUserId) {
         query = query.neq('user_id', currentUserId)

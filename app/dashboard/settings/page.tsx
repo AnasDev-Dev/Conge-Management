@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { PageGuard } from '@/components/role-gate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,13 +32,15 @@ import {
   Loader2,
   Pencil,
   CalendarDays,
+  Shield,
 } from 'lucide-react'
 import { Holiday, WorkingDays, Utilisateur, PersonnelCategory } from '@/lib/types/database'
+import { PermissionsManager } from '@/components/permissions-manager'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { clearCaches } from '@/lib/leave-utils'
 
-type Tab = 'categories' | 'working-days' | 'holidays' | 'recuperation'
+type Tab = 'categories' | 'working-days' | 'holidays' | 'recuperation' | 'permissions'
 
 const DAY_LABELS = [
   { key: 'monday', label: 'Lundi' },
@@ -468,6 +471,7 @@ export default function SettingsPage() {
     { key: 'working-days', label: 'Jours ouvrables', icon: Clock },
     { key: 'holidays', label: 'Jours fériés', icon: Calendar },
     { key: 'recuperation', label: 'Crédit récupération', icon: UserPlus },
+    { key: 'permissions', label: 'Permissions', icon: Shield },
   ]
 
   // Group holidays
@@ -475,6 +479,7 @@ export default function SettingsPage() {
   const variableHolidays = holidays.filter(h => !h.is_recurring)
 
   return (
+    <PageGuard userRole={user?.role || 'EMPLOYEE'} page="settings">
     <div className="space-y-5 md:space-y-7">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
@@ -1111,6 +1116,11 @@ export default function SettingsPage() {
       )}
 
       {/* ─── Recuperation Credit Tab ───────────────── */}
+      {/* ─── Permissions Tab ────────────────────────── */}
+      {activeTab === 'permissions' && (
+        <PermissionsManager />
+      )}
+
       {activeTab === 'recuperation' && (
         <Card className="border-border/70">
           <CardHeader>
@@ -1226,5 +1236,6 @@ export default function SettingsPage() {
         </Card>
       )}
     </div>
+    </PageGuard>
   )
 }

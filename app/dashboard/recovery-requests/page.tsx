@@ -40,12 +40,12 @@ import {
 } from 'lucide-react'
 import { RecoveryRequest, Utilisateur } from '@/lib/types/database'
 import {
-  MANAGER_ROLES,
   RECOVERY_WORK_TYPE_LABELS,
   RECOVERY_PERIOD_OPTIONS,
   getRecoveryStatusLabel,
   getRecoveryStatusClass,
 } from '@/lib/constants'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import type { RecoveryPeriod } from '@/lib/constants'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -76,8 +76,8 @@ const PERIOD_DISPLAY_LABELS: Record<string, string> = {
 
 export default function RecoveryRequestsPage() {
   const { user } = useCurrentUser()
-  const { activeRole } = useCompanyContext()
-  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
+  const { activeRole, activeCompany } = useCompanyContext()
+  const { can, effectiveRole } = usePermissions(user?.role || 'EMPLOYEE')
   const [requests, setRequests] = useState<RecoveryRequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -105,7 +105,7 @@ export default function RecoveryRequestsPage() {
   // Validating state
   const [validatingId, setValidatingId] = useState<number | null>(null)
 
-  const isManager = MANAGER_ROLES.includes(effectiveRole)
+  const isManager = can('recovery.validate')
   const isEmployee = effectiveRole === 'EMPLOYEE'
 
   // Auto-calculate days from period
@@ -117,19 +117,25 @@ export default function RecoveryRequestsPage() {
   useEffect(() => {
     if (user) {
       loadRequests()
-      if (MANAGER_ROLES.includes(effectiveRole)) {
+      if (isManager) {
         loadEmployees()
       }
     }
-  }, [user])
+  }, [user, activeCompany])
 
   const loadEmployees = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('utilisateurs')
         .select('id, full_name, job_title')
         .eq('is_active', true)
         .order('full_name')
+
+      if (activeCompany) {
+        query = query.eq('company_id', activeCompany.id)
+      }
+
+      const { data, error } = await query
       if (!error && data) setEmployees(data)
     } catch (e) {
       console.error('Error loading employees:', e)
@@ -138,10 +144,16 @@ export default function RecoveryRequestsPage() {
 
   const loadRequests = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('recovery_requests')
-        .select('*, user:utilisateurs!user_id(id, full_name, job_title, department_id)')
+        .select('*, user:utilisateurs!user_id!inner(id, full_name, job_title, department_id, company_id)')
         .order('created_at', { ascending: false })
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setRequests(data || [])

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -58,8 +59,8 @@ const ALL_MISSION_STATUSES: string[] = MISSION_PIPELINE.map(s => s.status)
 
 export default function MissionValidationsPage() {
   const { user } = useCurrentUser()
-  const { activeRole } = useCompanyContext()
-  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
+  const { activeRole, activeCompany } = useCompanyContext()
+  const { effectiveRole } = usePermissions(user?.role || 'EMPLOYEE')
   const [allMissions, setAllMissions] = useState<MissionWithUser[]>([])
   const [rejectedMissions, setRejectedMissions] = useState<MissionWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,20 +80,26 @@ export default function MissionValidationsPage() {
       loadMissions(user.id)
       loadRejectedMissions(user.id)
     }
-  }, [user])
+  }, [user, activeCompany])
 
   const loadMissions = async (currentUserId: string) => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('mission_requests')
         .select(`
           *,
-          user:utilisateurs!mission_requests_user_id_fkey(id, full_name, job_title, email, gender),
+          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, email, gender, company_id),
           assigner:utilisateurs!mission_requests_assigned_by_fkey(id, full_name)
         `)
         .in('status', ALL_MISSION_STATUSES)
         .neq('user_id', currentUserId)
         .order('created_at', { ascending: false })
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setAllMissions(data || [])
@@ -105,17 +112,23 @@ export default function MissionValidationsPage() {
 
   const loadRejectedMissions = async (currentUserId: string) => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('mission_requests')
         .select(`
           *,
-          user:utilisateurs!mission_requests_user_id_fkey(id, full_name, job_title, email, gender),
+          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, email, gender, company_id),
           assigner:utilisateurs!mission_requests_assigned_by_fkey(id, full_name)
         `)
         .eq('status', 'REJECTED')
         .neq('user_id', currentUserId)
         .order('rejected_at', { ascending: false })
         .limit(20)
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setRejectedMissions(data || [])

@@ -15,7 +15,8 @@ import { toast } from 'sonner'
 import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot } from '@/lib/types/database'
-import { MANAGER_ROLES, TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
+import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -46,8 +47,8 @@ export default function NewRequestPage() {
     searchParams.get('tab') === 'mission' ? 'mission' : 'conge'
   )
   const { user } = useCurrentUser()
-  const { activeRole, activeCompany, isHome } = useCompanyContext()
-  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
+  const { activeCompany, isHome } = useCompanyContext()
+  const { can, effectiveRole } = usePermissions(user?.role || 'EMPLOYEE')
   const [currentStep, setCurrentStep] = useState(1)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -103,7 +104,7 @@ export default function NewRequestPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const isManager = MANAGER_ROLES.includes(effectiveRole)
+  const isManager = can('requests.createOnBehalf')
 
   // The target employee for the request (self or selected employee)
   const targetEmployee = useMemo((): EmployeeOption | null => {

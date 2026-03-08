@@ -10,7 +10,9 @@ import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { Briefcase, PlusCircle, Search, Calendar, MapPin } from 'lucide-react'
 import { MissionRequest, Utilisateur } from '@/lib/types/database'
-import { MANAGER_ROLES, getStatusClass, getStatusLabel } from '@/lib/constants'
+import { getStatusClass, getStatusLabel } from '@/lib/constants'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -21,6 +23,7 @@ interface MissionWithUser extends MissionRequest {
 
 export default function MissionsPage() {
   const { user } = useCurrentUser()
+  const { activeCompany } = useCompanyContext()
   const [missions, setMissions] = useState<MissionWithUser[]>([])
   const [filteredMissions, setFilteredMissions] = useState<MissionWithUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,24 +35,30 @@ export default function MissionsPage() {
     if (user) {
       loadMissions(user)
     }
-  }, [user])
+  }, [user, activeCompany])
 
   useEffect(() => {
     filterMissions()
   }, [missions, searchTerm, statusFilter])
 
+  const { can } = usePermissions(user?.role || 'EMPLOYEE')
+
   const loadMissions = async (currentUser: Utilisateur) => {
     try {
-      const isManager = MANAGER_ROLES.includes(currentUser.role)
+      const isManager = can('missions.viewAll')
 
       let query = supabase
         .from('mission_requests')
         .select(`
           *,
-          user:utilisateurs!mission_requests_user_id_fkey(id, full_name, job_title),
+          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, company_id),
           assigner:utilisateurs!mission_requests_assigned_by_fkey(id, full_name)
         `)
         .order('created_at', { ascending: false })
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
 
       if (!isManager) {
         query = query.or(`user_id.eq.${currentUser.id},assigned_by.eq.${currentUser.id}`)

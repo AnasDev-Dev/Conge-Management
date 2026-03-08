@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { FileText, Search, Calendar, Clock, ChevronRight, Users } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
-import { MANAGER_ROLES, getStatusClass, getStatusLabel } from '@/lib/constants'
+import { getStatusClass, getStatusLabel } from '@/lib/constants'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -40,8 +41,8 @@ const STATUS_TABS = [
 
 export default function RequestsPage() {
   const { user } = useCurrentUser()
-  const { activeRole } = useCompanyContext()
-  const effectiveRole = activeRole || user?.role || 'EMPLOYEE'
+  const { activeRole, activeCompany } = useCompanyContext()
+  const { can } = usePermissions(user?.role || 'EMPLOYEE')
   const [requests, setRequests] = useState<RequestWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -52,18 +53,23 @@ export default function RequestsPage() {
     if (user) {
       loadRequests(user)
     }
-  }, [user])
+  }, [user, activeCompany])
 
   const loadRequests = async (userData: Utilisateur) => {
     try {
-      // RLS handles visibility: employees see own, CHEF sees dept, RH/DIR/ADMIN see all
-      const { data, error } = await supabase
+      let query = supabase
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey(id, full_name, job_title)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, company_id)
         `)
         .order('created_at', { ascending: false })
+
+      if (activeCompany) {
+        query = query.eq('user.company_id', activeCompany.id)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       setRequests(data || [])
@@ -74,7 +80,7 @@ export default function RequestsPage() {
     }
   }
 
-  const isManagerView = MANAGER_ROLES.includes(effectiveRole)
+  const isManagerView = can('requests.viewAll')
 
   const filteredRequests = useMemo(() => {
     let filtered = requests
