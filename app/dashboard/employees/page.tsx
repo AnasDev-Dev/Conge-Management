@@ -15,11 +15,14 @@ import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { PageGuard } from '@/components/role-gate'
 import { AddEmployeeDialog } from '@/components/add-employee-dialog'
+import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
 
 type EmployeeRow = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'balance_conge' | 'balance_recuperation'
->
+  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'balance_conge' | 'balance_recuperation' | 'hire_date'
+> & {
+  departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
+}
 
 type LeaveRow = Pick<LeaveRequest, 'id' | 'user_id' | 'status' | 'days_count' | 'created_at'>
 
@@ -106,7 +109,7 @@ export default function EmployeesPage() {
     try {
       let empQuery = supabase
         .from('utilisateurs')
-        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, company_id')
+        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, hire_date, company_id, departments(annual_leave_days)')
         .order('full_name')
 
       // Filter by active company if set
@@ -302,9 +305,26 @@ export default function EmployeesPage() {
                                 {employee.role}
                               </Badge>
                             </td>
-                            <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground">
-                              <span className="font-medium text-foreground">{employee.balance_conge}</span> congé /{' '}
-                              <span className="font-medium text-foreground">{employee.balance_recuperation}</span> récup.
+                            <td className="border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground">
+                              {(() => {
+                                const deptDays = Array.isArray(employee.departments)
+                                  ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+                                  : employee.departments?.annual_leave_days
+                                const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+                                const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
+                                return (
+                                  <div className="space-y-0.5">
+                                    <p className="text-sm">
+                                      <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
+                                      <span className="text-muted-foreground"> dispo.</span>
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {employee.balance_conge > 0 && <span>Report: {employee.balance_conge}j · </span>}
+                                      Acquis: {accrual.cumulativeEarned}j · Récup: {employee.balance_recuperation}j
+                                    </p>
+                                  </div>
+                                )
+                              })()}
                             </td>
                             <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
                               <span className="font-semibold text-primary">{employeeSummary.approvedDays} jours</span>

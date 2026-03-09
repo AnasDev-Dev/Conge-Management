@@ -12,12 +12,14 @@ import { ArrowLeft, Calendar, Clock, FileText, User } from 'lucide-react'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
-import { calculateSeniority } from '@/lib/leave-utils'
+import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
 
 type EmployeeDetails = Pick<
   Utilisateur,
   'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date'
->
+> & {
+  departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
+}
 
 type RequestDetails = Pick<
   LeaveRequest,
@@ -40,7 +42,7 @@ export default function EmployeeDetailsPage() {
         await Promise.all([
           supabase
             .from('utilisateurs')
-            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date')
+            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, departments(annual_leave_days)')
             .eq('id', employeeId)
             .single(),
           supabase
@@ -182,10 +184,27 @@ export default function EmployeeDetailsPage() {
               <p className="mt-1 text-sm text-foreground">{employee.phone || 'Non renseigné'}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Soldes</p>
-              <p className="mt-1 text-sm text-foreground">
-                {employee.balance_conge} congé / {employee.balance_recuperation} récupération
-              </p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Solde Congé</p>
+              {(() => {
+                const deptDays = Array.isArray(employee.departments)
+                  ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+                  : employee.departments?.annual_leave_days
+                const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+                const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
+                return (
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-sm font-semibold text-foreground">{accrual.availableNow}j disponibles</p>
+                    <p className="text-xs text-muted-foreground">
+                      {employee.balance_conge > 0 && <span>Report: {employee.balance_conge}j · </span>}
+                      Acquis: {accrual.cumulativeEarned}j · Droit: {seniority.totalEntitlement}j/an
+                    </p>
+                  </div>
+                )
+              })()}
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Récupération</p>
+              <p className="mt-1 text-sm text-foreground">{employee.balance_recuperation}j</p>
             </div>
             {employee.hire_date && (() => {
               const seniority = calculateSeniority(employee.hire_date)

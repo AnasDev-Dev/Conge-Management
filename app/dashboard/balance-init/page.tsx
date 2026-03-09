@@ -35,7 +35,7 @@ type EmployeeWithDept = Pick<
   Utilisateur,
   'id' | 'full_name' | 'job_title' | 'hire_date' | 'balance_conge' | 'department_id'
 > & {
-  departments: { name: string } | null
+  departments: { name: string; annual_leave_days: number } | null
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -66,7 +66,7 @@ export default function BalanceInitPage() {
       const [{ data, error }, { data: requestData }] = await Promise.all([
         supabase
           .from('utilisateurs')
-          .select('id, full_name, job_title, hire_date, balance_conge, department_id, departments(name)')
+          .select('id, full_name, job_title, hire_date, balance_conge, department_id, departments(name, annual_leave_days)')
           .eq('is_active', true)
           .order('full_name'),
         supabase
@@ -111,20 +111,24 @@ export default function BalanceInitPage() {
   const seniorityMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof calculateSeniority>>()
     for (const emp of employees) {
-      map.set(emp.id, calculateSeniority(emp.hire_date))
+      const deptDays = emp.departments?.annual_leave_days
+      map.set(emp.id, calculateSeniority(emp.hire_date, deptDays))
     }
     return map
   }, [employees])
 
-  // Monthly accrual info per employee
+  // Monthly accrual info per employee (entitlement from dept + seniority, carry-over from balance_conge)
   const accrualMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof calculateMonthlyAccrual>>()
     for (const emp of employees) {
       const usage = usageByUser.get(emp.id) || { used: 0, pending: 0 }
-      map.set(emp.id, calculateMonthlyAccrual(emp.balance_conge, usage.used, usage.pending))
+      const seniority = seniorityMap.get(emp.id)
+      const annualEntitlement = seniority?.totalEntitlement ?? 18
+      const carryOver = emp.balance_conge // now means solde antérieur
+      map.set(emp.id, calculateMonthlyAccrual(annualEntitlement, carryOver, usage.used, usage.pending))
     }
     return map
-  }, [employees, usageByUser])
+  }, [employees, usageByUser, seniorityMap])
 
   const filteredEmployees = useMemo(() => {
     const tokens = normalizeText(searchTerm).split(/\s+/).filter(Boolean)
@@ -189,7 +193,7 @@ export default function BalanceInitPage() {
           p_user_id: id,
           p_balance: newBalance,
           p_year: currentYear,
-          p_reason: `Initialisation solde ${currentYear} par RH`,
+          p_reason: `Report solde anterieur ${currentYear} par RH`,
         })
 
         if (rpcError) throw rpcError
@@ -223,10 +227,10 @@ export default function BalanceInitPage() {
       {/* Header */}
       <div className="shrink-0">
         <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl md:text-3xl">
-          Initialisation des Soldes
+          Reports & Soldes
         </h1>
         <p className="mt-1 text-xs text-muted-foreground sm:text-sm md:text-base">
-          Attribuez le solde annuel de congé. Le systeme calcule automatiquement le solde mensuel disponible.
+          Saisissez le report de l&apos;année précédente. Le droit annuel est calculé automatiquement depuis le département.
         </p>
       </div>
 
@@ -335,9 +339,9 @@ export default function BalanceInitPage() {
                             <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Droit/an</p>
                             <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">{seniority.totalEntitlement} j</p>
                           </div>
-                          <div className="rounded-lg bg-slate-50/80 px-2 py-1.5 ring-1 ring-inset ring-slate-200/70 dark:bg-slate-800/20 dark:ring-slate-700/30">
-                            <p className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">Solde RH</p>
-                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{emp.balance_conge} j</p>
+                          <div className="rounded-lg bg-amber-50/60 px-2 py-1.5 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/20 dark:ring-amber-900/30">
+                            <p className="text-[9px] uppercase tracking-wide text-amber-500 dark:text-amber-400">Report</p>
+                            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{emp.balance_conge} j</p>
                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-1.5">
@@ -360,7 +364,7 @@ export default function BalanceInitPage() {
 
                   {/* Input row */}
                   <div className="mt-2.5 flex items-center gap-2">
-                    <label className="shrink-0 text-[11px] font-medium text-muted-foreground">Nouveau solde</label>
+                    <label className="shrink-0 text-[11px] font-medium text-muted-foreground">Report</label>
                     <Input
                       type="number"
                       step="0.5"
@@ -398,11 +402,10 @@ export default function BalanceInitPage() {
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold">Embauche</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Ancienneté</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Droit/an</th>
-                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Solde RH</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Report</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">/mois</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Cumulé</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Disponible</th>
-                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Nouveau solde</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -457,34 +460,7 @@ export default function BalanceInitPage() {
                             {seniority.totalEntitlement} j
                           </span>
                         </td>
-                        <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-inset ring-slate-600/15 dark:bg-slate-800/40 dark:text-slate-300 dark:ring-slate-500/20">
-                            {emp.balance_conge} j
-                          </span>
-                        </td>
-                        {(() => {
-                          const accrual = accrualMap.get(emp.id)!
-                          return (
-                            <>
-                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20">
-                                  {accrual.monthlyRate} j
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className="inline-flex items-center rounded-md bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-950/30 dark:text-teal-400 dark:ring-teal-500/20">
-                                  {accrual.cumulativeEarned} j
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className="inline-flex items-center rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20">
-                                  {accrual.availableNow} j
-                                </span>
-                              </td>
-                            </>
-                          )
-                        })()}
-                        <td className="border-b border-border/30 px-4 py-2.5 align-middle">
+                        <td className="border-b border-border/30 px-4 py-2.5 text-center align-middle">
                           <div className="flex items-center justify-center gap-2">
                             <Input
                               type="number"
@@ -513,6 +489,28 @@ export default function BalanceInitPage() {
                             )}
                           </div>
                         </td>
+                        {(() => {
+                          const accrual = accrualMap.get(emp.id)!
+                          return (
+                            <>
+                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                                <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20">
+                                  {accrual.monthlyRate} j
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                                <span className="inline-flex items-center rounded-md bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-950/30 dark:text-teal-400 dark:ring-teal-500/20">
+                                  {accrual.cumulativeEarned} j
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                                <span className="inline-flex items-center rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20">
+                                  {accrual.availableNow} j
+                                </span>
+                              </td>
+                            </>
+                          )
+                        })()}
                       </tr>
                     )
                   })}
@@ -528,7 +526,7 @@ export default function BalanceInitPage() {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-3 backdrop-blur-sm md:hidden">
           <Button onClick={() => setConfirmOpen(true)} disabled={saving} className="w-full">
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Enregistrer {modifiedCount} solde(s)
+            Enregistrer {modifiedCount} report(s)
           </Button>
         </div>
       )}
@@ -537,9 +535,9 @@ export default function BalanceInitPage() {
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmer l&apos;initialisation des soldes</DialogTitle>
+            <DialogTitle>Confirmer la mise à jour des reports</DialogTitle>
             <DialogDescription>
-              Vous allez modifier le solde de congé de <strong>{modifiedCount}</strong> employé(s).
+              Vous allez modifier le report (solde antérieur) de <strong>{modifiedCount}</strong> employé(s).
               Cette action sera enregistrée dans l&apos;historique des soldes.
             </DialogDescription>
           </DialogHeader>

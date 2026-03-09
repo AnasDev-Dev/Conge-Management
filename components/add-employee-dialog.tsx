@@ -344,7 +344,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
           {/* Balances */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="balanceConge">Solde congé (jours)</Label>
+              <Label htmlFor="balanceConge">Report antérieur (jours)</Label>
               <Input id="balanceConge" type="number" min="0" step="0.5" value={balanceConge} onChange={(e) => setBalanceConge(e.target.value)} />
             </div>
             <div className="space-y-1.5">

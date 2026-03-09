@@ -88,7 +88,7 @@ BEGIN
   VALUES (p_company_id, 'RH',
     '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
     '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
-    '["employees.create","employees.edit","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.categories","settings.workingDays","settings.holidays","settings.recovery","approval.leaveStage1","approval.missionStage2"]'::jsonb,
+    '["employees.create","employees.edit","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.workingDays","settings.holidays","settings.recovery","approval.leaveStage1","approval.missionStage2"]'::jsonb,
     'all'
   ) ON CONFLICT (company_id, role) DO NOTHING;
 
@@ -106,7 +106,7 @@ BEGIN
   VALUES (p_company_id, 'ADMIN',
     '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
     '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
-    '["employees.create","employees.edit","employees.delete","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.categories","settings.workingDays","settings.holidays","settings.recovery","approval.leaveStage1","approval.leaveStage2","approval.leaveStage3","approval.missionStage1","approval.missionStage2","approval.missionStage3"]'::jsonb,
+    '["employees.create","employees.edit","employees.delete","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.workingDays","settings.holidays","settings.recovery","approval.leaveStage1","approval.leaveStage2","approval.leaveStage3","approval.missionStage1","approval.missionStage2","approval.missionStage3"]'::jsonb,
     'all'
   ) ON CONFLICT (company_id, role) DO NOTHING;
 END;

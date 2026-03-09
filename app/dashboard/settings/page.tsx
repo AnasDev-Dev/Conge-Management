@@ -28,19 +28,25 @@ import {
   Save,
   Search,
   UserPlus,
-  Users,
   Loader2,
   Pencil,
-  CalendarDays,
   Shield,
+  Building2,
 } from 'lucide-react'
-import { Holiday, WorkingDays, Utilisateur, PersonnelCategory } from '@/lib/types/database'
+import { Holiday, WorkingDays, Utilisateur } from '@/lib/types/database'
 import { PermissionsManager } from '@/components/permissions-manager'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { clearCaches } from '@/lib/leave-utils'
 
-type Tab = 'categories' | 'working-days' | 'holidays' | 'recuperation' | 'permissions'
+type Tab = 'departments' | 'working-days' | 'holidays' | 'recuperation' | 'permissions'
+
+interface DepartmentWithDays {
+  id: number
+  name: string
+  company_id: number | null
+  annual_leave_days: number
+}
 
 const DAY_LABELS = [
   { key: 'monday', label: 'Lundi' },
@@ -55,29 +61,20 @@ const DAY_LABELS = [
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('categories')
+  const [activeTab, setActiveTab] = useState<Tab>('departments')
   const { user } = useCurrentUser()
   const supabase = useMemo(() => createClient(), [])
 
-  // ─── Categories state ─────────────────────────────
-  const [categories, setCategories] = useState<PersonnelCategory[]>([])
-  const [categoriesLoading, setCategoriesLoading] = useState(true)
-  const [addCategoryOpen, setAddCategoryOpen] = useState(false)
-  const [editCategoryOpen, setEditCategoryOpen] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<PersonnelCategory | null>(null)
-  const [categoryName, setCategoryName] = useState('')
-  const [categoryDescription, setCategoryDescription] = useState('')
-  const [categoryAnnualLeaveDays, setCategoryAnnualLeaveDays] = useState('')
-  const [savingCategory, setSavingCategory] = useState(false)
-  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
-  const [categorySearch, setCategorySearch] = useState('')
-  const [deleteCategoryConfirm, setDeleteCategoryConfirm] = useState<PersonnelCategory | null>(null)
+  // ─── Departments state ──────────────────────────────
+  const [depts, setDepts] = useState<DepartmentWithDays[]>([])
+  const [deptsLoading, setDeptsLoading] = useState(true)
+  const [deptEdits, setDeptEdits] = useState<Map<number, number>>(new Map())
+  const [savingDepts, setSavingDepts] = useState(false)
 
   // ─── Working days state ───────────────────────────
   const [workingDays, setWorkingDays] = useState<WorkingDays | null>(null)
   const [workingDaysLoading, setWorkingDaysLoading] = useState(true)
   const [savingWorkingDays, setSavingWorkingDays] = useState(false)
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
 
   // Holidays state
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -101,145 +98,78 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      loadCategories(user.company_id ?? undefined)
-      loadWorkingDays(user.company_id ?? undefined, null)
+      loadDepartments(user.company_id ?? undefined)
+      loadWorkingDays(user.company_id ?? undefined)
       loadHolidays(user.company_id ?? undefined)
       loadEmployees()
     }
   }, [user])
 
-  // ─── Categories ───────────────────────────────────
-  const loadCategories = async (companyId?: number) => {
+  // ─── Departments ────────────────────────────────────
+  const loadDepartments = async (companyId?: number) => {
     try {
-      let query = supabase.from('personnel_categories').select('*').order('name')
+      let query = supabase.from('departments').select('id, name, company_id, annual_leave_days').order('name')
       if (companyId) query = query.eq('company_id', companyId)
       const { data, error } = await query
       if (error) throw error
-      setCategories(data || [])
+      setDepts((data || []) as DepartmentWithDays[])
     } catch (error) {
-      console.error('Error loading categories:', error)
+      console.error('Error loading departments:', error)
     } finally {
-      setCategoriesLoading(false)
+      setDeptsLoading(false)
     }
   }
 
-  const openAddCategory = () => {
-    setCategoryName('')
-    setCategoryDescription('')
-    setCategoryAnnualLeaveDays('')
-    setAddCategoryOpen(true)
+  const handleDeptDaysChange = (deptId: number, value: string) => {
+    const parsed = parseFloat(value)
+    const next = new Map(deptEdits)
+    if (value === '' || isNaN(parsed)) {
+      next.delete(deptId)
+    } else {
+      next.set(deptId, Math.max(parsed, 0))
+    }
+    setDeptEdits(next)
   }
 
-  const openEditCategory = (cat: PersonnelCategory) => {
-    setEditingCategory(cat)
-    setCategoryName(cat.name)
-    setCategoryDescription(cat.description || '')
-    setCategoryAnnualLeaveDays(String(cat.annual_leave_days))
-    setEditCategoryOpen(true)
-  }
+  const deptModifiedCount = useMemo(() => {
+    let count = 0
+    for (const [id, val] of deptEdits) {
+      const dept = depts.find(d => d.id === id)
+      if (dept && val !== dept.annual_leave_days) count++
+    }
+    return count
+  }, [deptEdits, depts])
 
-  const addCategory = async () => {
-    if (!categoryName.trim() || !categoryAnnualLeaveDays || !user) return
-    const annualDays = parseFloat(categoryAnnualLeaveDays)
-    if (isNaN(annualDays) || annualDays < 0) {
-      toast.error('Le nombre de jours de congé annuel doit être positif')
-      return
+  const saveDeptDays = async () => {
+    setSavingDepts(true)
+    let ok = 0, fail = 0
+    for (const [id, val] of deptEdits) {
+      const dept = depts.find(d => d.id === id)
+      if (!dept || val === dept.annual_leave_days) continue
+      const { error } = await supabase.from('departments').update({ annual_leave_days: val }).eq('id', id)
+      if (error) { console.error(error); fail++ } else { ok++ }
     }
-    setSavingCategory(true)
-    try {
-      const { data, error } = await supabase
-        .from('personnel_categories')
-        .insert({
-          company_id: user.company_id || 1,
-          name: categoryName.trim(),
-          description: categoryDescription.trim() || null,
-          annual_leave_days: annualDays,
-        })
-        .select()
-        .single()
-      if (error) throw error
-      if (data) setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-      setCategoryName('')
-      setCategoryDescription('')
-      setCategoryAnnualLeaveDays('')
-      setAddCategoryOpen(false)
-      toast.success('Catégorie ajoutée')
-    } catch (error) {
-      console.error('Error adding category:', error)
-      toast.error("Erreur lors de l'ajout de la catégorie")
-    } finally {
-      setSavingCategory(false)
-    }
-  }
-
-  const updateCategory = async () => {
-    if (!editingCategory || !categoryName.trim() || !categoryAnnualLeaveDays || !user) return
-    const annualDays = parseFloat(categoryAnnualLeaveDays)
-    if (isNaN(annualDays) || annualDays < 0) {
-      toast.error('Le nombre de jours de congé annuel doit être positif')
-      return
-    }
-    setSavingCategory(true)
-    try {
-      const { data, error } = await supabase
-        .from('personnel_categories')
-        .update({
-          name: categoryName.trim(),
-          description: categoryDescription.trim() || null,
-          annual_leave_days: annualDays,
-        })
-        .eq('id', editingCategory.id)
-        .select()
-        .single()
-      if (error) throw error
-      if (data) {
-        setCategories(prev =>
-          prev.map(c => (c.id === data.id ? data : c)).sort((a, b) => a.name.localeCompare(b.name))
-        )
-      }
-      setEditCategoryOpen(false)
-      setEditingCategory(null)
-      toast.success('Catégorie mise à jour')
-    } catch (error) {
-      console.error('Error updating category:', error)
-      toast.error('Erreur lors de la mise à jour')
-    } finally {
-      setSavingCategory(false)
-    }
-  }
-
-  const deleteCategory = async (id: number) => {
-    setDeletingCategoryId(id)
-    try {
-      const { error } = await supabase.from('personnel_categories').delete().eq('id', id)
-      if (error) throw error
-      setCategories(prev => prev.filter(c => c.id !== id))
-      toast.success('Catégorie supprimée')
-    } catch (error) {
-      console.error('Error deleting category:', error)
-      toast.error('Erreur lors de la suppression')
-    } finally {
-      setDeletingCategoryId(null)
-    }
+    if (ok > 0) toast.success(`${ok} département(s) mis à jour`)
+    if (fail > 0) toast.error(`${fail} erreur(s)`)
+    setDeptEdits(new Map())
+    setSavingDepts(false)
+    setDeptsLoading(true)
+    await loadDepartments(user?.company_id ?? undefined)
   }
 
   // ─── Working Days ─────────────────────────────────
-  const loadWorkingDays = async (companyId?: number, categoryId?: number | null) => {
+  const loadWorkingDays = async (companyId?: number) => {
     setWorkingDaysLoading(true)
     try {
       let query = supabase.from('working_days').select('*')
       if (companyId) query = query.eq('company_id', companyId)
-      if (categoryId) {
-        query = query.eq('category_id', categoryId)
-      } else {
-        query = query.is('category_id', null)
-      }
+      query = query.is('category_id', null)
       const { data, error } = await query.limit(1).single()
       if (error && error.code !== 'PGRST116') throw error
       setWorkingDays(data || {
         id: 0,
         company_id: companyId || null,
-        category_id: categoryId || null,
+        category_id: null,
         monday: true, tuesday: true, wednesday: true, thursday: true,
         friday: true, saturday: true, sunday: false,
         monday_morning: true, monday_afternoon: true,
@@ -254,13 +184,6 @@ export default function SettingsPage() {
       console.error('Error loading working days:', error)
     } finally {
       setWorkingDaysLoading(false)
-    }
-  }
-
-  const handleCategoryFilterChange = (categoryId: number | null) => {
-    setSelectedCategoryId(categoryId)
-    if (user) {
-      loadWorkingDays(user.company_id ?? undefined, categoryId)
     }
   }
 
@@ -287,7 +210,7 @@ export default function SettingsPage() {
       const companyId = user.company_id || 1
       const payload = {
         company_id: companyId,
-        category_id: selectedCategoryId || null,
+        category_id: null,
         monday: workingDays.monday,
         tuesday: workingDays.tuesday,
         wednesday: workingDays.wednesday,
@@ -412,15 +335,6 @@ export default function SettingsPage() {
     }
   }
 
-  const filteredCategories = useMemo(() => {
-    if (!categorySearch.trim()) return categories
-    const term = categorySearch.toLowerCase()
-    return categories.filter(c =>
-      c.name.toLowerCase().includes(term) ||
-      c.description?.toLowerCase().includes(term)
-    )
-  }, [categories, categorySearch])
-
   const filteredEmployees = useMemo(() => {
     if (!recupSearch.trim()) return employees
     const term = recupSearch.toLowerCase()
@@ -467,7 +381,7 @@ export default function SettingsPage() {
   }
 
   const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
-    { key: 'categories', label: 'Catégories', icon: Users },
+    { key: 'departments', label: 'Départements', icon: Building2 },
     { key: 'working-days', label: 'Jours ouvrables', icon: Clock },
     { key: 'holidays', label: 'Jours fériés', icon: Calendar },
     { key: 'recuperation', label: 'Crédit récupération', icon: UserPlus },
@@ -486,7 +400,7 @@ export default function SettingsPage() {
           Paramètres
         </h1>
         <p className="mt-1 text-sm text-muted-foreground sm:mt-1.5 sm:text-base">
-          Configuration des catégories, jours ouvrables, fériés et récupération
+          Configuration des départements, jours ouvrables, fériés et récupération
         </p>
       </div>
 
@@ -513,328 +427,92 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* ─── Categories Tab ──────────────────────────── */}
-      {activeTab === 'categories' && (
+      {/* ─── Departments Tab ─────────────────────────── */}
+      {activeTab === 'departments' && (
         <div className="space-y-5">
-          {/* Search bar + Add button */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={categorySearch}
-                onChange={(e) => setCategorySearch(e.target.value)}
-                placeholder="Rechercher une catégorie..."
-                className="pl-10"
-              />
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Jours de congé par département</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Configurez le nombre de jours de congé annuel pour chaque département. Ce droit est la base du calcul mensuel.
+              </p>
             </div>
-            <Button onClick={openAddCategory} className="shrink-0">
-              <Plus className="mr-2 h-4 w-4" />
-              Ajouter une catégorie
-            </Button>
+            {deptModifiedCount > 0 && (
+              <Button onClick={saveDeptDays} disabled={savingDepts} size="sm">
+                {savingDepts ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                Enregistrer
+                <Badge variant="secondary" className="ml-1.5 border border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground text-[10px] px-1.5">
+                  {deptModifiedCount}
+                </Badge>
+              </Button>
+            )}
           </div>
 
-          {categoriesLoading ? (
+          {deptsLoading ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted/40" />
               ))}
             </div>
-          ) : categories.length === 0 ? (
+          ) : depts.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/10 py-16">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/40">
-                <Users className="h-7 w-7 text-muted-foreground/40" />
-              </div>
-              <p className="mt-4 text-sm font-medium text-foreground">Aucune catégorie</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Ajoutez une catégorie de personnel pour commencer.
-              </p>
-              <Button onClick={openAddCategory} className="mt-5" variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Ajouter une catégorie
-              </Button>
+              <Building2 className="h-7 w-7 text-muted-foreground/40" />
+              <p className="mt-4 text-sm text-muted-foreground">Aucun département trouvé.</p>
             </div>
           ) : (
-            <>
-              {/* Desktop Table */}
-              <div className="hidden overflow-hidden rounded-2xl border border-border/70 bg-card md:block">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[700px] border-separate border-spacing-0">
-                    <thead>
-                      <tr className="bg-secondary text-xs uppercase tracking-[0.08em] text-foreground/85">
-                        <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Catégorie</th>
-                        <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Description</th>
-                        <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Jours congé/an</th>
-                        <th className="whitespace-nowrap px-5 py-3.5 text-right font-semibold">Actions</th>
+            <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
+              <table className="w-full border-separate border-spacing-0">
+                <thead>
+                  <tr className="bg-secondary text-xs uppercase tracking-[0.08em] text-foreground/85">
+                    <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Département</th>
+                    <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Jours congé/an</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {depts.map((dept) => {
+                    const edited = deptEdits.get(dept.id)
+                    const displayVal = edited !== undefined ? String(edited) : String(dept.annual_leave_days)
+                    const isModified = edited !== undefined && edited !== dept.annual_leave_days
+                    return (
+                      <tr key={dept.id} className="group transition-colors hover:bg-accent/40">
+                        <td className="border-b border-border/45 px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                              <Building2 className="h-4 w-4 text-primary" />
+                            </div>
+                            <span className="text-sm font-semibold text-foreground">{dept.name}</span>
+                          </div>
+                        </td>
+                        <td className="border-b border-border/45 px-5 py-3.5">
+                          <div className="flex items-center justify-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="30"
+                              value={displayVal}
+                              onChange={(e) => handleDeptDaysChange(dept.id, e.target.value)}
+                              className={`h-9 w-24 text-center font-medium ${
+                                isModified
+                                  ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30'
+                                  : 'border-border/60'
+                              }`}
+                            />
+                            <span className="text-xs text-muted-foreground">jours</span>
+                            {isModified && (
+                              <Badge className="border-0 bg-emerald-100 text-emerald-700 text-[10px] px-1.5">
+                                modifié
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCategories.map((cat) => (
-                        <tr key={cat.id} className="group transition-colors hover:bg-accent/40">
-                          <td className="border-b border-border/45 px-5 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                                <Users className="h-4 w-4 text-primary" />
-                              </div>
-                              <span className="text-sm font-semibold text-foreground">{cat.name}</span>
-                            </div>
-                          </td>
-                          <td className="border-b border-border/45 px-5 py-3.5">
-                            <span className="text-sm text-muted-foreground">
-                              {cat.description || '—'}
-                            </span>
-                          </td>
-                          <td className="border-b border-border/45 px-5 py-3.5 text-center">
-                            <Badge variant="secondary" className="border border-border/70 text-xs font-semibold">
-                              {cat.annual_leave_days} jour{cat.annual_leave_days !== 1 ? 's' : ''}
-                            </Badge>
-                          </td>
-                          <td className="border-b border-border/45 px-5 py-3.5">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                                onClick={() => openEditCategory(cat)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                                onClick={() => setDeleteCategoryConfirm(cat)}
-                                disabled={deletingCategoryId === cat.id}
-                              >
-                                {deletingCategoryId === cat.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" />
-                                )}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredCategories.length === 0 && categorySearch && (
-                        <tr>
-                          <td colSpan={4} className="px-5 py-10 text-center text-sm text-muted-foreground">
-                            Aucune catégorie ne correspond à &quot;{categorySearch}&quot;
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Mobile Cards */}
-              <div className="space-y-3 md:hidden">
-                {filteredCategories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="rounded-2xl border border-border/70 bg-card p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                          <Users className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{cat.name}</p>
-                          {cat.description && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">{cat.description}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => openEditCategory(cat)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteCategoryConfirm(cat)}
-                          disabled={deletingCategoryId === cat.id}
-                        >
-                          {deletingCategoryId === cat.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2 rounded-xl bg-secondary/60 px-3 py-2">
-                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs font-medium text-foreground">
-                        {cat.annual_leave_days} jour{cat.annual_leave_days !== 1 ? 's' : ''} de congé / an
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {filteredCategories.length === 0 && categorySearch && (
-                  <div className="rounded-2xl border border-dashed border-border/70 py-10 text-center text-sm text-muted-foreground">
-                    Aucune catégorie ne correspond à &quot;{categorySearch}&quot;
-                  </div>
-                )}
-              </div>
-            </>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
-
-          {/* Delete Confirmation Dialog */}
-          <Dialog open={!!deleteCategoryConfirm} onOpenChange={(open) => !open && setDeleteCategoryConfirm(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Supprimer la catégorie</DialogTitle>
-                <DialogDescription>
-                  Êtes-vous sûr de vouloir supprimer la catégorie &quot;{deleteCategoryConfirm?.name}&quot; ?
-                  Cette action est irréversible.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDeleteCategoryConfirm(null)}>
-                  Annuler
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    if (deleteCategoryConfirm) {
-                      deleteCategory(deleteCategoryConfirm.id)
-                      setDeleteCategoryConfirm(null)
-                    }
-                  }}
-                  disabled={deletingCategoryId === deleteCategoryConfirm?.id}
-                >
-                  {deletingCategoryId === deleteCategoryConfirm?.id ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="mr-2 h-4 w-4" />
-                  )}
-                  Supprimer
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Add Category Dialog */}
-          <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Ajouter une catégorie de personnel</DialogTitle>
-                <DialogDescription>
-                  Définissez une catégorie avec son nombre de jours de congé annuel.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nom *</Label>
-                  <Input
-                    value={categoryName}
-                    onChange={(e) => setCategoryName(e.target.value)}
-                    placeholder="Ex: Cadre, Technicien, Ouvrier"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Input
-                    value={categoryDescription}
-                    onChange={(e) => setCategoryDescription(e.target.value)}
-                    placeholder="Ex: Personnel d'encadrement"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Jours de congé annuel *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={categoryAnnualLeaveDays}
-                    onChange={(e) => setCategoryAnnualLeaveDays(e.target.value)}
-                    placeholder="Ex: 18"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAddCategoryOpen(false)}>
-                  Annuler
-                </Button>
-                <Button
-                  onClick={addCategory}
-                  disabled={savingCategory || !categoryName.trim() || !categoryAnnualLeaveDays}
-                >
-                  {savingCategory ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
-                  Ajouter
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Edit Category Dialog */}
-          <Dialog open={editCategoryOpen} onOpenChange={setEditCategoryOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Modifier la catégorie</DialogTitle>
-                <DialogDescription>
-                  Modifiez les informations de cette catégorie de personnel.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nom *</Label>
-                  <Input
-                    value={categoryName}
-                    onChange={(e) => setCategoryName(e.target.value)}
-                    placeholder="Ex: Cadre, Technicien, Ouvrier"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Input
-                    value={categoryDescription}
-                    onChange={(e) => setCategoryDescription(e.target.value)}
-                    placeholder="Ex: Personnel d'encadrement"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Jours de congé annuel *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={categoryAnnualLeaveDays}
-                    onChange={(e) => setCategoryAnnualLeaveDays(e.target.value)}
-                    placeholder="Ex: 18"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditCategoryOpen(false)}>
-                  Annuler
-                </Button>
-                <Button
-                  onClick={updateCategory}
-                  disabled={savingCategory || !categoryName.trim() || !categoryAnnualLeaveDays}
-                >
-                  {savingCategory ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Enregistrer
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       )}
 
@@ -849,31 +527,6 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {/* Category selector */}
-              <div className="space-y-2">
-                <Label>Configuration pour</Label>
-                <select
-                  value={selectedCategoryId ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    handleCategoryFilterChange(val ? Number(val) : null)
-                  }}
-                  className="w-full rounded-lg border border-border/70 bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                  <option value="">Entreprise (par défaut)</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  {selectedCategoryId
-                    ? `Configuration spécifique pour la catégorie "${categories.find(c => c.id === selectedCategoryId)?.name}"`
-                    : 'Configuration par défaut applicable à toute l\u2019entreprise'}
-                </p>
-              </div>
-
               {workingDaysLoading ? (
                 <div className="py-8 text-center text-muted-foreground">Chargement...</div>
               ) : workingDays ? (

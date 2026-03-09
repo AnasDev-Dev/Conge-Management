@@ -92,7 +92,6 @@ const ACTION_GROUPS: { label: string; actions: { key: Action; label: string }[] 
   {
     label: 'Parametres',
     actions: [
-      { key: 'settings.categories', label: 'Categories' },
       { key: 'settings.workingDays', label: 'Jours ouvrables' },
       { key: 'settings.holidays', label: 'Jours feries' },
       { key: 'settings.recovery', label: 'Recuperation' },

@@ -41,7 +41,6 @@ export type Action =
   | 'recovery.validate'
   | 'recovery.creditManual'
   // Settings tabs
-  | 'settings.categories'
   | 'settings.workingDays'
   | 'settings.holidays'
   | 'settings.recovery'
@@ -181,7 +180,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'calendar.viewTeam',
       'recovery.validate',
       'recovery.creditManual',
-      'settings.categories',
       'settings.workingDays',
       'settings.holidays',
       'settings.recovery',
@@ -281,7 +279,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'calendar.viewTeam',
       'recovery.validate',
       'recovery.creditManual',
-      'settings.categories',
       'settings.workingDays',
       'settings.holidays',
       'settings.recovery',

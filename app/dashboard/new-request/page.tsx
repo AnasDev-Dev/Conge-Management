@@ -27,9 +27,12 @@ import {
   getHolidaysInRange,
   nextWorkingDay,
   calculateMonthlyAccrual,
+  calculateSeniority,
 } from '@/lib/leave-utils'
 
-type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation'>
+type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'department_id'> & {
+  dept_annual_leave_days?: number
+}
 type Colleague = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'department_id'>
 type Tab = 'conge' | 'mission'
 
@@ -101,6 +104,9 @@ export default function NewRequestPage() {
   const [recupDaysToUse, setRecupDaysToUse] = useState(0)
   const [recoveryLots, setRecoveryLots] = useState<RecoveryBalanceLot[]>([])
 
+  // Department annual leave days for current user (for self-service requests)
+  const [userDeptDays, setUserDeptDays] = useState<number | null>(null)
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -118,6 +124,9 @@ export default function NewRequestPage() {
         job_title: user.job_title,
         balance_conge: user.balance_conge,
         balance_recuperation: user.balance_recuperation,
+        hire_date: user.hire_date,
+        department_id: user.department_id,
+        dept_annual_leave_days: userDeptDays ?? undefined,
       }
     }
     return null
@@ -133,6 +142,11 @@ export default function NewRequestPage() {
       const companyId = activeCompany?.id || user.company_id || undefined
       fetchHolidays(companyId).then(setHolidays)
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
+      // Fetch dept annual_leave_days for self-service
+      if (user.department_id) {
+        supabase.from('departments').select('annual_leave_days').eq('id', user.department_id).single()
+          .then(({ data }) => { if (data) setUserDeptDays(data.annual_leave_days) })
+      }
     }
   }, [user, activeCompany?.id])
 
@@ -184,7 +198,7 @@ export default function NewRequestPage() {
     try {
       let query = supabase
         .from('utilisateurs')
-        .select('id, full_name, job_title, balance_conge, balance_recuperation, department_id')
+        .select('id, full_name, job_title, balance_conge, balance_recuperation, department_id, hire_date, departments(annual_leave_days)')
         .eq('is_active', true)
         .order('full_name')
 
@@ -200,7 +214,11 @@ export default function NewRequestPage() {
 
       const { data, error } = await query
       if (error) throw error
-      setEmployees(data || [])
+      const normalized = (data || []).map((row: Record<string, unknown>) => {
+        const dept = Array.isArray(row.departments) ? row.departments[0] : row.departments
+        return { ...row, dept_annual_leave_days: (dept as { annual_leave_days?: number })?.annual_leave_days ?? undefined }
+      }) as EmployeeOption[]
+      setEmployees(normalized)
     } catch (error) {
       console.error('Error loading employees:', error)
     }
@@ -270,11 +288,14 @@ export default function NewRequestPage() {
 
   const workingDays = countWorkingDaysUtil(startDate, endDate, workingDaysConfig, holidays, startHalfDay, endHalfDay)
 
-  // Monthly accrual for CONGE: available = (annual / 12 * month) - used - pending
+  // Monthly accrual for CONGE: available = carry_over + (entitlement/12 * month) - used - pending
   const congeAccrual = useMemo(() => {
-    const annual = targetEmployee?.balance_conge || 0
-    return calculateMonthlyAccrual(annual, congeUsedDays, congePendingDays)
-  }, [targetEmployee?.balance_conge, congeUsedDays, congePendingDays])
+    const deptDays = targetEmployee?.dept_annual_leave_days
+    const seniority = calculateSeniority(targetEmployee?.hire_date ?? null, deptDays)
+    const annualEntitlement = seniority.totalEntitlement
+    const carryOver = targetEmployee?.balance_conge || 0
+    return calculateMonthlyAccrual(annualEntitlement, carryOver, congeUsedDays, congePendingDays)
+  }, [targetEmployee?.balance_conge, targetEmployee?.hire_date, targetEmployee?.dept_annual_leave_days, congeUsedDays, congePendingDays])
 
   const availableRecup = targetEmployee?.balance_recuperation || 0
   const availableConge = congeAccrual.availableNow
@@ -489,7 +510,7 @@ export default function NewRequestPage() {
               Demande pour {targetEmployee.full_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j/{congeAccrual.annualTotal}j, Recup: {targetEmployee.balance_recuperation}j
+              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j/{congeAccrual.annualEntitlement}j, Recup: {targetEmployee.balance_recuperation}j
             </p>
           </div>
           <Button
@@ -645,7 +666,7 @@ export default function NewRequestPage() {
                                   )}
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <p className="text-[10px] text-muted-foreground">C: {emp.balance_conge}j</p>
+                                  <p className="text-[10px] text-muted-foreground">Report: {emp.balance_conge}j</p>
                                   <p className="text-[10px] text-muted-foreground">R: {emp.balance_recuperation}j</p>
                                 </div>
                                 {onBehalfOfId === emp.id && (
@@ -670,12 +691,29 @@ export default function NewRequestPage() {
                 </p>
               </div>
               <div className="flex gap-3">
-                {/* Congé pill */}
-                <div className="flex-1 flex items-center gap-2.5 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5">
-                  <Sun className="h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">Conge</p>
-                    <p className="text-sm font-semibold text-foreground">{congeAccrual.availableNow}j <span className="text-xs font-normal text-muted-foreground">/ {congeAccrual.annualTotal}j</span></p>
+                {/* Congé pill — expanded with breakdown */}
+                <div className="flex-1 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sun className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="text-xs text-muted-foreground">Congé</p>
+                  </div>
+                  <p className="text-lg font-bold text-foreground">{congeAccrual.availableNow}<span className="text-xs font-normal text-muted-foreground ml-0.5">j disponibles</span></p>
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {congeAccrual.carryOver > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                        Report: <span className="font-medium text-foreground">{congeAccrual.carryOver}j</span>
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                      Acquis: <span className="font-medium text-foreground">{congeAccrual.cumulativeEarned}j</span>
+                      <span className="text-muted-foreground/70">({congeAccrual.monthlyRate}j/mois × {congeAccrual.currentMonth})</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                      Droit/an: <span className="font-medium text-foreground">{congeAccrual.annualEntitlement}j</span>
+                    </span>
                   </div>
                 </div>
                 {/* Récupération pill */}

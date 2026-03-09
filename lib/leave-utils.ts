@@ -252,33 +252,37 @@ export function nextWorkingDay(
 // ─── Monthly Balance Accrual (Req #5) ────────────────────
 
 export interface MonthlyAccrualInfo {
-  annualTotal: number        // RH-set balance_conge (e.g. 22)
+  annualEntitlement: number  // from department + seniority (e.g. 21)
+  carryOver: number          // carry-over from previous year (solde antérieur)
   currentMonth: number       // 1-12
-  monthlyRate: number        // annualTotal / 12
+  monthlyRate: number        // annualEntitlement / 12
   cumulativeEarned: number   // monthlyRate * currentMonth
   daysUsed: number           // approved CONGE days this year
   daysPending: number        // pending CONGE days this year
-  availableNow: number       // cumulativeEarned - daysUsed - daysPending (what can be requested)
+  availableNow: number       // carryOver + cumulativeEarned - daysUsed - daysPending
 }
 
 /**
  * Calculates the monthly accrual balance for an employee.
- * The RH-set balance_conge is the annual total.
- * Available balance = (annualTotal / 12 * currentMonth) - daysUsed - daysPending
+ * Annual entitlement comes from department config + seniority bonus.
+ * Carry-over from previous year is fully available immediately.
+ * Available = carryOver + (annualEntitlement / 12 * currentMonth) - daysUsed - daysPending
  */
 export function calculateMonthlyAccrual(
-  annualTotal: number,
+  annualEntitlement: number,
+  carryOver: number = 0,
   daysUsed: number = 0,
   daysPending: number = 0,
   month?: number
 ): MonthlyAccrualInfo {
   const currentMonth = month ?? (new Date().getMonth() + 1) // 1-based
-  const monthlyRate = Math.round((annualTotal / 12) * 100) / 100
+  const monthlyRate = Math.round((annualEntitlement / 12) * 100) / 100
   const cumulativeEarned = Math.round(monthlyRate * currentMonth * 100) / 100
-  const availableNow = Math.max(cumulativeEarned - daysUsed - daysPending, 0)
+  const availableNow = Math.max(carryOver + cumulativeEarned - daysUsed - daysPending, 0)
 
   return {
-    annualTotal,
+    annualEntitlement,
+    carryOver,
     currentMonth,
     monthlyRate,
     cumulativeEarned,
@@ -301,10 +305,10 @@ export interface SeniorityInfo {
 /**
  * Moroccan law entitlement based on hire date.
  * Uses jours ouvrables: 18 days/year base + 1.5/5yr seniority, max 30.
- * Supports category-based annual leave days (Req #3).
+ * Supports department-based annual leave days.
  */
-export function calculateSeniority(hireDateStr: string | null, categoryAnnualDays?: number): SeniorityInfo {
-  const baseDays = categoryAnnualDays ?? 18 // category-based or default (Article 231)
+export function calculateSeniority(hireDateStr: string | null, deptAnnualDays?: number): SeniorityInfo {
+  const baseDays = deptAnnualDays ?? 18 // department-based or default (Article 231)
   const maxDays = 30  // max jours ouvrables (Article 232)
 
   if (!hireDateStr) {

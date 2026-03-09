@@ -40,8 +40,22 @@ interface PageGuardProps {
 
 export function PageGuard({ userRole, page, children }: PageGuardProps) {
   const { activeRole } = useCompanyContext()
-  const { permissionsMap } = useDbPermissions()
+  const { permissionsMap, loading } = useDbPermissions()
   const router = useRouter()
+
+  // Wait for permissions and user to load before deciding
+  if (loading || userRole === 'EMPLOYEE' as UserRole && !activeRole) {
+    // Still loading — show spinner instead of redirecting
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+          <p className="mt-4 text-sm text-muted-foreground">Chargement...</p>
+        </div>
+      </div>
+    )
+  }
+
   const effectiveRole: UserRole = activeRole || userRole
   const perms = (permissionsMap || ROLE_PERMISSIONS)[effectiveRole] || ROLE_PERMISSIONS[effectiveRole]
 

@@ -344,46 +344,70 @@ describe('nextWorkingDay', () => {
 // ─── calculateMonthlyAccrual ─────────────────────────────
 
 describe('calculateMonthlyAccrual', () => {
+  // New signature: (annualEntitlement, carryOver, daysUsed, daysPending, month?)
+
   it('calculates monthly rate correctly (22 days / 12 months)', () => {
-    const result = calculateMonthlyAccrual(22, 0, 0, 1)
+    const result = calculateMonthlyAccrual(22, 0, 0, 0, 1)
     expect(result.monthlyRate).toBeCloseTo(1.83, 2)
-    expect(result.annualTotal).toBe(22)
+    expect(result.annualEntitlement).toBe(22)
   })
 
   it('calculates cumulative earned for month 6', () => {
-    const result = calculateMonthlyAccrual(22, 0, 0, 6)
+    const result = calculateMonthlyAccrual(22, 0, 0, 0, 6)
     expect(result.cumulativeEarned).toBeCloseTo(1.83 * 6, 1)
   })
 
   it('deducts used and pending days from available', () => {
-    const result = calculateMonthlyAccrual(22, 5, 2, 6)
+    const result = calculateMonthlyAccrual(22, 0, 5, 2, 6)
     expect(result.daysUsed).toBe(5)
     expect(result.daysPending).toBe(2)
-    // available = cumulative - used - pending
+    // available = carryOver + cumulative - used - pending
     expect(result.availableNow).toBeCloseTo(1.83 * 6 - 5 - 2, 1)
   })
 
   it('does not go below 0 for available', () => {
-    const result = calculateMonthlyAccrual(22, 20, 5, 1)
+    const result = calculateMonthlyAccrual(22, 0, 20, 5, 1)
     // cumulative at month 1 ≈ 1.83, used=20, pending=5 → would be negative
     expect(result.availableNow).toBe(0)
   })
 
   it('handles month 12 (full year)', () => {
-    const result = calculateMonthlyAccrual(22, 0, 0, 12)
+    const result = calculateMonthlyAccrual(22, 0, 0, 0, 12)
     // cumulative should equal the full annual amount (within rounding)
     expect(result.cumulativeEarned).toBeCloseTo(22, 0)
   })
 
   it('handles 18 base days (default Moroccan entitlement)', () => {
-    const result = calculateMonthlyAccrual(18, 0, 0, 1)
+    const result = calculateMonthlyAccrual(18, 0, 0, 0, 1)
     expect(result.monthlyRate).toBe(1.5)
     expect(result.cumulativeEarned).toBe(1.5)
   })
 
   it('handles MAX_LEAVE_BALANCE (52 days)', () => {
-    const result = calculateMonthlyAccrual(52, 0, 0, 12)
+    const result = calculateMonthlyAccrual(52, 0, 0, 0, 12)
     expect(result.cumulativeEarned).toBeCloseTo(52, 0)
+  })
+
+  it('adds carry-over to available balance', () => {
+    // 18 entitlement, 10 carry-over, 0 used, 0 pending, month 1
+    const result = calculateMonthlyAccrual(18, 10, 0, 0, 1)
+    expect(result.carryOver).toBe(10)
+    // available = 10 + 1.5 - 0 - 0 = 11.5
+    expect(result.availableNow).toBe(11.5)
+  })
+
+  it('carry-over is fully available from month 1', () => {
+    const result = calculateMonthlyAccrual(18, 15, 0, 0, 1)
+    // available = 15 (carry) + 1.5 (month 1 accrual) = 16.5
+    expect(result.availableNow).toBe(16.5)
+  })
+
+  it('carry-over + accrual - used gives correct available', () => {
+    // 21 entitlement (dept+seniority), 8 carry-over, 5 used, 2 pending, month 3
+    const result = calculateMonthlyAccrual(21, 8, 5, 2, 3)
+    const monthlyRate = Math.round((21 / 12) * 100) / 100  // 1.75
+    const cumulative = Math.round(monthlyRate * 3 * 100) / 100  // 5.25
+    expect(result.availableNow).toBeCloseTo(8 + cumulative - 5 - 2, 1)
   })
 })
 
@@ -435,13 +459,13 @@ describe('calculateSeniority', () => {
     expect(result.totalEntitlement).toBe(19.5)
   })
 
-  it('uses category-specific annual days when provided', () => {
-    const result = calculateSeniority(null, 24) // Cadre Supérieur
+  it('uses department-specific annual days when provided', () => {
+    const result = calculateSeniority(null, 24) // Department with 24 days
     expect(result.baseDays).toBe(24)
     expect(result.totalEntitlement).toBe(24)
   })
 
-  it('caps category-based days at 30', () => {
+  it('caps department-based days at 30', () => {
     // 24 base + many seniority bonuses → max 30
     const longAgo = new Date()
     longAgo.setFullYear(longAgo.getFullYear() - 30)

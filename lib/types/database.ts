@@ -171,17 +171,6 @@ export interface WorkingDays {
   sunday_afternoon: boolean
 }
 
-// Req #1: Personnel Categories
-export interface PersonnelCategory {
-  id: number
-  company_id: number | null
-  name: string
-  description: string | null
-  annual_leave_days: number
-  created_at: string
-  updated_at: string
-}
-
 // Req #5: Monthly Balance Accrual
 export interface MonthlyBalanceAccrual {
   id: number
