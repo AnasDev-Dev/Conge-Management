@@ -43,6 +43,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   // Form fields
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState<UserRole>('EMPLOYEE')
   const [jobTitle, setJobTitle] = useState('')
@@ -81,6 +82,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   function resetForm() {
     setFullName('')
     setEmail('')
+    setPassword('')
     setPhone('')
     setRole('EMPLOYEE')
     setJobTitle('')
@@ -104,22 +106,42 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
       toast.error('Le nom complet est obligatoire')
       return
     }
+    if (!email.trim()) {
+      toast.error("L'email est obligatoire")
+      return
+    }
+    if (!password || password.length < 6) {
+      toast.error('Le mot de passe doit contenir au moins 6 caractères')
+      return
+    }
+    if (!companyId) {
+      toast.error('La société est obligatoire')
+      return
+    }
+    if (!departmentId) {
+      toast.error('Le département est obligatoire')
+      return
+    }
+    if (!hireDate) {
+      toast.error("La date d'embauche est obligatoire")
+      return
+    }
 
     setSaving(true)
     try {
       const payload: Record<string, unknown> = {
         full_name: fullName.trim(),
+        email: email.trim(),
+        password,
         role,
-        is_active: true,
-        balance_conge: parseFloat(balanceConge) || 0,
-        balance_recuperation: parseFloat(balanceRecuperation) || 0,
+        company_id: companyId,
+        department_id: departmentId,
+        hire_date: hireDate,
+        balance_conge: balanceConge,
+        balance_recuperation: balanceRecuperation,
       }
-      if (email.trim()) payload.email = email.trim()
       if (phone.trim()) payload.phone = phone.trim()
       if (jobTitle.trim()) payload.job_title = jobTitle.trim()
-      if (companyId) payload.company_id = parseInt(companyId)
-      if (departmentId) payload.department_id = parseInt(departmentId)
-      if (hireDate) payload.hire_date = hireDate
       if (birthDate) payload.birth_date = birthDate
       if (gender) payload.gender = gender
       if (matricule.trim()) payload.matricule = matricule.trim()
@@ -129,15 +151,20 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
       if (address.trim()) payload.address = address.trim()
       if (city.trim()) payload.city = city.trim()
 
-      const { error } = await supabase.from('utilisateurs').insert(payload)
+      const res = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
 
-      if (error) {
-        if (error.code === '23505') {
+      const data = await res.json()
+
+      if (!res.ok) {
+        if (data.code === '23505') {
           toast.error('Un employé avec cet email existe déjà')
         } else {
-          toast.error("Erreur lors de la création de l'employé")
+          toast.error(data.error || "Erreur lors de la création de l'employé")
         }
-        console.error('Insert error:', error)
         return
       }
 
@@ -172,16 +199,23 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
               <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Prénom Nom" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email *</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
+              <Label htmlFor="password">Mot de passe *</Label>
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 6 caractères" />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="phone">Téléphone</Label>
               <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="06 XX XX XX XX" />
             </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="gender">Genre</Label>
               <Select value={gender} onValueChange={setGender}>
@@ -194,10 +228,6 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          {/* Role & Job */}
-          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="role">Rôle *</Label>
               <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
@@ -213,16 +243,24 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Role & Job */}
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="jobTitle">Poste</Label>
               <Input id="jobTitle" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Intitulé du poste" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="birthDate">Date de naissance</Label>
+              <Input id="birthDate" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
             </div>
           </div>
 
           {/* Company & Department */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="company">Société</Label>
+              <Label htmlFor="company">Société *</Label>
               <Select
                 value={companyId}
                 onValueChange={(v) => {
@@ -243,7 +281,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="department">Département</Label>
+              <Label htmlFor="department">Département *</Label>
               <Select value={departmentId} onValueChange={setDepartmentId}>
                 <SelectTrigger id="department" className="w-full">
                   <SelectValue placeholder="Sélectionner" />
@@ -262,35 +300,35 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
           {/* Dates */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="hireDate">Date d&apos;embauche</Label>
+              <Label htmlFor="hireDate">Date d&apos;embauche *</Label>
               <Input id="hireDate" type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="birthDate">Date de naissance</Label>
-              <Input id="birthDate" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+              <Label htmlFor="matricule">Matricule</Label>
+              <Input id="matricule" value={matricule} onChange={(e) => setMatricule(e.target.value)} />
             </div>
           </div>
 
           {/* Administrative */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="matricule">Matricule</Label>
-              <Input id="matricule" value={matricule} onChange={(e) => setMatricule(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="cin">CIN</Label>
               <Input id="cin" value={cin} onChange={(e) => setCin(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cnss">CNSS</Label>
+              <Input id="cnss" value={cnss} onChange={(e) => setCnss(e.target.value)} />
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="cnss">CNSS</Label>
-              <Input id="cnss" value={cnss} onChange={(e) => setCnss(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="rib">RIB</Label>
               <Input id="rib" value={rib} onChange={(e) => setRib(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="city">Ville</Label>
+              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
             </div>
           </div>
 
@@ -300,10 +338,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
               <Label htmlFor="address">Adresse</Label>
               <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="city">Ville</Label>
-              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
-            </div>
+            <div className="space-y-1.5" />
           </div>
 
           {/* Balances */}

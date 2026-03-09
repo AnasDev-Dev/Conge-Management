@@ -56,10 +56,10 @@ CREATE POLICY "utilisateurs_update_manager"
   TO authenticated
   USING (public.is_manager());
 
-CREATE POLICY "utilisateurs_insert_admin"
+CREATE POLICY "utilisateurs_insert_authorized"
   ON public.utilisateurs FOR INSERT
   TO authenticated
-  WITH CHECK (public.get_my_role() = 'ADMIN');
+  WITH CHECK (public.get_my_role() IN ('ADMIN', 'RH', 'DIRECTEUR_EXECUTIF'));
 
 CREATE POLICY "utilisateurs_delete_admin"
   ON public.utilisateurs FOR DELETE
