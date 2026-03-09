@@ -22,6 +22,10 @@ import {
   Settings,
   BadgeCheck,
   RotateCcw,
+  ChevronDown,
+  ChevronRight,
+  Sun,
+  Map,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { cn } from '@/lib/utils'
@@ -145,26 +149,73 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
   const { canSee } = usePermissions(user.role)
 
   // Full nav definition — filtered by permissions below
-  const allNavItems: { name: string; href: string; icon: typeof LayoutDashboard; key: SidebarItem }[] = [
+  type NavItem = {
+    name: string
+    href: string
+    icon: typeof LayoutDashboard
+    key: SidebarItem
+  }
+
+  type NavGroup = {
+    title: string
+    icon: typeof LayoutDashboard
+    items: NavItem[]
+  }
+
+  const navStructure: (NavItem | NavGroup)[] = [
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard, key: 'dashboard' },
     { name: 'Employes', href: '/dashboard/employees', icon: Users, key: 'employees' },
-    { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck, key: 'validations' },
-    { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList, key: 'mission-validations' },
-    { name: 'Demandes', href: '/dashboard/requests', icon: FileText, key: 'requests' },
-    { name: 'Missions', href: '/dashboard/missions', icon: Briefcase, key: 'missions' },
-    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
-    { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw, key: 'recovery-requests' },
-    { name: 'Parametres', href: '/dashboard/settings', icon: Settings, key: 'settings' },
     { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck, key: 'balance-init' },
+    {
+      title: 'Congé',
+      icon: Sun,
+      items: [
+        { name: 'Demandes', href: '/dashboard/requests', icon: FileText, key: 'requests' },
+        { name: 'Validations', href: '/dashboard/validations', icon: ClipboardCheck, key: 'validations' },
+        { name: 'Credit Recup.', href: '/dashboard/recovery-requests', icon: RotateCcw, key: 'recovery-requests' },
+      ]
+    },
+    {
+      title: 'Ordre de mission',
+      icon: Map,
+      items: [
+        { name: 'Missions', href: '/dashboard/missions', icon: Briefcase, key: 'missions' },
+        { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList, key: 'mission-validations' },
+      ]
+    },
+    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
+    { name: 'Parametres', href: '/dashboard/settings', icon: Settings, key: 'settings' },
     { name: 'Profil', href: '/dashboard/profile', icon: User, key: 'profile' },
     { name: 'Notifications', href: '/dashboard/notifications', icon: Bell, key: 'notifications' },
   ]
 
-  const navigation = allNavItems.filter(item => canSee(item.key))
-
   const isNavItemActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
     return pathname === href || pathname.startsWith(`${href}/`)
+  }
+
+  const [openGroups, setOpenGroups] = useState<string[]>([])
+
+  useEffect(() => {
+    const activeGroup = navStructure.find(item =>
+      'items' in item && item.items.some(sub => isNavItemActive(sub.href))
+    )
+    if (activeGroup && 'title' in activeGroup) {
+      setOpenGroups(prev => {
+        if (!prev.includes(activeGroup.title)) {
+          return [...prev, activeGroup.title]
+        }
+        return prev
+      })
+    }
+  }, [pathname])
+
+  const toggleGroup = (title: string) => {
+    setOpenGroups(prev =>
+      prev.includes(title)
+        ? prev.filter(t => t !== title)
+        : [...prev, title]
+    )
   }
 
   return (
@@ -223,25 +274,80 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
               </Link>
 
               <nav className="mt-4 flex-1 space-y-1.5 overflow-y-auto pr-1 overscroll-contain">
-                {navigation.map((item) => {
-                  const Icon = item.icon
-                  const isActive = isNavItemActive(item.href)
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={cn(
-                        'flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-sm font-medium transition-all',
-                        isActive
-                          ? 'border-border bg-background text-foreground'
-                          : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
-                      )}
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.name}</span>
-                    </Link>
-                  )
+                {navStructure.map((item, index) => {
+                  if ('items' in item) {
+                    // Group
+                    const filteredItems = item.items.filter(subItem => canSee(subItem.key))
+                    if (filteredItems.length === 0) return null
+
+                    const isOpen = openGroups.includes(item.title)
+                    const GroupIcon = item.icon
+
+                    return (
+                      <div key={`group-${index}`} className="py-1">
+                        <button
+                          onClick={() => toggleGroup(item.title)}
+                          className={cn(
+                            'flex w-full items-center justify-between rounded-2xl border border-transparent px-3.5 py-3 text-sm font-medium transition-all hover:border-border hover:bg-accent hover:text-foreground',
+                            isOpen ? 'text-foreground' : 'text-muted-foreground'
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <GroupIcon className="h-4 w-4" />
+                            <span>{item.title}</span>
+                          </div>
+                          {isOpen ? <ChevronDown className="h-4 w-4 opacity-50" /> : <ChevronRight className="h-4 w-4 opacity-50" />}
+                        </button>
+                        
+                        {isOpen && (
+                          <div className="mt-1 space-y-1 pl-4 animate-in slide-in-from-top-1 duration-200">
+                            {filteredItems.map(subItem => {
+                              const Icon = subItem.icon
+                              const isActive = isNavItemActive(subItem.href)
+                              return (
+                                <Link
+                                  key={subItem.name}
+                                  href={subItem.href}
+                                  className={cn(
+                                    'flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-sm font-medium transition-all relative',
+                                    isActive
+                                      ? 'border-border bg-background text-foreground'
+                                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
+                                  )}
+                                  onClick={() => setSidebarOpen(false)}
+                                >
+                                  {/* Add a vertical line connector visual if needed, but keeping it simple for now */}
+                                  <Icon className="h-4 w-4" />
+                                  <span>{subItem.name}</span>
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  } else {
+                    // Single Item
+                    if (!canSee(item.key)) return null
+                    const Icon = item.icon
+                    const isActive = isNavItemActive(item.href)
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className={cn(
+                          'flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-sm font-medium transition-all',
+                          isActive
+                            ? 'border-border bg-background text-foreground'
+                            : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
+                        )}
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{item.name}</span>
+                      </Link>
+                    )
+                  }
                 })}
               </nav>
 
