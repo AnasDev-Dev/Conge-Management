@@ -13,6 +13,12 @@ function getSupabaseUrl(): string {
   return process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://cogneapp-kong:8000'
 }
 
+// Use a fixed storageKey so browser (proxy URL) and server (internal URL)
+// resolve to the same auth cookie name.
+const AUTH_STORAGE_KEY = 'sb-conge-auth-token'
+
 export function createClient() {
-  return createBrowserClient(getSupabaseUrl(), SUPABASE_ANON_KEY)
+  return createBrowserClient(getSupabaseUrl(), SUPABASE_ANON_KEY, {
+    auth: { storageKey: AUTH_STORAGE_KEY },
+  })
 }
