@@ -27,21 +27,19 @@ import {
   Plus,
   Trash2,
   Save,
-  Search,
-  UserPlus,
   Loader2,
   Pencil,
   Shield,
   Building2,
 } from 'lucide-react'
-import { Holiday, WorkingDays, Utilisateur } from '@/lib/types/database'
+import { Holiday, WorkingDays } from '@/lib/types/database'
 import { PermissionsManager } from '@/components/permissions-manager'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { clearCaches } from '@/lib/leave-utils'
 
-type Tab = 'departments' | 'working-days' | 'holidays' | 'recuperation' | 'permissions'
+type Tab = 'departments' | 'working-days' | 'holidays' | 'permissions'
 
 interface DepartmentWithDays {
   id: number
@@ -59,8 +57,6 @@ const DAY_LABELS = [
   { key: 'saturday', label: 'Samedi' },
   { key: 'sunday', label: 'Dimanche' },
 ] as const
-
-type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('departments')
@@ -97,16 +93,6 @@ export default function SettingsPage() {
   const [savingHoliday, setSavingHoliday] = useState(false)
   const [deletingHolidayId, setDeletingHolidayId] = useState<number | null>(null)
 
-  // Recuperation credit state
-  const [employees, setEmployees] = useState<EmployeeOption[]>([])
-  const [selectedEmployee, setSelectedEmployee] = useState('')
-  const [recupDays, setRecupDays] = useState('')
-  const [recupDateFrom, setRecupDateFrom] = useState('')
-  const [recupDateTo, setRecupDateTo] = useState('')
-  const [recupReason, setRecupReason] = useState('')
-  const [recupSearch, setRecupSearch] = useState('')
-  const [creditingRecup, setCreditingRecup] = useState(false)
-
   const companyId = activeCompany?.id ?? user?.company_id ?? undefined
 
   useEffect(() => {
@@ -114,7 +100,6 @@ export default function SettingsPage() {
       loadDepartments(companyId)
       loadWorkingDays(companyId)
       loadHolidays(companyId)
-      loadEmployees()
     }
   }, [user, activeCompany])
 
@@ -375,73 +360,10 @@ export default function SettingsPage() {
     }
   }
 
-  // ─── Recuperation Credit ──────────────────────────
-  const loadEmployees = async () => {
-    try {
-      let query = supabase
-        .from('utilisateurs')
-        .select('id, full_name, job_title')
-        .eq('is_active', true)
-        .order('full_name')
-      if (companyId) query = query.eq('company_id', companyId)
-      const { data, error } = await query
-      if (error) throw error
-      setEmployees(data || [])
-    } catch (error) {
-      console.error('Error loading employees:', error)
-    }
-  }
-
-  const filteredEmployees = useMemo(() => {
-    if (!recupSearch.trim()) return employees
-    const term = recupSearch.toLowerCase()
-    return employees.filter(e =>
-      e.full_name?.toLowerCase().includes(term) ||
-      e.job_title?.toLowerCase().includes(term)
-    )
-  }, [employees, recupSearch])
-
-  const creditRecuperation = async () => {
-    if (!selectedEmployee || !recupDays || !recupDateFrom || !recupDateTo) {
-      toast.error('Veuillez remplir tous les champs obligatoires')
-      return
-    }
-    const days = parseFloat(recupDays)
-    if (isNaN(days) || days <= 0) {
-      toast.error('Le nombre de jours doit être positif')
-      return
-    }
-    setCreditingRecup(true)
-    try {
-      const { data, error } = await supabase.rpc('credit_recuperation', {
-        p_user_id: selectedEmployee,
-        p_days: days,
-        p_date_from: recupDateFrom,
-        p_date_to: recupDateTo,
-        p_reason: recupReason.trim() || 'Travail jour de repos',
-      })
-      if (error) throw error
-      const empName = employees.find(e => e.id === selectedEmployee)?.full_name || ''
-      toast.success(`${days} jour(s) de récupération crédité(s) à ${empName}`)
-      setSelectedEmployee('')
-      setRecupDays('')
-      setRecupDateFrom('')
-      setRecupDateTo('')
-      setRecupReason('')
-      setRecupSearch('')
-    } catch (error) {
-      console.error('Error crediting recuperation:', error)
-      toast.error('Erreur lors du crédit de récupération')
-    } finally {
-      setCreditingRecup(false)
-    }
-  }
-
   const tabs: { key: Tab; label: string; icon: typeof Settings }[] = [
     { key: 'departments', label: 'Départements', icon: Building2 },
     { key: 'working-days', label: 'Jours ouvrables', icon: Clock },
     { key: 'holidays', label: 'Jours fériés', icon: Calendar },
-    { key: 'recuperation', label: 'Crédit récupération', icon: UserPlus },
     { key: 'permissions', label: 'Permissions', icon: Shield },
   ]
 
@@ -457,7 +379,7 @@ export default function SettingsPage() {
           Paramètres
         </h1>
         <p className="mt-1 text-sm text-muted-foreground sm:mt-1.5 sm:text-base">
-          Configuration des départements, jours ouvrables, fériés et récupération
+          Configuration des départements, jours ouvrables, fériés et permissions
         </p>
       </div>
 
@@ -670,7 +592,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ─── Categories Tab ─────────────────────────── */}
       {/* ─── Working Days Tab ──────────────────────── */}
       {activeTab === 'working-days' && (
         <Card className="border-border/70">
@@ -923,125 +844,9 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ─── Recuperation Credit Tab ───────────────── */}
       {/* ─── Permissions Tab ────────────────────────── */}
       {activeTab === 'permissions' && (
         <PermissionsManager />
-      )}
-
-      {activeTab === 'recuperation' && (
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" />
-              Créditer des jours de récupération
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-5">
-              <p className="text-sm text-muted-foreground">
-                Lorsqu&apos;un employé travaille un jour de repos (dimanche, jour férié), créditez-lui des jours de récupération.
-              </p>
-
-              {/* Employee selector */}
-              <div className="space-y-2">
-                <Label>Employé *</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={recupSearch}
-                    onChange={(e) => {
-                      setRecupSearch(e.target.value)
-                      if (selectedEmployee) setSelectedEmployee('')
-                    }}
-                    placeholder="Rechercher un employé..."
-                    className="pl-10"
-                  />
-                </div>
-                {recupSearch && !selectedEmployee && (
-                  <div className="max-h-48 overflow-y-auto rounded-xl border border-border/70 bg-background">
-                    {filteredEmployees.slice(0, 10).map((emp) => (
-                      <button
-                        key={emp.id}
-                        onClick={() => {
-                          setSelectedEmployee(emp.id)
-                          setRecupSearch(emp.full_name || '')
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-muted/50"
-                      >
-                        <span className="font-medium">{emp.full_name}</span>
-                        {emp.job_title && (
-                          <span className="ml-2 text-muted-foreground">— {emp.job_title}</span>
-                        )}
-                      </button>
-                    ))}
-                    {filteredEmployees.length === 0 && (
-                      <p className="px-4 py-3 text-sm text-muted-foreground">Aucun résultat</p>
-                    )}
-                  </div>
-                )}
-                {selectedEmployee && (
-                  <Badge variant="secondary" className="border border-border/70">
-                    {employees.find(e => e.id === selectedEmployee)?.full_name}
-                  </Badge>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Nombre de jours *</Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    value={recupDays}
-                    onChange={(e) => setRecupDays(e.target.value)}
-                    placeholder="Ex: 1"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date debut (travaille) *</Label>
-                  <DatePicker
-                    value={recupDateFrom}
-                    onChange={setRecupDateFrom}
-                    placeholder="Date debut"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date fin (travaille) *</Label>
-                  <DatePicker
-                    value={recupDateTo}
-                    onChange={setRecupDateTo}
-                    placeholder="Date fin"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Motif</Label>
-                <Input
-                  value={recupReason}
-                  onChange={(e) => setRecupReason(e.target.value)}
-                  placeholder="Ex: Travail dimanche 15/02 pour événement"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <Button
-                  onClick={creditRecuperation}
-                  disabled={creditingRecup || !selectedEmployee || !recupDays || !recupDateFrom || !recupDateTo}
-                >
-                  {creditingRecup ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <UserPlus className="mr-2 h-4 w-4" />
-                  )}
-                  Créditer la récupération
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       )}
     </div>
     </PageGuard>
