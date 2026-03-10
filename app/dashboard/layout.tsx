@@ -352,7 +352,7 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
               </nav>
 
               <div className="border-t border-border/60 pt-3 mt-2">
-                <div className="flex items-center gap-3 px-1 mb-3">
+                <div className="flex items-center gap-3 px-1">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
                     <User className="h-5 w-5 text-muted-foreground" />
                   </div>
@@ -360,14 +360,14 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
                     <p className="truncate text-sm font-semibold text-foreground leading-tight">{user.full_name}</p>
                     <p className="truncate text-xs text-muted-foreground mt-0.5">{user.email || user.role}</p>
                   </div>
+                  <button
+                    onClick={onLogout}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    title="Déconnexion"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={onLogout}
-                  className="flex w-full items-center gap-2.5 rounded-2xl border border-transparent px-3.5 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-border hover:bg-accent hover:text-foreground"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>Deconnexion</span>
-                </button>
               </div>
             </div>
           </aside>
