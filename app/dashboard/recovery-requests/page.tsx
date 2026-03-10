@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { PageGuard } from '@/components/role-gate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -300,6 +301,7 @@ export default function RecoveryRequestsPage() {
   if (!user) return null
 
   return (
+    <PageGuard userRole={user?.role || 'EMPLOYEE'} page="recovery-requests">
     <div className="flex min-h-full flex-col gap-4">
       {/* Header with create button */}
       <div className="flex items-start justify-between gap-4 shrink-0">
@@ -822,5 +824,6 @@ export default function RecoveryRequestsPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageGuard>
   )
 }

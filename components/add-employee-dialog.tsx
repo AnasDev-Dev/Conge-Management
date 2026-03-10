@@ -38,6 +38,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([])
   const [saving, setSaving] = useState(false)
 
   // Form fields
@@ -60,6 +61,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   const [city, setCity] = useState('')
   const [balanceConge, setBalanceConge] = useState('0')
   const [balanceRecuperation, setBalanceRecuperation] = useState('0')
+  const [categoryId, setCategoryId] = useState<string>('')
 
   const filteredDepartments = useMemo(
     () => (companyId ? departments.filter((d) => String(d.company_id) === companyId) : departments),
@@ -67,12 +69,14 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   )
 
   const loadReferenceData = useCallback(async () => {
-    const [{ data: companyData }, { data: deptData }] = await Promise.all([
+    const [{ data: companyData }, { data: deptData }, { data: catData }] = await Promise.all([
       supabase.from('companies').select('*').order('name'),
       supabase.from('departments').select('*').order('name'),
+      supabase.from('personnel_categories').select('id, name').order('name'),
     ])
     setCompanies((companyData || []) as Company[])
     setDepartments((deptData || []) as Department[])
+    setCategories((catData || []) as { id: number; name: string }[])
   }, [supabase])
 
   useEffect(() => {
@@ -99,6 +103,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
     setCity('')
     setBalanceConge('0')
     setBalanceRecuperation('0')
+    setCategoryId('')
   }
 
   async function handleSubmit() {
@@ -140,6 +145,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
         balance_conge: balanceConge,
         balance_recuperation: balanceRecuperation,
       }
+      if (categoryId) payload.category_id = categoryId
       if (phone.trim()) payload.phone = phone.trim()
       if (jobTitle.trim()) payload.job_title = jobTitle.trim()
       if (birthDate) payload.birth_date = birthDate
@@ -297,16 +303,36 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
             </div>
           </div>
 
-          {/* Dates */}
+          {/* Category & Hire Date */}
           <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="category">Catégorie</Label>
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger id="category" className="w-full">
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="hireDate">Date d&apos;embauche *</Label>
               <Input id="hireDate" type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
             </div>
+          </div>
+
+          {/* Matricule */}
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="matricule">Matricule</Label>
               <Input id="matricule" value={matricule} onChange={(e) => setMatricule(e.target.value)} />
             </div>
+            <div className="space-y-1.5" />
           </div>
 
           {/* Administrative */}

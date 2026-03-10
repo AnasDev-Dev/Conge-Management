@@ -44,6 +44,10 @@ export type Action =
   | 'settings.workingDays'
   | 'settings.holidays'
   | 'settings.recovery'
+  | 'settings.departments'
+  | 'settings.categories'
+  // Balance init
+  | 'balance-init.edit'
   // Approval pipeline
   | 'approval.leaveStage1'   // RH
   | 'approval.leaveStage2'   // Chef de Service
@@ -183,6 +187,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'settings.workingDays',
       'settings.holidays',
       'settings.recovery',
+      'settings.departments',
+      'settings.categories',
+      'balance-init.edit',
       'approval.leaveStage1',
       'approval.missionStage2',
     ],
@@ -199,6 +206,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'missions',
       'calendar',
       'recovery-requests',
+      'settings',
+      'balance-init',
       'profile',
       'notifications',
     ],
@@ -215,6 +224,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'mission-detail',
       'calendar',
       'recovery-requests',
+      'settings',
+      'balance-init',
       'profile',
       'notifications',
     ],
@@ -228,6 +239,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'missions.viewAll',
       'calendar.viewTeam',
       'recovery.validate',
+      'settings.departments',
+      'settings.categories',
+      'balance-init.edit',
       'approval.leaveStage3',
       'approval.missionStage3',
     ],
@@ -282,6 +296,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'settings.workingDays',
       'settings.holidays',
       'settings.recovery',
+      'settings.departments',
+      'settings.categories',
+      'balance-init.edit',
       'approval.leaveStage1',
       'approval.leaveStage2',
       'approval.leaveStage3',

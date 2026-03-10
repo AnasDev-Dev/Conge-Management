@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
+import { PageGuard } from '@/components/role-gate'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -340,6 +341,7 @@ export default function MissionValidationsPage() {
   }
 
   return (
+    <PageGuard userRole={user?.role || 'EMPLOYEE'} page="mission-validations">
     <div className="flex min-h-full flex-col gap-4">
       {/* Header */}
       <div className="shrink-0">
@@ -711,5 +713,6 @@ export default function MissionValidationsPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageGuard>
   )
 }

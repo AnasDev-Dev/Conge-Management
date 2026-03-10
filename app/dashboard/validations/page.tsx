@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
+import { PageGuard } from '@/components/role-gate'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -755,6 +756,7 @@ export default function ValidationsPage() {
     : requestsByStage[mobileCurrentTab.status] || []
 
   return (
+    <PageGuard userRole={user?.role || 'EMPLOYEE'} page="validations">
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Compact header row */}
       <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1052,5 +1054,6 @@ export default function ValidationsPage() {
       </Dialog>
 
     </div>
+    </PageGuard>
   )
 }

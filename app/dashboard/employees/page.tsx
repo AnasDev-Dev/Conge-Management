@@ -185,6 +185,7 @@ export default function EmployeesPage() {
   const pendingTotal = Array.from(summaryByUser.values()).reduce((sum, user) => sum + user.pendingRequests, 0)
 
   return (
+    <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employees">
     <div className="flex min-h-full flex-col gap-4">
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Employés</h1>
@@ -403,5 +404,6 @@ export default function EmployeesPage() {
         <AddEmployeeDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} onCreated={loadData} />
       )}
     </div>
+    </PageGuard>
   )
 }

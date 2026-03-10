@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { PageGuard } from '@/components/role-gate'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +36,7 @@ import {
 } from 'lucide-react'
 import { Holiday, WorkingDays, Utilisateur } from '@/lib/types/database'
 import { PermissionsManager } from '@/components/permissions-manager'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { clearCaches } from '@/lib/leave-utils'
@@ -63,6 +65,8 @@ type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('departments')
   const { user } = useCurrentUser()
+  const { activeCompany } = useCompanyContext()
+  const { can } = usePermissions(user?.role || 'EMPLOYEE')
   const supabase = useMemo(() => createClient(), [])
 
   // ─── Departments state ──────────────────────────────
@@ -70,6 +74,13 @@ export default function SettingsPage() {
   const [deptsLoading, setDeptsLoading] = useState(true)
   const [deptEdits, setDeptEdits] = useState<Map<number, number>>(new Map())
   const [savingDepts, setSavingDepts] = useState(false)
+  const [addDeptOpen, setAddDeptOpen] = useState(false)
+  const [newDeptName, setNewDeptName] = useState('')
+  const [newDeptDays, setNewDeptDays] = useState('18')
+  const [savingNewDept, setSavingNewDept] = useState(false)
+  const [editDeptId, setEditDeptId] = useState<number | null>(null)
+  const [editDeptName, setEditDeptName] = useState('')
+  const [deletingDeptId, setDeletingDeptId] = useState<number | null>(null)
 
   // ─── Working days state ───────────────────────────
   const [workingDays, setWorkingDays] = useState<WorkingDays | null>(null)
@@ -96,14 +107,16 @@ export default function SettingsPage() {
   const [recupSearch, setRecupSearch] = useState('')
   const [creditingRecup, setCreditingRecup] = useState(false)
 
+  const companyId = activeCompany?.id ?? user?.company_id ?? undefined
+
   useEffect(() => {
     if (user) {
-      loadDepartments(user.company_id ?? undefined)
-      loadWorkingDays(user.company_id ?? undefined)
-      loadHolidays(user.company_id ?? undefined)
+      loadDepartments(companyId)
+      loadWorkingDays(companyId)
+      loadHolidays(companyId)
       loadEmployees()
     }
-  }, [user])
+  }, [user, activeCompany])
 
   // ─── Departments ────────────────────────────────────
   const loadDepartments = async (companyId?: number) => {
@@ -142,19 +155,62 @@ export default function SettingsPage() {
 
   const saveDeptDays = async () => {
     setSavingDepts(true)
-    let ok = 0, fail = 0
+    const updates: { id: number; annual_leave_days: number }[] = []
     for (const [id, val] of deptEdits) {
       const dept = depts.find(d => d.id === id)
       if (!dept || val === dept.annual_leave_days) continue
-      const { error } = await supabase.from('departments').update({ annual_leave_days: val }).eq('id', id)
-      if (error) { console.error(error); fail++ } else { ok++ }
+      updates.push({ id, annual_leave_days: val })
     }
-    if (ok > 0) toast.success(`${ok} département(s) mis à jour`)
-    if (fail > 0) toast.error(`${fail} erreur(s)`)
+    if (updates.length > 0) {
+      const res = await fetch('/api/departments', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) })
+      const data = await res.json()
+      if (res.ok) {
+        if (data.ok > 0) toast.success(`${data.ok} département(s) mis à jour`)
+        if (data.fail > 0) toast.error(`${data.fail} erreur(s)`)
+      } else { toast.error(data.error || 'Erreur') }
+    }
     setDeptEdits(new Map())
     setSavingDepts(false)
     setDeptsLoading(true)
-    await loadDepartments(user?.company_id ?? undefined)
+    await loadDepartments(companyId)
+  }
+
+  const addDepartment = async () => {
+    if (!newDeptName.trim()) { toast.error('Le nom est obligatoire'); return }
+    setSavingNewDept(true)
+    const res = await fetch('/api/departments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newDeptName.trim(), annual_leave_days: parseFloat(newDeptDays) || 18, company_id: companyId || null }),
+    })
+    const data = await res.json()
+    if (!res.ok) { toast.error(data.error || 'Erreur lors de la création'); console.error(data) }
+    else {
+      toast.success(`Département "${newDeptName.trim()}" créé`)
+      setNewDeptName(''); setNewDeptDays('18'); setAddDeptOpen(false)
+      setDeptsLoading(true)
+      await loadDepartments(companyId)
+    }
+    setSavingNewDept(false)
+  }
+
+  const saveDeptName = async (deptId: number) => {
+    if (!editDeptName.trim()) return
+    const res = await fetch('/api/departments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: deptId, name: editDeptName.trim() }),
+    })
+    if (!res.ok) toast.error('Erreur')
+    else { toast.success('Nom modifié'); setEditDeptId(null); setDeptsLoading(true); await loadDepartments(companyId) }
+  }
+
+  const deleteDepartment = async (deptId: number) => {
+    const res = await fetch(`/api/departments?id=${deptId}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (!res.ok) { toast.error(data.error || 'Erreur lors de la suppression') }
+    else { toast.success('Département supprimé'); setDeptsLoading(true); await loadDepartments(companyId) }
+    setDeletingDeptId(null)
   }
 
   // ─── Working Days ─────────────────────────────────
@@ -207,9 +263,8 @@ export default function SettingsPage() {
     if (!workingDays || !user) return
     setSavingWorkingDays(true)
     try {
-      const companyId = user.company_id || 1
       const payload = {
-        company_id: companyId,
+        company_id: companyId || 1,
         category_id: null,
         monday: workingDays.monday,
         tuesday: workingDays.tuesday,
@@ -281,7 +336,7 @@ export default function SettingsPage() {
       const { data, error } = await supabase
         .from('holidays')
         .insert({
-          company_id: user.company_id || 1,
+          company_id: companyId || 1,
           name: newHolidayName.trim(),
           date: newHolidayDate,
           is_recurring: newHolidayRecurring,
@@ -323,11 +378,13 @@ export default function SettingsPage() {
   // ─── Recuperation Credit ──────────────────────────
   const loadEmployees = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('utilisateurs')
         .select('id, full_name, job_title')
         .eq('is_active', true)
         .order('full_name')
+      if (companyId) query = query.eq('company_id', companyId)
+      const { data, error } = await query
       if (error) throw error
       setEmployees(data || [])
     } catch (error) {
@@ -430,22 +487,30 @@ export default function SettingsPage() {
       {/* ─── Departments Tab ─────────────────────────── */}
       {activeTab === 'departments' && (
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-foreground">Jours de congé par département</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 Configurez le nombre de jours de congé annuel pour chaque département. Ce droit est la base du calcul mensuel.
               </p>
             </div>
-            {deptModifiedCount > 0 && (
-              <Button onClick={saveDeptDays} disabled={savingDepts} size="sm">
-                {savingDepts ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
-                Enregistrer
-                <Badge variant="secondary" className="ml-1.5 border border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground text-[10px] px-1.5">
-                  {deptModifiedCount}
-                </Badge>
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {deptModifiedCount > 0 && (
+                <Button onClick={saveDeptDays} disabled={savingDepts} size="sm">
+                  {savingDepts ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                  Enregistrer
+                  <Badge variant="secondary" className="ml-1.5 border border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground text-[10px] px-1.5">
+                    {deptModifiedCount}
+                  </Badge>
+                </Button>
+              )}
+              {can('settings.departments') && (
+                <Button onClick={() => setAddDeptOpen(true)} size="sm">
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Ajouter
+                </Button>
+              )}
+            </div>
           </div>
 
           {deptsLoading ? (
@@ -466,6 +531,9 @@ export default function SettingsPage() {
                   <tr className="bg-secondary text-xs uppercase tracking-[0.08em] text-foreground/85">
                     <th className="whitespace-nowrap px-5 py-3.5 text-left font-semibold">Département</th>
                     <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Jours congé/an</th>
+                    {can('settings.departments') && (
+                      <th className="whitespace-nowrap px-5 py-3.5 text-center font-semibold">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -480,7 +548,25 @@ export default function SettingsPage() {
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                               <Building2 className="h-4 w-4 text-primary" />
                             </div>
-                            <span className="text-sm font-semibold text-foreground">{dept.name}</span>
+                            {editDeptId === dept.id ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  value={editDeptName}
+                                  onChange={(e) => setEditDeptName(e.target.value)}
+                                  className="h-8 w-48"
+                                  onKeyDown={(e) => { if (e.key === 'Enter') saveDeptName(dept.id); if (e.key === 'Escape') setEditDeptId(null) }}
+                                  autoFocus
+                                />
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => saveDeptName(dept.id)}>
+                                  <Save className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setEditDeptId(null)}>
+                                  <span className="text-xs">✕</span>
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-sm font-semibold text-foreground">{dept.name}</span>
+                            )}
                           </div>
                         </td>
                         <td className="border-b border-border/45 px-5 py-3.5">
@@ -506,6 +592,28 @@ export default function SettingsPage() {
                             )}
                           </div>
                         </td>
+                        {can('settings.departments') && (
+                          <td className="border-b border-border/45 px-5 py-3.5">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => { setEditDeptId(dept.id); setEditDeptName(dept.name) }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => setDeletingDeptId(dept.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
@@ -513,9 +621,56 @@ export default function SettingsPage() {
               </table>
             </div>
           )}
+
+          {/* Add Department Dialog */}
+          <Dialog open={addDeptOpen} onOpenChange={setAddDeptOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Ajouter un département</DialogTitle>
+                <DialogDescription>Créez un nouveau département avec son droit de congé annuel.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nom du département</Label>
+                  <Input value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)} placeholder="Ex: Comptabilité" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Jours de congé annuel</Label>
+                  <Input type="number" step="0.5" min="0" max="30" value={newDeptDays} onChange={(e) => setNewDeptDays(e.target.value)} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddDeptOpen(false)}>Annuler</Button>
+                <Button onClick={addDepartment} disabled={savingNewDept || !newDeptName.trim()}>
+                  {savingNewDept ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                  Ajouter
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Department Confirmation */}
+          <Dialog open={deletingDeptId !== null} onOpenChange={(open) => { if (!open) setDeletingDeptId(null) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Supprimer le département</DialogTitle>
+                <DialogDescription>
+                  Voulez-vous vraiment supprimer le département &quot;{depts.find(d => d.id === deletingDeptId)?.name}&quot; ? Cette action est irréversible.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeletingDeptId(null)}>Annuler</Button>
+                <Button variant="destructive" onClick={() => deletingDeptId && deleteDepartment(deletingDeptId)}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Supprimer
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
+      {/* ─── Categories Tab ─────────────────────────── */}
       {/* ─── Working Days Tab ──────────────────────── */}
       {activeTab === 'working-days' && (
         <Card className="border-border/70">

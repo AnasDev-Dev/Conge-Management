@@ -95,6 +95,14 @@ const ACTION_GROUPS: { label: string; actions: { key: Action; label: string }[] 
       { key: 'settings.workingDays', label: 'Jours ouvrables' },
       { key: 'settings.holidays', label: 'Jours feries' },
       { key: 'settings.recovery', label: 'Recuperation' },
+      { key: 'settings.departments', label: 'Gerer les departements' },
+      { key: 'settings.categories', label: 'Gerer les categories' },
+    ],
+  },
+  {
+    label: 'Init. Soldes',
+    actions: [
+      { key: 'balance-init.edit', label: 'Modifier les soldes initiaux' },
     ],
   },
   {

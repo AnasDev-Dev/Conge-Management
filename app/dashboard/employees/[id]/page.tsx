@@ -7,8 +7,14 @@ import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 import { LeaveRequest, Utilisateur } from '@/lib/types/database'
-import { ArrowLeft, Calendar, Clock, FileText, User } from 'lucide-react'
+import { ArrowLeft, Calendar, Clock, FileText, Mail, Pencil, Phone, Trash2, User } from 'lucide-react'
+import { useCurrentUser } from '@/lib/hooks/use-current-user'
+import { PageGuard } from '@/components/role-gate'
+import { usePermissions } from '@/lib/hooks/use-permissions'
+import { EditEmployeeDialog } from '@/components/edit-employee-dialog'
+import { DeleteEmployeeDialog } from '@/components/delete-employee-dialog'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
@@ -16,8 +22,13 @@ import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
 
 type EmployeeDetails = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date'
+  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'birth_date' | 'gender' | 'matricule' | 'company_id' | 'department_id' | 'category_id'
 > & {
+  cin?: string | null
+  cnss?: string | null
+  rib?: string | null
+  address?: string | null
+  city?: string | null
   departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
 }
 
@@ -30,10 +41,14 @@ const approvedStatuses = new Set(['APPROVED'])
 const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 export default function EmployeeDetailsPage() {
+  const { user: currentUser } = useCurrentUser()
+  const { can } = usePermissions(currentUser?.role || 'EMPLOYEE')
   const params = useParams<{ id: string }>()
   const [employee, setEmployee] = useState<EmployeeDetails | null>(null)
   const [requests, setRequests] = useState<RequestDetails[]>([])
   const [loading, setLoading] = useState(true)
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   const loadData = useCallback(async (employeeId: string) => {
@@ -42,7 +57,7 @@ export default function EmployeeDetailsPage() {
         await Promise.all([
           supabase
             .from('utilisateurs')
-            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, departments(annual_leave_days)')
+            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, birth_date, gender, matricule, company_id, department_id, category_id, cin, cnss, rib, address, city, departments(annual_leave_days)')
             .eq('id', employeeId)
             .single(),
           supabase
@@ -72,20 +87,13 @@ export default function EmployeeDetailsPage() {
 
   const summary = useMemo(() => {
     const totalRequests = requests.length
-    const requestedDays = requests.reduce((sum, req) => sum + (req.days_count || 0), 0)
     const approvedDays = requests
       .filter((req) => approvedStatuses.has(req.status))
       .reduce((sum, req) => sum + (req.days_count || 0), 0)
     const pendingRequests = requests.filter((req) => pendingStatuses.has(req.status)).length
     const rejectedRequests = requests.filter((req) => req.status === 'REJECTED').length
 
-    return {
-      totalRequests,
-      requestedDays,
-      approvedDays,
-      pendingRequests,
-      rejectedRequests,
-    }
+    return { totalRequests, approvedDays, pendingRequests, rejectedRequests }
   }, [requests])
 
   if (loading) {
@@ -111,8 +119,16 @@ export default function EmployeeDetailsPage() {
     )
   }
 
+  const deptDays = Array.isArray(employee.departments)
+    ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+    : employee.departments?.annual_leave_days
+  const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
+
   return (
-    <div className="space-y-7">
+    <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employee-detail">
+    <div className="mx-auto max-w-5xl space-y-7">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link href="/dashboard/employees">
@@ -122,14 +138,199 @@ export default function EmployeeDetailsPage() {
             </Button>
           </Link>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">{employee.full_name}</h1>
-          <p className="mt-2 text-muted-foreground">Historique et détails des demandes de congé</p>
+          <p className="mt-1 text-muted-foreground">Fiche employé et historique des congés</p>
         </div>
-        <Badge variant="secondary" className="border border-border/70">
-          {employee.role}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {can('employees.edit') && (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Modifier
+            </Button>
+          )}
+          {can('employees.delete') && (
+            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Désactiver
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      {/* Profile-like layout: sidebar + details */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left sidebar card */}
+        <Card className="border-border/70 lg:col-span-1">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-2 border-border bg-muted/60">
+                <User className="h-11 w-11 text-muted-foreground/70" />
+              </div>
+              <h2 className="mt-4 text-xl font-bold">{employee.full_name}</h2>
+              <p className="text-muted-foreground">{employee.job_title || 'Non renseigné'}</p>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <Badge>{employee.role}</Badge>
+                {!employee.is_active && (
+                  <Badge variant="destructive">Inactif</Badge>
+                )}
+              </div>
+            </div>
+
+            <Separator className="my-6" />
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 text-sm">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <span className="text-foreground">{employee.email || 'Non renseigné'}</span>
+              </div>
+              {employee.phone && (
+                <div className="flex items-center gap-3 text-sm">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-foreground">{employee.phone}</span>
+                </div>
+              )}
+            </div>
+
+            <Separator className="my-6" />
+
+            {/* Leave balance summary */}
+            <div className="space-y-3">
+              <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
+                <p className="text-xs text-muted-foreground">Congé disponible</p>
+                <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {employee.balance_conge > 0 && `Report: ${employee.balance_conge}j · `}
+                  Acquis: {accrual.cumulativeEarned}j
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
+                <p className="text-xs text-muted-foreground">Récupération</p>
+                <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{employee.balance_recuperation}j</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Right details card */}
+        <Card className="border-border/70 lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Informations personnelles</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <p className="text-sm text-muted-foreground">Nom complet</p>
+                <p className="font-medium mt-1">{employee.full_name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Email</p>
+                <p className="font-medium mt-1">{employee.email || 'Non renseigné'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Téléphone</p>
+                <p className="font-medium mt-1">{employee.phone || 'Non renseigné'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Genre</p>
+                <p className="font-medium mt-1">{employee.gender === 'M' ? 'Homme' : employee.gender === 'F' ? 'Femme' : 'Non renseigné'}</p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <p className="text-sm text-muted-foreground">Fonction</p>
+                <p className="font-medium mt-1">{employee.job_title || 'Non renseigné'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Rôle</p>
+                <p className="font-medium mt-1">{employee.role}</p>
+              </div>
+              {employee.matricule && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Matricule</p>
+                  <p className="font-medium mt-1">{employee.matricule}</p>
+                </div>
+              )}
+              {employee.hire_date && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Date d&apos;embauche</p>
+                  <p className="font-medium mt-1">
+                    {format(new Date(employee.hire_date), 'dd MMMM yyyy', { locale: fr })}
+                  </p>
+                </div>
+              )}
+              {employee.birth_date && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Date de naissance</p>
+                  <p className="font-medium mt-1">
+                    {format(new Date(employee.birth_date), 'dd MMMM yyyy', { locale: fr })}
+                  </p>
+                </div>
+              )}
+              {employee.hire_date && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Ancienneté</p>
+                  <p className="font-medium mt-1">{Math.floor(seniority.yearsOfService)} an(s)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Droit annuel: {seniority.totalEntitlement} jours
+                    {seniority.bonusDays > 0 && ` (dont ${seniority.bonusDays} bonus ancienneté)`}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {(employee.cin || employee.cnss || employee.rib) && (
+              <>
+                <Separator />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {employee.cin && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">CIN</p>
+                      <p className="font-medium mt-1">{employee.cin}</p>
+                    </div>
+                  )}
+                  {employee.cnss && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">CNSS</p>
+                      <p className="font-medium mt-1">{employee.cnss}</p>
+                    </div>
+                  )}
+                  {employee.rib && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">RIB</p>
+                      <p className="font-medium mt-1">{employee.rib}</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {(employee.address || employee.city) && (
+              <>
+                <Separator />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {employee.city && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Ville</p>
+                      <p className="font-medium mt-1">{employee.city}</p>
+                    </div>
+                  )}
+                  {employee.address && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Adresse</p>
+                      <p className="font-medium mt-1">{employee.address}</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Stats summary */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card className="border-border/70">
           <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">Demandes</p>
@@ -138,14 +339,8 @@ export default function EmployeeDetailsPage() {
         </Card>
         <Card className="border-border/70">
           <CardContent className="pt-6">
-            <p className="text-xs text-muted-foreground">Jours demandés</p>
-            <p className="mt-2 text-2xl font-semibold">{summary.requestedDays}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70">
-          <CardContent className="pt-6">
             <p className="text-xs text-muted-foreground">Congé pris</p>
-            <p className="mt-2 text-2xl font-semibold text-primary">{summary.approvedDays}</p>
+            <p className="mt-2 text-2xl font-semibold text-primary">{summary.approvedDays}j</p>
           </CardContent>
         </Card>
         <Card className="border-border/70">
@@ -162,70 +357,12 @@ export default function EmployeeDetailsPage() {
         </Card>
       </div>
 
-      <Card className="border-border/70">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5 text-primary" />
-            Informations employé
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Email</p>
-              <p className="mt-1 text-sm text-foreground">{employee.email || 'Non renseigné'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Poste</p>
-              <p className="mt-1 text-sm text-foreground">{employee.job_title || 'Non renseigné'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Téléphone</p>
-              <p className="mt-1 text-sm text-foreground">{employee.phone || 'Non renseigné'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Solde Congé</p>
-              {(() => {
-                const deptDays = Array.isArray(employee.departments)
-                  ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-                  : employee.departments?.annual_leave_days
-                const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
-                const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
-                return (
-                  <div className="mt-1 space-y-0.5">
-                    <p className="text-sm font-semibold text-foreground">{accrual.availableNow}j disponibles</p>
-                    <p className="text-xs text-muted-foreground">
-                      {employee.balance_conge > 0 && <span>Report: {employee.balance_conge}j · </span>}
-                      Acquis: {accrual.cumulativeEarned}j · Droit: {seniority.totalEntitlement}j/an
-                    </p>
-                  </div>
-                )
-              })()}
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Récupération</p>
-              <p className="mt-1 text-sm text-foreground">{employee.balance_recuperation}j</p>
-            </div>
-            {employee.hire_date && (() => {
-              const seniority = calculateSeniority(employee.hire_date)
-              return (
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Ancienneté</p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {Math.floor(seniority.yearsOfService)} an(s) — {seniority.totalEntitlement} j/an
-                  </p>
-                </div>
-              )
-            })()}
-          </div>
-        </CardContent>
-      </Card>
-
+      {/* Leave requests history */}
       <Card className="border-border/70">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
-            Détails des congés
+            Historique des congés
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -278,6 +415,25 @@ export default function EmployeeDetailsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit / Delete dialogs */}
+      {can('employees.edit') && (
+        <EditEmployeeDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          onUpdated={() => { loadData(params.id); }}
+          employee={employee}
+        />
+      )}
+      {can('employees.delete') && (
+        <DeleteEmployeeDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          onDeleted={() => { window.location.href = '/dashboard/employees'; }}
+          employee={employee}
+        />
+      )}
     </div>
+    </PageGuard>
   )
 }
