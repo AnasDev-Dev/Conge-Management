@@ -1,7 +1,6 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { UserRole } from '@/lib/types/database'
 import {
@@ -40,7 +39,6 @@ export function DbPermissionsProvider({ children }: { children: ReactNode }) {
   const { activeCompany } = useCompanyContext()
   const [permissionsMap, setPermissionsMap] = useState<Record<UserRole, RolePermissions> | null>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
 
   const reload = useCallback(async () => {
     if (!activeCompany) {
@@ -49,14 +47,16 @@ export function DbPermissionsProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('role_permissions')
-        .select('role, sidebar, pages, actions, data_scope')
-        .eq('company_id', activeCompany.id)
+      const res = await fetch(`/api/role-permissions?company_id=${activeCompany.id}`)
+      const data = await res.json()
 
-      if (error) throw error
+      if (!res.ok) {
+        console.error('DbPermissions reload error:', data.error)
+        setPermissionsMap(null)
+        return
+      }
 
-      if (data && data.length > 0) {
+      if (Array.isArray(data) && data.length > 0) {
         const map = {} as Record<UserRole, RolePermissions>
         for (const row of data as DbRow[]) {
           map[row.role as UserRole] = {
@@ -70,13 +70,13 @@ export function DbPermissionsProvider({ children }: { children: ReactNode }) {
       } else {
         setPermissionsMap(null)
       }
-    } catch {
-      // Table may not exist yet
+    } catch (err) {
+      console.error('DbPermissions reload error:', err)
       setPermissionsMap(null)
     } finally {
       setLoading(false)
     }
-  }, [activeCompany, supabase])
+  }, [activeCompany])
 
   useEffect(() => {
     reload()

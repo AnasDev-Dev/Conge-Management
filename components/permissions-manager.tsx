@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { useDbPermissions } from '@/lib/hooks/use-db-permissions'
 import { UserRole } from '@/lib/types/database'
@@ -134,25 +133,28 @@ const DATA_SCOPE_OPTIONS: { value: DataScope; label: string }[] = [
 export function PermissionsManager() {
   const { activeCompany } = useCompanyContext()
   const { reload } = useDbPermissions()
-  const supabase = createClient()
 
   const [selectedRole, setSelectedRole] = useState<UserRole>('EMPLOYEE')
   const [editState, setEditState] = useState<Record<UserRole, RolePermissions>>({ ...ROLE_PERMISSIONS })
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Load current permissions from DB
+  // Load current permissions from DB via API route (bypasses RLS)
   const loadFromDb = useCallback(async () => {
     if (!activeCompany) return
     setLoading(true)
     try {
-      const { data } = await supabase
-        .from('role_permissions')
-        .select('*')
-        .eq('company_id', activeCompany.id)
+      const res = await fetch(`/api/role-permissions?company_id=${activeCompany.id}`)
+      const data = await res.json()
+
+      if (!res.ok) {
+        console.error('Load permissions error:', data.error)
+        setEditState({ ...ROLE_PERMISSIONS })
+        return
+      }
 
       const state = { ...ROLE_PERMISSIONS }
-      if (data && data.length > 0) {
+      if (Array.isArray(data) && data.length > 0) {
         for (const row of data) {
           state[row.role as UserRole] = {
             sidebar: row.sidebar as SidebarItem[],
@@ -163,16 +165,24 @@ export function PermissionsManager() {
         }
       }
       setEditState(state)
-    } catch {
+    } catch (err) {
+      console.error('Load permissions error:', err)
       setEditState({ ...ROLE_PERMISSIONS })
     } finally {
       setLoading(false)
     }
-  }, [activeCompany, supabase])
+  }, [activeCompany])
 
   useEffect(() => {
     loadFromDb()
   }, [loadFromDb])
+
+  // Map sidebar items to their related sub-pages
+  const SIDEBAR_SUB_PAGES: Partial<Record<SidebarItem, PageKey[]>> = {
+    requests: ['request-detail', 'new-request'],
+    employees: ['employee-detail'],
+    missions: ['mission-detail', 'new-mission'],
+  }
 
   // Toggle helpers
   const toggleSidebar = (item: SidebarItem) => {
@@ -183,11 +193,15 @@ export function PermissionsManager() {
       if (idx >= 0) list.splice(idx, 1)
       else list.push(item)
       perms.sidebar = list
-      // Sync pages: if sidebar item removed, also remove matching page
+
+      const subPages = SIDEBAR_SUB_PAGES[item] || []
       if (idx >= 0) {
-        perms.pages = perms.pages.filter(p => p !== item)
-      } else if (!perms.pages.includes(item as PageKey)) {
-        perms.pages = [...perms.pages, item as PageKey]
+        // Removed: also remove matching page + sub-pages
+        perms.pages = perms.pages.filter(p => p !== item && !subPages.includes(p))
+      } else {
+        // Added: also add matching page + sub-pages
+        const toAdd = [item as PageKey, ...subPages].filter(p => !perms.pages.includes(p))
+        perms.pages = [...perms.pages, ...toAdd]
       }
       return { ...prev, [selectedRole]: perms }
     })
@@ -218,22 +232,23 @@ export function PermissionsManager() {
     setSaving(true)
     try {
       const perms = editState[selectedRole]
-      const { error } = await supabase
-        .from('role_permissions')
-        .upsert(
-          {
-            company_id: activeCompany.id,
-            role: selectedRole,
-            sidebar: perms.sidebar,
-            pages: perms.pages,
-            actions: perms.actions,
-            data_scope: perms.dataScope,
-          },
-          { onConflict: 'company_id,role' }
-        )
-      if (error) throw error
+      const res = await fetch('/api/role-permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: activeCompany.id,
+          role: selectedRole,
+          sidebar: perms.sidebar,
+          pages: perms.pages,
+          actions: perms.actions,
+          data_scope: perms.dataScope,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Save failed')
       toast.success(`Permissions du role "${ROLE_LABELS[selectedRole]}" enregistrees`)
       await reload()
+      await loadFromDb()
     } catch (err) {
       console.error('Save permissions error:', err)
       toast.error('Erreur lors de la sauvegarde des permissions')
@@ -255,12 +270,16 @@ export function PermissionsManager() {
         actions: editState[role].actions,
         data_scope: editState[role].dataScope,
       }))
-      const { error } = await supabase
-        .from('role_permissions')
-        .upsert(rows, { onConflict: 'company_id,role' })
-      if (error) throw error
+      const res = await fetch('/api/role-permissions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Save failed')
       toast.success('Toutes les permissions ont ete enregistrees')
       await reload()
+      await loadFromDb()
     } catch (err) {
       console.error('Save all permissions error:', err)
       toast.error('Erreur lors de la sauvegarde')

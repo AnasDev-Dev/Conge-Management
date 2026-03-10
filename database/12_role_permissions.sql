@@ -69,7 +69,7 @@ BEGIN
   INSERT INTO role_permissions (company_id, role, sidebar, pages, actions, data_scope)
   VALUES (p_company_id, 'EMPLOYEE',
     '["dashboard","requests","missions","calendar","recovery-requests","profile","notifications"]'::jsonb,
-    '["dashboard","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","profile","notifications"]'::jsonb,
+    '["dashboard","requests","request-detail","new-request","missions","mission-detail","new-mission","calendar","recovery-requests","profile","notifications"]'::jsonb,
     '[]'::jsonb,
     'own'
   ) ON CONFLICT (company_id, role) DO NOTHING;
@@ -78,7 +78,7 @@ BEGIN
   INSERT INTO role_permissions (company_id, role, sidebar, pages, actions, data_scope)
   VALUES (p_company_id, 'CHEF_SERVICE',
     '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","profile","notifications"]'::jsonb,
-    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","profile","notifications"]'::jsonb,
+    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","new-mission","calendar","recovery-requests","profile","notifications"]'::jsonb,
     '["requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","approval.leaveStage2","approval.missionStage1"]'::jsonb,
     'department'
   ) ON CONFLICT (company_id, role) DO NOTHING;
@@ -87,17 +87,17 @@ BEGIN
   INSERT INTO role_permissions (company_id, role, sidebar, pages, actions, data_scope)
   VALUES (p_company_id, 'RH',
     '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
-    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
-    '["employees.create","employees.edit","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.workingDays","settings.holidays","settings.recovery","approval.leaveStage1","approval.missionStage2"]'::jsonb,
+    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","new-mission","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
+    '["employees.create","employees.edit","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.workingDays","settings.holidays","settings.recovery","settings.departments","settings.categories","balance-init.edit","approval.leaveStage1","approval.missionStage2"]'::jsonb,
     'all'
   ) ON CONFLICT (company_id, role) DO NOTHING;
 
   -- DIRECTEUR_EXECUTIF
   INSERT INTO role_permissions (company_id, role, sidebar, pages, actions, data_scope)
   VALUES (p_company_id, 'DIRECTEUR_EXECUTIF',
-    '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","profile","notifications"]'::jsonb,
-    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","profile","notifications"]'::jsonb,
-    '["requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","employees.viewBalances","approval.leaveStage3","approval.missionStage3"]'::jsonb,
+    '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
+    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","new-mission","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
+    '["employees.create","employees.edit","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","settings.departments","settings.categories","balance-init.edit","approval.leaveStage3","approval.missionStage3"]'::jsonb,
     'all'
   ) ON CONFLICT (company_id, role) DO NOTHING;
 
@@ -105,8 +105,8 @@ BEGIN
   INSERT INTO role_permissions (company_id, role, sidebar, pages, actions, data_scope)
   VALUES (p_company_id, 'ADMIN',
     '["dashboard","employees","validations","mission-validations","requests","missions","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
-    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
-    '["employees.create","employees.edit","employees.delete","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.workingDays","settings.holidays","settings.recovery","approval.leaveStage1","approval.leaveStage2","approval.leaveStage3","approval.missionStage1","approval.missionStage2","approval.missionStage3"]'::jsonb,
+    '["dashboard","employees","employee-detail","validations","mission-validations","requests","request-detail","new-request","missions","mission-detail","new-mission","calendar","recovery-requests","settings","balance-init","profile","notifications"]'::jsonb,
+    '["employees.create","employees.edit","employees.delete","employees.viewBalances","requests.createOnBehalf","requests.viewAll","missions.createOnBehalf","missions.viewAll","calendar.viewTeam","recovery.validate","recovery.creditManual","settings.workingDays","settings.holidays","settings.recovery","settings.departments","settings.categories","balance-init.edit","approval.leaveStage1","approval.leaveStage2","approval.leaveStage3","approval.missionStage1","approval.missionStage2","approval.missionStage3"]'::jsonb,
     'all'
   ) ON CONFLICT (company_id, role) DO NOTHING;
 END;

@@ -20,7 +20,7 @@ export type SidebarItem =
   | 'notifications'
 
 /** All page-level route keys (superset of sidebar — includes sub-pages) */
-export type PageKey = SidebarItem | 'new-request' | 'employee-detail' | 'request-detail' | 'mission-detail'
+export type PageKey = SidebarItem | 'new-request' | 'new-mission' | 'employee-detail' | 'request-detail' | 'mission-detail'
 
 /** CRUD + special actions */
 export type Action =
@@ -89,6 +89,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'new-request',
       'missions',
       'mission-detail',
+      'new-mission',
       'calendar',
       'recovery-requests',
       'profile',
@@ -122,6 +123,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'new-request',
       'missions',
       'mission-detail',
+      'new-mission',
       'calendar',
       'recovery-requests',
       'profile',
@@ -166,6 +168,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'new-request',
       'missions',
       'mission-detail',
+      'new-mission',
       'calendar',
       'recovery-requests',
       'settings',
@@ -222,6 +225,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'new-request',
       'missions',
       'mission-detail',
+      'new-mission',
       'calendar',
       'recovery-requests',
       'settings',
@@ -274,6 +278,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'new-request',
       'missions',
       'mission-detail',
+      'new-mission',
       'calendar',
       'recovery-requests',
       'settings',
@@ -354,6 +359,7 @@ export function pathnameToPageKey(pathname: string): PageKey | null {
     '/dashboard/mission-validations': 'mission-validations',
     '/dashboard/requests': 'requests',
     '/dashboard/new-request': 'new-request',
+    '/dashboard/new-mission': 'new-mission',
     '/dashboard/missions': 'missions',
     '/dashboard/calendar': 'calendar',
     '/dashboard/recovery-requests': 'recovery-requests',
@@ -395,7 +401,7 @@ export function pathnameToSidebarItem(pathname: string): SidebarItem | null {
   // Sub-pages map to parent sidebar item
   if (pathname.startsWith('/dashboard/employees/')) return 'employees'
   if (pathname.startsWith('/dashboard/requests/') || pathname === '/dashboard/new-request') return 'requests'
-  if (pathname.startsWith('/dashboard/missions/')) return 'missions'
+  if (pathname.startsWith('/dashboard/missions/') || pathname === '/dashboard/new-mission') return 'missions'
 
   return null
 }

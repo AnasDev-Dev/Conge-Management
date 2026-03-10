@@ -119,8 +119,9 @@ export default function RequestDetailPage() {
           setApprovers(map)
         }
       }
-    } catch (error) {
-      console.error('Error loading request:', error)
+    } catch (error: unknown) {
+      const err = error as Record<string, unknown> | null
+      console.error('Error loading request:', err?.message || err?.code || JSON.stringify(error))
     } finally {
       setLoading(false)
     }
