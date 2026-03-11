@@ -78,7 +78,7 @@ export default function LoginPage() {
       localStorage.setItem('userId', user.id)
       localStorage.setItem('userRole', user.role)
 
-      toast.success('Connexion réussie!')
+      toast.success('Connexion réussie!', { duration: 2000 })
       router.push('/dashboard')
       router.refresh()
     } catch (error) {

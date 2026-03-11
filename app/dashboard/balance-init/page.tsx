@@ -4,15 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import {
   Calendar,
   Search,
+  Save,
+  Loader2,
 } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { PageGuard } from '@/components/role-gate'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { usePermissions } from '@/lib/hooks/use-permissions'
 import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -36,9 +40,13 @@ function normalizeText(value: string | null | undefined): string {
 export default function BalanceInitPage() {
   const { user } = useCurrentUser()
   const { activeCompany } = useCompanyContext()
+  const { can } = usePermissions(user?.role || 'EMPLOYEE')
+  const canEditBalance = can('balance-init.edit')
   const [employees, setEmployees] = useState<EmployeeWithDept[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [balanceEdits, setBalanceEdits] = useState<Map<string, number>>(new Map())
+  const [saving, setSaving] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   // Track used/pending CONGE days per employee for monthly accrual display
@@ -95,6 +103,60 @@ export default function BalanceInitPage() {
   useEffect(() => {
     loadEmployees()
   }, [loadEmployees])
+
+  const hasEdits = balanceEdits.size > 0
+
+  const handleBalanceChange = (empId: string, value: string) => {
+    const num = parseFloat(value)
+    setBalanceEdits((prev) => {
+      const next = new Map(prev)
+      if (value === '' || isNaN(num)) {
+        next.delete(empId)
+      } else {
+        next.set(empId, num)
+      }
+      return next
+    })
+  }
+
+  const saveBalanceEdits = async () => {
+    if (balanceEdits.size === 0) return
+    setSaving(true)
+    try {
+      const updates = Array.from(balanceEdits.entries()).map(async ([id, balance]) => {
+        const res = await fetch(`/api/employees/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ balance_conge: balance }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || `Erreur ${res.status}`)
+        }
+        return id
+      })
+      const results = await Promise.allSettled(updates)
+      const failed = results.filter((r) => r.status === 'rejected')
+      if (failed.length > 0) {
+        toast.error(`Erreur lors de la sauvegarde de ${failed.length} solde(s)`)
+        return
+      }
+      // Update local state
+      setEmployees((prev) =>
+        prev.map((emp) => {
+          const newBalance = balanceEdits.get(emp.id)
+          return newBalance !== undefined ? { ...emp, balance_conge: newBalance } : emp
+        })
+      )
+      const count = balanceEdits.size
+      setBalanceEdits(new Map())
+      toast.success(`${count} solde(s) mis à jour`)
+    } catch {
+      toast.error('Erreur lors de la sauvegarde')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const seniorityMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof calculateSeniority>>()
@@ -168,6 +230,17 @@ export default function BalanceInitPage() {
               className="h-9 pl-9 text-sm"
             />
           </div>
+          {canEditBalance && hasEdits && (
+            <Button
+              size="sm"
+              onClick={saveBalanceEdits}
+              disabled={saving}
+              className="h-9 gap-1.5"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Enregistrer ({balanceEdits.size})
+            </Button>
+          )}
         </div>
       </div>
 
@@ -228,7 +301,17 @@ export default function BalanceInitPage() {
                           </div>
                           <div className="rounded-lg bg-amber-50/60 px-2 py-1.5 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/20 dark:ring-amber-900/30">
                             <p className="text-[9px] uppercase tracking-wide text-amber-500 dark:text-amber-400">Solde initial</p>
-                            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{emp.balance_conge} j</p>
+                            {canEditBalance ? (
+                              <Input
+                                type="number"
+                                step="0.5"
+                                value={balanceEdits.has(emp.id) ? balanceEdits.get(emp.id) : emp.balance_conge}
+                                onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
+                                className="h-6 w-full border-amber-200 bg-white/80 px-1.5 text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            ) : (
+                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{emp.balance_conge} j</p>
+                            )}
                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-1.5">
@@ -311,9 +394,19 @@ export default function BalanceInitPage() {
                           </span>
                         </td>
                         <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                          <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20">
-                            {emp.balance_conge} j
-                          </span>
+                          {canEditBalance ? (
+                            <Input
+                              type="number"
+                              step="0.5"
+                              value={balanceEdits.has(emp.id) ? balanceEdits.get(emp.id) : emp.balance_conge}
+                              onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
+                              className="mx-auto h-8 w-20 border-amber-200 bg-amber-50/50 text-center text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20">
+                              {emp.balance_conge} j
+                            </span>
+                          )}
                         </td>
                         {(() => {
                           const accrual = accrualMap.get(emp.id)!

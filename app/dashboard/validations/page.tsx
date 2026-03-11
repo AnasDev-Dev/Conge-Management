@@ -97,7 +97,7 @@ export default function ValidationsPage() {
   // Holiday-aware day counting
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [workingDaysConfig, setWorkingDaysConfig] = useState<WorkingDays>({
-    id: 0, company_id: null, category_id: null,
+    id: 0, company_id: null, category_id: null, department_id: null,
     monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
     monday_morning: true, monday_afternoon: true,
     tuesday_morning: true, tuesday_afternoon: true,

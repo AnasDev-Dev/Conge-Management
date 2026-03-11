@@ -224,13 +224,20 @@ CREATE POLICY "notifications_delete_own"
 -- ── HOLIDAYS ──
 ALTER TABLE public.holidays ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "holidays_select_authenticated"
-  ON public.holidays FOR SELECT TO authenticated USING (true);
+CREATE POLICY "holidays_select_company"
+  ON public.holidays FOR SELECT TO authenticated
+  USING (
+    company_id IN (
+      SELECT ucr.company_id FROM user_company_roles ucr
+      WHERE ucr.user_id = auth.uid() AND ucr.is_active = true
+    )
+    OR company_id = (SELECT company_id FROM utilisateurs WHERE id = auth.uid())
+  );
 
-CREATE POLICY "holidays_manage_admin"
+CREATE POLICY "holidays_manage"
   ON public.holidays FOR ALL TO authenticated
-  USING (public.get_my_role() = 'ADMIN')
-  WITH CHECK (public.get_my_role() = 'ADMIN');
+  USING (public.get_my_role() IN ('ADMIN', 'RH', 'DIRECTEUR_EXECUTIF'))
+  WITH CHECK (public.get_my_role() IN ('ADMIN', 'RH', 'DIRECTEUR_EXECUTIF'));
 
 
 -- ── WORKING_DAYS ──

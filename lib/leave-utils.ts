@@ -4,7 +4,7 @@ import { addDays } from 'date-fns'
 
 // ─── In-memory caches (per session) ───────────────────────
 let cachedHolidays: Holiday[] | null = null
-let cachedWorkingDays: WorkingDays | null = null
+const cachedWorkingDaysMap = new Map<string, WorkingDays>()
 
 // ─── Data fetchers ────────────────────────────────────────
 
@@ -20,36 +20,53 @@ export async function fetchHolidays(companyId?: number): Promise<Holiday[]> {
   return cachedHolidays
 }
 
-export async function fetchWorkingDays(companyId?: number): Promise<WorkingDays> {
-  if (cachedWorkingDays) return cachedWorkingDays
+const DEFAULT_WORKING_DAYS: Omit<WorkingDays, 'id' | 'company_id' | 'category_id' | 'department_id'> = {
+  monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+  monday_morning: true, monday_afternoon: true,
+  tuesday_morning: true, tuesday_afternoon: true,
+  wednesday_morning: true, wednesday_afternoon: true,
+  thursday_morning: true, thursday_afternoon: true,
+  friday_morning: true, friday_afternoon: true,
+  saturday_morning: true, saturday_afternoon: false,
+  sunday_morning: false, sunday_afternoon: false,
+}
+
+export async function fetchWorkingDays(companyId?: number, departmentId?: number): Promise<WorkingDays> {
+  const cacheKey = `${companyId ?? 'all'}-${departmentId ?? 'default'}`
+  const cached = cachedWorkingDaysMap.get(cacheKey)
+  if (cached) return cached
 
   const supabase = createClient()
-  let query = supabase.from('working_days').select('*')
-  if (companyId) query = query.eq('company_id', companyId)
 
-  const { data } = await query.limit(1).single()
-
-  // Default: Mon-Sat (Moroccan jours ouvrables)
-  const result = data || {
-    id: 0,
-    company_id: null,
-    category_id: null,
-    monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
-    monday_morning: true, monday_afternoon: true,
-    tuesday_morning: true, tuesday_afternoon: true,
-    wednesday_morning: true, wednesday_afternoon: true,
-    thursday_morning: true, thursday_afternoon: true,
-    friday_morning: true, friday_afternoon: true,
-    saturday_morning: true, saturday_afternoon: false,
-    sunday_morning: false, sunday_afternoon: false,
+  // Priority 1: Department-specific config
+  if (departmentId) {
+    let query = supabase.from('working_days').select('*').eq('department_id', departmentId)
+    if (companyId) query = query.eq('company_id', companyId)
+    const { data } = await query.limit(1).single()
+    if (data) {
+      cachedWorkingDaysMap.set(cacheKey, data as WorkingDays)
+      return data as WorkingDays
+    }
   }
-  cachedWorkingDays = result as WorkingDays
-  return cachedWorkingDays
+
+  // Priority 2: Company default (department_id IS NULL, category_id IS NULL)
+  let fallbackQuery = supabase.from('working_days').select('*')
+    .is('department_id', null)
+    .is('category_id', null)
+  if (companyId) fallbackQuery = fallbackQuery.eq('company_id', companyId)
+  const { data: fallbackData } = await fallbackQuery.limit(1).single()
+
+  const result = fallbackData || {
+    id: 0, company_id: null, category_id: null, department_id: null,
+    ...DEFAULT_WORKING_DAYS,
+  }
+  cachedWorkingDaysMap.set(cacheKey, result as WorkingDays)
+  return result as WorkingDays
 }
 
 export function clearCaches() {
   cachedHolidays = null
-  cachedWorkingDays = null
+  cachedWorkingDaysMap.clear()
 }
 
 // ─── Day checking helpers ─────────────────────────────────

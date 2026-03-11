@@ -320,7 +320,7 @@ export default function EmployeesPage() {
                                       <span className="text-muted-foreground"> dispo.</span>
                                     </p>
                                     <p className="text-[11px] text-muted-foreground">
-                                      {employee.balance_conge > 0 && <span>Report: {employee.balance_conge}j · </span>}
+                                      {employee.balance_conge > 0 && <span>Solde global: {employee.balance_conge}j · </span>}
                                       Acquis: {accrual.cumulativeEarned}j · Récup: {employee.balance_recuperation}j
                                     </p>
                                   </div>

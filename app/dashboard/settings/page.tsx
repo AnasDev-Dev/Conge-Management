@@ -21,6 +21,13 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Settings,
   Calendar,
   Clock,
@@ -31,6 +38,9 @@ import {
   Pencil,
   Shield,
   Building2,
+  Sun,
+  Moon,
+  Info,
 } from 'lucide-react'
 import { Holiday, WorkingDays } from '@/lib/types/database'
 import { PermissionsManager } from '@/components/permissions-manager'
@@ -82,6 +92,7 @@ export default function SettingsPage() {
   const [workingDays, setWorkingDays] = useState<WorkingDays | null>(null)
   const [workingDaysLoading, setWorkingDaysLoading] = useState(true)
   const [savingWorkingDays, setSavingWorkingDays] = useState(false)
+  const [wdDeptId, setWdDeptId] = useState<number | null>(null) // null = company default
 
   // Holidays state
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -89,9 +100,14 @@ export default function SettingsPage() {
   const [addHolidayOpen, setAddHolidayOpen] = useState(false)
   const [newHolidayName, setNewHolidayName] = useState('')
   const [newHolidayDate, setNewHolidayDate] = useState('')
-  const [newHolidayRecurring, setNewHolidayRecurring] = useState(false)
+  const [newHolidayRecurring, setNewHolidayRecurring] = useState(true)
   const [savingHoliday, setSavingHoliday] = useState(false)
   const [deletingHolidayId, setDeletingHolidayId] = useState<number | null>(null)
+  const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null)
+  const [editHolidayName, setEditHolidayName] = useState('')
+  const [editHolidayDate, setEditHolidayDate] = useState('')
+  const [editHolidayRecurring, setEditHolidayRecurring] = useState(false)
+  const [savingEditHoliday, setSavingEditHoliday] = useState(false)
 
   const companyId = activeCompany?.id ?? user?.company_id ?? undefined
 
@@ -199,18 +215,14 @@ export default function SettingsPage() {
   }
 
   // ─── Working Days ─────────────────────────────────
-  const loadWorkingDays = async (companyId?: number) => {
+  const loadWorkingDays = async (companyId?: number, departmentId?: number | null) => {
     setWorkingDaysLoading(true)
     try {
-      let query = supabase.from('working_days').select('*')
-      if (companyId) query = query.eq('company_id', companyId)
-      query = query.is('category_id', null)
-      const { data, error } = await query.limit(1).single()
-      if (error && error.code !== 'PGRST116') throw error
-      setWorkingDays(data || {
+      const defaultWd: WorkingDays = {
         id: 0,
         company_id: companyId || null,
         category_id: null,
+        department_id: departmentId || null,
         monday: true, tuesday: true, wednesday: true, thursday: true,
         friday: true, saturday: true, sunday: false,
         monday_morning: true, monday_afternoon: true,
@@ -220,7 +232,34 @@ export default function SettingsPage() {
         friday_morning: true, friday_afternoon: true,
         saturday_morning: true, saturday_afternoon: true,
         sunday_morning: false, sunday_afternoon: false,
-      })
+      }
+
+      // Try department-specific config first
+      if (departmentId) {
+        let query = supabase.from('working_days').select('*').eq('department_id', departmentId)
+        if (companyId) query = query.eq('company_id', companyId)
+        const { data, error } = await query.limit(1).single()
+        if (data && !error) {
+          setWorkingDays(data)
+          return
+        }
+        // Not found — fall through to company default and pre-fill
+      }
+
+      // Company default (department_id IS NULL, category_id IS NULL)
+      let fallbackQuery = supabase.from('working_days').select('*')
+        .is('department_id', null)
+        .is('category_id', null)
+      if (companyId) fallbackQuery = fallbackQuery.eq('company_id', companyId)
+      const { data: fallbackData, error: fallbackError } = await fallbackQuery.limit(1).single()
+      if (fallbackError && fallbackError.code !== 'PGRST116') throw fallbackError
+
+      if (departmentId && fallbackData) {
+        // Pre-fill department config from company default (new, unsaved)
+        setWorkingDays({ ...fallbackData, id: 0, department_id: departmentId })
+      } else {
+        setWorkingDays(fallbackData || defaultWd)
+      }
     } catch (error) {
       console.error('Error loading working days:', error)
     } finally {
@@ -251,6 +290,7 @@ export default function SettingsPage() {
       const payload = {
         company_id: companyId || 1,
         category_id: null,
+        department_id: wdDeptId || null,
         monday: workingDays.monday,
         tuesday: workingDays.tuesday,
         wednesday: workingDays.wednesday,
@@ -290,7 +330,8 @@ export default function SettingsPage() {
         if (data) setWorkingDays(data)
       }
       clearCaches()
-      toast.success('Jours ouvrables mis à jour')
+      const label = wdDeptId ? depts.find(d => d.id === wdDeptId)?.name : 'entreprise'
+      toast.success(`Jours ouvrables mis à jour (${label})`)
     } catch (error) {
       console.error('Error saving working days:', error)
       toast.error('Erreur lors de la sauvegarde')
@@ -316,6 +357,20 @@ export default function SettingsPage() {
 
   const addHoliday = async () => {
     if (!newHolidayName.trim() || !newHolidayDate || !user) return
+
+    // Duplicate check: same date (for recurring, compare month+day only)
+    const isDuplicate = holidays.some(h => {
+      if (newHolidayRecurring || h.is_recurring) {
+        // Compare month+day only
+        return h.date.substring(5) === newHolidayDate.substring(5)
+      }
+      return h.date === newHolidayDate
+    })
+    if (isDuplicate) {
+      toast.error('Un jour férié existe déjà à cette date')
+      return
+    }
+
     setSavingHoliday(true)
     try {
       const { data, error } = await supabase
@@ -332,7 +387,7 @@ export default function SettingsPage() {
       if (data) setHolidays(prev => [...prev, data].sort((a, b) => a.date.localeCompare(b.date)))
       setNewHolidayName('')
       setNewHolidayDate('')
-      setNewHolidayRecurring(false)
+      setNewHolidayRecurring(true)
       setAddHolidayOpen(false)
       clearCaches()
       toast.success('Jour férié ajouté')
@@ -341,6 +396,58 @@ export default function SettingsPage() {
       toast.error("Erreur lors de l'ajout")
     } finally {
       setSavingHoliday(false)
+    }
+  }
+
+  const startEditHoliday = (h: Holiday) => {
+    setEditingHoliday(h)
+    setEditHolidayName(h.name)
+    setEditHolidayDate(h.date)
+    setEditHolidayRecurring(h.is_recurring)
+  }
+
+  const updateHoliday = async () => {
+    if (!editingHoliday || !editHolidayName.trim() || !editHolidayDate) return
+
+    // Duplicate check (exclude self)
+    const isDuplicate = holidays.some(h => {
+      if (h.id === editingHoliday.id) return false
+      if (editHolidayRecurring || h.is_recurring) {
+        return h.date.substring(5) === editHolidayDate.substring(5)
+      }
+      return h.date === editHolidayDate
+    })
+    if (isDuplicate) {
+      toast.error('Un jour férié existe déjà à cette date')
+      return
+    }
+
+    setSavingEditHoliday(true)
+    try {
+      const { data, error } = await supabase
+        .from('holidays')
+        .update({
+          name: editHolidayName.trim(),
+          date: editHolidayDate,
+          is_recurring: editHolidayRecurring,
+        })
+        .eq('id', editingHoliday.id)
+        .select()
+        .single()
+      if (error) throw error
+      if (data) {
+        setHolidays(prev =>
+          prev.map(h => h.id === data.id ? data : h).sort((a, b) => a.date.localeCompare(b.date))
+        )
+      }
+      setEditingHoliday(null)
+      clearCaches()
+      toast.success('Jour férié modifié')
+    } catch (error) {
+      console.error('Error updating holiday:', error)
+      toast.error('Erreur lors de la modification')
+    } finally {
+      setSavingEditHoliday(false)
     }
   }
 
@@ -364,7 +471,7 @@ export default function SettingsPage() {
     { key: 'departments', label: 'Départements', icon: Building2 },
     { key: 'working-days', label: 'Jours ouvrables', icon: Clock },
     { key: 'holidays', label: 'Jours fériés', icon: Calendar },
-    { key: 'permissions', label: 'Permissions', icon: Shield },
+    ...(can('settings.permissions') ? [{ key: 'permissions' as Tab, label: 'Permissions', icon: Shield }] : []),
   ]
 
   // Group holidays
@@ -594,190 +701,275 @@ export default function SettingsPage() {
 
       {/* ─── Working Days Tab ──────────────────────── */}
       {activeTab === 'working-days' && (
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-primary" />
-              Jours ouvrables de l&apos;entreprise
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {workingDaysLoading ? (
-                <div className="py-8 text-center text-muted-foreground">Chargement...</div>
-              ) : workingDays ? (
-                <div className="space-y-6">
-                  <p className="text-sm text-muted-foreground">
-                    Configurez les demi-journées travaillées pour chaque jour. Activez Matin et/ou Après-midi selon le planning.
-                  </p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {DAY_LABELS.map(({ key, label }) => {
-                      const morningKey = `${key}_morning` as keyof WorkingDays
-                      const afternoonKey = `${key}_afternoon` as keyof WorkingDays
-                      const isMorning = workingDays[morningKey] as boolean
-                      const isAfternoon = workingDays[afternoonKey] as boolean
-                      const isFullDay = isMorning && isAfternoon
-                      const isPartial = isMorning || isAfternoon
-                      return (
-                        <div
-                          key={key}
-                          className={`rounded-xl border-2 p-4 transition-all ${
-                            isFullDay
-                              ? 'border-primary bg-primary/5'
-                              : isPartial
-                              ? 'border-primary/50 bg-primary/[0.02]'
-                              : 'border-border/70 bg-muted/20'
-                          }`}
-                        >
-                          <div className="mb-3 flex items-center justify-between">
-                            <p className="text-sm font-semibold">{label}</p>
-                            <Badge
-                              variant={isFullDay ? 'default' : isPartial ? 'secondary' : 'outline'}
-                              className="text-[10px]"
-                            >
-                              {isFullDay ? 'Journée complète' : isPartial ? 'Demi-journée' : 'Repos'}
-                            </Badge>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => toggleHalfDay(key, 'morning')}
-                              className={`flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                                isMorning
-                                  ? 'bg-primary text-primary-foreground shadow-sm'
-                                  : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
-                              }`}
-                            >
-                              Matin
-                            </button>
-                            <button
-                              onClick={() => toggleHalfDay(key, 'afternoon')}
-                              className={`flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                                isAfternoon
-                                  ? 'bg-primary text-primary-foreground shadow-sm'
-                                  : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
-                              }`}
-                            >
-                              Après-midi
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <div className="flex justify-end">
-                    <Button onClick={saveWorkingDays} disabled={savingWorkingDays}>
-                      {savingWorkingDays ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="mr-2 h-4 w-4" />
-                      )}
-                      Enregistrer
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
+        <div className="space-y-5">
+          {/* Header row: title + department dropdown + save */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Jours ouvrables</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Configurez les demi-journées travaillées pour chaque jour de la semaine.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-3">
+              <Select
+                value={wdDeptId === null ? '__default__' : String(wdDeptId)}
+                onValueChange={(val) => {
+                  const deptId = val === '__default__' ? null : Number(val)
+                  setWdDeptId(deptId)
+                  loadWorkingDays(companyId, deptId)
+                }}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                  <SelectValue placeholder="Sélectionner..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Défaut entreprise</SelectItem>
+                  {depts.map((dept) => (
+                    <SelectItem key={dept.id} value={String(dept.id)}>{dept.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={saveWorkingDays} disabled={savingWorkingDays || !workingDays}>
+                {savingWorkingDays ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                Enregistrer
+              </Button>
+            </div>
+          </div>
+
+          {/* Info banner for department-specific config */}
+          {wdDeptId && workingDays && workingDays.id === 0 && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p className="text-sm text-amber-800">
+                Pas encore de configuration pour <span className="font-medium">{depts.find(d => d.id === wdDeptId)?.name}</span>. Les valeurs par défaut de l&apos;entreprise sont affichées. Cliquez &quot;Enregistrer&quot; pour personnaliser.
+              </p>
+            </div>
+          )}
+
+          {/* Day grid */}
+          {workingDaysLoading ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="h-36 animate-pulse rounded-2xl bg-muted/30" />
+              ))}
+            </div>
+          ) : workingDays ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+              {DAY_LABELS.map(({ key, label }) => {
+                const morningKey = `${key}_morning` as keyof WorkingDays
+                const afternoonKey = `${key}_afternoon` as keyof WorkingDays
+                const isMorning = workingDays[morningKey] as boolean
+                const isAfternoon = workingDays[afternoonKey] as boolean
+                const isFullDay = isMorning && isAfternoon
+                const isPartial = isMorning || isAfternoon
+                const isRest = !isMorning && !isAfternoon
+                return (
+                  <div
+                    key={key}
+                    className={`group relative overflow-hidden rounded-2xl border-2 transition-all ${
+                      isFullDay
+                        ? 'border-primary/60 bg-primary/[0.04] shadow-sm'
+                        : isPartial
+                        ? 'border-primary/30 bg-primary/[0.02]'
+                        : 'border-border/50 bg-muted/10'
+                    }`}
+                  >
+                    {/* Day header */}
+                    <div className={`px-3 py-2.5 text-center ${isRest ? 'opacity-50' : ''}`}>
+                      <p className="text-sm font-semibold tracking-tight">{label}</p>
+                      <p className={`mt-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                        isFullDay ? 'text-primary' : isPartial ? 'text-primary/70' : 'text-muted-foreground'
+                      }`}>
+                        {isFullDay ? 'Journée complète' : isPartial ? 'Demi-journée' : 'Repos'}
+                      </p>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="mx-3 border-t border-border/40" />
+
+                    {/* Toggle buttons */}
+                    <div className="flex flex-col gap-1.5 p-2.5">
+                      <button
+                        onClick={() => toggleHalfDay(key, 'morning')}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+                          isMorning
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                        }`}
+                      >
+                        <Sun className="h-3 w-3" />
+                        Matin
+                      </button>
+                      <button
+                        onClick={() => toggleHalfDay(key, 'afternoon')}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+                          isAfternoon
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                        }`}
+                      >
+                        <Moon className="h-3 w-3" />
+                        Après-midi
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {/* Summary bar */}
+          {workingDays && !workingDaysLoading && (() => {
+            const totalDays = DAY_LABELS.reduce((sum, { key }) => {
+              const m = workingDays[`${key}_morning` as keyof WorkingDays] as boolean
+              const a = workingDays[`${key}_afternoon` as keyof WorkingDays] as boolean
+              return sum + (m ? 0.5 : 0) + (a ? 0.5 : 0)
+            }, 0)
+            const fullDays = DAY_LABELS.filter(({ key }) =>
+              (workingDays[`${key}_morning` as keyof WorkingDays] as boolean) &&
+              (workingDays[`${key}_afternoon` as keyof WorkingDays] as boolean)
+            ).length
+            const halfDays = DAY_LABELS.filter(({ key }) => {
+              const m = workingDays[`${key}_morning` as keyof WorkingDays] as boolean
+              const a = workingDays[`${key}_afternoon` as keyof WorkingDays] as boolean
+              return (m || a) && !(m && a)
+            }).length
+            const restDays = DAY_LABELS.filter(({ key }) =>
+              !(workingDays[`${key}_morning` as keyof WorkingDays] as boolean) &&
+              !(workingDays[`${key}_afternoon` as keyof WorkingDays] as boolean)
+            ).length
+            return (
+              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border/50 bg-muted/20 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                  <span className="text-sm text-foreground"><span className="font-semibold">{fullDays}</span> jour(s) complet(s)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-primary/40" />
+                  <span className="text-sm text-foreground"><span className="font-semibold">{halfDays}</span> demi-journée(s)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-muted-foreground/30" />
+                  <span className="text-sm text-foreground"><span className="font-semibold">{restDays}</span> repos</span>
+                </div>
+                <div className="ml-auto text-sm font-medium text-muted-foreground">
+                  Total : <span className="text-foreground">{totalDays} jour(s)/semaine</span>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
       )}
 
       {/* ─── Holidays Tab ──────────────────────────── */}
       {activeTab === 'holidays' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              {holidays.length} jour(s) férié(s) configuré(s)
-            </p>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {holidays.length} jour(s) férié(s) configuré(s)
+              </p>
+            </div>
             <Button onClick={() => setAddHolidayOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Ajouter un jour férié
             </Button>
           </div>
 
-          {/* Recurring holidays */}
-          {recurringHolidays.length > 0 && (
-            <Card className="border-border/70">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Jours fériés fixes (récurrents)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  {recurringHolidays.map((h) => (
-                    <div key={h.id} className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-muted/30">
-                      <div className="flex items-center gap-3">
-                        <Badge variant="secondary" className="border border-border/70 text-xs">
-                          {format(new Date(h.date + 'T00:00:00'), 'dd MMM', { locale: fr })}
-                        </Badge>
-                        <span className="text-sm font-medium">{h.name}</span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteHoliday(h.id)}
-                        disabled={deletingHolidayId === h.id}
-                      >
-                        {deletingHolidayId === h.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Variable holidays by year */}
-          {variableHolidays.length > 0 && (() => {
-            const byYear: Record<string, Holiday[]> = {}
-            variableHolidays.forEach(h => {
-              const year = h.date.substring(0, 4)
-              if (!byYear[year]) byYear[year] = []
-              byYear[year].push(h)
-            })
-            return Object.entries(byYear)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([year, yearHolidays]) => (
-                <Card key={year} className="border-border/70">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Jours fériés religieux — {year}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-1">
-                      {yearHolidays.map((h) => (
-                        <div key={h.id} className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-muted/30">
-                          <div className="flex items-center gap-3">
-                            <Badge variant="secondary" className="border border-border/70 text-xs">
-                              {format(new Date(h.date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
-                            </Badge>
-                            <span className="text-sm font-medium">{h.name}</span>
+          {holidaysLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Chargement...</div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {/* Left column: National (fixed) holidays */}
+              <Card className="border-border/70">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-sm font-semibold">Nationaux (fixes)</CardTitle>
+                  <p className="text-xs text-muted-foreground">Même date chaque année</p>
+                </CardHeader>
+                <CardContent className="px-2 pb-2 pt-0">
+                  {recurringHolidays.length === 0 ? (
+                    <p className="px-3 py-4 text-center text-xs text-muted-foreground">Aucun jour férié fixe</p>
+                  ) : (
+                    <div className="max-h-[420px] overflow-y-auto">
+                      {recurringHolidays.map((h) => (
+                        <div key={h.id} className="group flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted/30">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="shrink-0 rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                              {format(new Date(h.date + 'T00:00:00'), 'dd MMM', { locale: fr })}
+                            </span>
+                            <span className="truncate text-sm">{h.name}</span>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => deleteHoliday(h.id)}
-                            disabled={deletingHolidayId === h.id}
-                          >
-                            {deletingHolidayId === h.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => startEditHoliday(h)}>
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => deleteHoliday(h.id)} disabled={deletingHolidayId === h.id}>
+                              {deletingHolidayId === h.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-          })()}
+                  )}
+                </CardContent>
+              </Card>
 
-          {holidaysLoading && (
-            <div className="py-8 text-center text-muted-foreground">Chargement...</div>
+              {/* Right column: Religious/variable holidays */}
+              <Card className="border-border/70">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-sm font-semibold">Religieux et variables</CardTitle>
+                  <p className="text-xs text-muted-foreground">Date différente selon l&apos;année</p>
+                </CardHeader>
+                <CardContent className="px-2 pb-2 pt-0">
+                  {variableHolidays.length === 0 ? (
+                    <p className="px-3 py-4 text-center text-xs text-muted-foreground">Aucun jour férié variable</p>
+                  ) : (
+                    <div className="max-h-[420px] overflow-y-auto">
+                      {(() => {
+                        const byYear: Record<string, Holiday[]> = {}
+                        variableHolidays.forEach(h => {
+                          const year = h.date.substring(0, 4)
+                          if (!byYear[year]) byYear[year] = []
+                          byYear[year].push(h)
+                        })
+                        return Object.entries(byYear)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([year, yearHolidays]) => (
+                            <div key={year}>
+                              <div className="mx-1 mt-2 mb-1 rounded-lg bg-primary/8 px-2.5 py-1.5">
+                                <span className="text-xs font-semibold text-primary">{year}</span>
+                              </div>
+                              {yearHolidays.map((h) => (
+                                <div key={h.id} className="group flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-muted/30">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="shrink-0 rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                                      {format(new Date(h.date + 'T00:00:00'), 'dd MMM', { locale: fr })}
+                                    </span>
+                                    <span className="truncate text-sm">{h.name}</span>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => startEditHoliday(h)}>
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => deleteHoliday(h.id)} disabled={deletingHolidayId === h.id}>
+                                      {deletingHolidayId === h.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))
+                      })()}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* Add Holiday Dialog */}
@@ -786,7 +978,7 @@ export default function SettingsPage() {
               <DialogHeader>
                 <DialogTitle>Ajouter un jour férié</DialogTitle>
                 <DialogDescription>
-                  Les jours fériés récurrents se répètent chaque année à la même date.
+                  Les jours nationaux (fixes) se répètent chaque année à la même date. Les jours religieux/variables changent de date selon l&apos;année.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -806,21 +998,28 @@ export default function SettingsPage() {
                     placeholder="Selectionnez la date"
                   />
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setNewHolidayRecurring(!newHolidayRecurring)}
-                    className={`relative h-6 w-11 rounded-full transition-colors ${
-                      newHolidayRecurring ? 'bg-primary' : 'bg-muted-foreground/30'
-                    }`}
-                  >
-                    <span
-                      className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                        newHolidayRecurring ? 'translate-x-5' : 'translate-x-0'
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setNewHolidayRecurring(!newHolidayRecurring)}
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        newHolidayRecurring ? 'bg-primary' : 'bg-muted-foreground/30'
                       }`}
-                    />
-                  </button>
-                  <Label>Récurrent chaque année</Label>
+                    >
+                      <span
+                        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                          newHolidayRecurring ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                    <Label>Fixe (même date chaque année)</Label>
+                  </div>
+                  {newHolidayRecurring && (
+                    <p className="text-xs text-muted-foreground">
+                      Jour national : seuls le jour et le mois comptent. Désactivez pour un jour religieux/variable dont la date change chaque année.
+                    </p>
+                  )}
                 </div>
               </div>
               <DialogFooter>
@@ -837,6 +1036,75 @@ export default function SettingsPage() {
                     <Plus className="mr-2 h-4 w-4" />
                   )}
                   Ajouter
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Holiday Dialog */}
+          <Dialog open={editingHoliday !== null} onOpenChange={(open) => { if (!open) setEditingHoliday(null) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Modifier le jour férié</DialogTitle>
+                <DialogDescription>
+                  Modifiez le nom, la date ou le type de récurrence.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Nom du jour férié</Label>
+                  <Input
+                    value={editHolidayName}
+                    onChange={(e) => setEditHolidayName(e.target.value)}
+                    placeholder="Ex: Aïd Al-Fitr"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <DatePicker
+                    value={editHolidayDate}
+                    onChange={setEditHolidayDate}
+                    placeholder="Selectionnez la date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditHolidayRecurring(!editHolidayRecurring)}
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        editHolidayRecurring ? 'bg-primary' : 'bg-muted-foreground/30'
+                      }`}
+                    >
+                      <span
+                        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                          editHolidayRecurring ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                    <Label>Fixe (même date chaque année)</Label>
+                  </div>
+                  {editHolidayRecurring && (
+                    <p className="text-xs text-muted-foreground">
+                      Jour national : seuls le jour et le mois comptent. Désactivez pour un jour religieux/variable dont la date change chaque année.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingHoliday(null)}>
+                  Annuler
+                </Button>
+                <Button
+                  onClick={updateHoliday}
+                  disabled={savingEditHoliday || !editHolidayName.trim() || !editHolidayDate}
+                >
+                  {savingEditHoliday ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Enregistrer
                 </Button>
               </DialogFooter>
             </DialogContent>

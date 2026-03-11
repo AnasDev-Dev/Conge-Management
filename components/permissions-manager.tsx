@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Save, RotateCcw, Loader2, Shield, Check, X } from 'lucide-react'
+import { Save, RotateCcw, Loader2, Shield, Check, X, Lock } from 'lucide-react'
 
 // ─── Constants ──────────────────────────────────────────────
 
@@ -96,6 +96,7 @@ const ACTION_GROUPS: { label: string; actions: { key: Action; label: string }[] 
       { key: 'settings.recovery', label: 'Recuperation' },
       { key: 'settings.departments', label: 'Gerer les departements' },
       { key: 'settings.categories', label: 'Gerer les categories' },
+      { key: 'settings.permissions', label: 'Gerer les permissions' },
     ],
   },
   {
@@ -208,6 +209,15 @@ export function PermissionsManager() {
   }
 
   const toggleAction = (action: Action) => {
+    // Prevent removing settings.permissions from ADMIN (bootstrap protection)
+    if (action === 'settings.permissions' && selectedRole === 'ADMIN') {
+      const currentlyEnabled = editState[selectedRole].actions.includes(action)
+      if (currentlyEnabled) {
+        toast.error('Impossible de retirer "Gerer les permissions" du role Administrateur')
+        return
+      }
+    }
+
     setEditState(prev => {
       const perms = { ...prev[selectedRole] }
       const list = [...perms.actions]
@@ -226,12 +236,20 @@ export function PermissionsManager() {
     })
   }
 
+  // Ensure ADMIN always retains settings.permissions before sending to API
+  const ensureAdminBootstrap = (perms: RolePermissions, role: UserRole): RolePermissions => {
+    if (role === 'ADMIN' && !perms.actions.includes('settings.permissions')) {
+      return { ...perms, actions: [...perms.actions, 'settings.permissions'] }
+    }
+    return perms
+  }
+
   // Save
   const handleSave = async () => {
     if (!activeCompany) return
     setSaving(true)
     try {
-      const perms = editState[selectedRole]
+      const perms = ensureAdminBootstrap(editState[selectedRole], selectedRole)
       const res = await fetch('/api/role-permissions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -262,14 +280,17 @@ export function PermissionsManager() {
     if (!activeCompany) return
     setSaving(true)
     try {
-      const rows = ALL_ROLES.map(role => ({
-        company_id: activeCompany.id,
-        role,
-        sidebar: editState[role].sidebar,
-        pages: editState[role].pages,
-        actions: editState[role].actions,
-        data_scope: editState[role].dataScope,
-      }))
+      const rows = ALL_ROLES.map(role => {
+        const perms = ensureAdminBootstrap(editState[role], role)
+        return {
+          company_id: activeCompany.id,
+          role,
+          sidebar: perms.sidebar,
+          pages: perms.pages,
+          actions: perms.actions,
+          data_scope: perms.dataScope,
+        }
+      })
       const res = await fetch('/api/role-permissions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -391,17 +412,23 @@ export function PermissionsManager() {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {group.actions.map(({ key, label }) => {
                     const enabled = currentPerms.actions.includes(key)
+                    const isLocked = key === 'settings.permissions' && selectedRole === 'ADMIN'
                     return (
                       <button
                         key={key}
                         onClick={() => toggleAction(key)}
+                        disabled={isLocked}
                         className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-all ${
-                          enabled
-                            ? 'border-primary/30 bg-primary/5 text-foreground'
-                            : 'border-border/50 bg-muted/30 text-muted-foreground'
+                          isLocked
+                            ? 'border-primary/30 bg-primary/10 text-foreground cursor-not-allowed opacity-80'
+                            : enabled
+                              ? 'border-primary/30 bg-primary/5 text-foreground'
+                              : 'border-border/50 bg-muted/30 text-muted-foreground'
                         }`}
                       >
-                        {enabled ? (
+                        {isLocked ? (
+                          <Lock className="h-4 w-4 shrink-0 text-primary" />
+                        ) : enabled ? (
                           <Check className="h-4 w-4 shrink-0 text-primary" />
                         ) : (
                           <X className="h-4 w-4 shrink-0 text-muted-foreground/50" />

@@ -46,6 +46,7 @@ export type Action =
   | 'settings.recovery'
   | 'settings.departments'
   | 'settings.categories'
+  | 'settings.permissions'
   // Balance init
   | 'balance-init.edit'
   // Approval pipeline
@@ -303,6 +304,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'settings.recovery',
       'settings.departments',
       'settings.categories',
+      'settings.permissions',
       'balance-init.edit',
       'approval.leaveStage1',
       'approval.leaveStage2',

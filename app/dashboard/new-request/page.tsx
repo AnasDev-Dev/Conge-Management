@@ -85,7 +85,7 @@ export default function NewRequestPage() {
   // Holiday-aware day counting
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [workingDaysConfig, setWorkingDaysConfig] = useState<WorkingDays>({
-    id: 0, company_id: null, category_id: null,
+    id: 0, company_id: null, category_id: null, department_id: null,
     monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
     monday_morning: true, monday_afternoon: true,
     tuesday_morning: true, tuesday_afternoon: true,
@@ -141,7 +141,8 @@ export default function NewRequestPage() {
       // Use active company for holidays/working days (not home company)
       const companyId = activeCompany?.id || user.company_id || undefined
       fetchHolidays(companyId).then(setHolidays)
-      fetchWorkingDays(companyId).then(setWorkingDaysConfig)
+      // Fetch working days for user's department (re-fetched when on-behalf target changes)
+      fetchWorkingDays(companyId, user.department_id ?? undefined).then(setWorkingDaysConfig)
       // Fetch dept annual_leave_days for self-service
       if (user.department_id) {
         supabase.from('departments').select('annual_leave_days').eq('id', user.department_id).single()
@@ -150,12 +151,20 @@ export default function NewRequestPage() {
     }
   }, [user, activeCompany?.id])
 
-  // Auto-select "on behalf" mode when manager is on non-home company
+  // Block self-service when on a non-home company (balances live at home company only)
   useEffect(() => {
-    if (!isHome && isManager && !onBehalfOfId) {
+    if (!isHome && !onBehalfOfId) {
       setOnBehalfOfId('_selecting')
     }
-  }, [isHome, isManager])
+  }, [isHome])
+
+  // Re-fetch working days when target employee changes (on-behalf selection)
+  useEffect(() => {
+    if (!user) return
+    const companyId = activeCompany?.id || user.company_id || undefined
+    const deptId = targetEmployee?.department_id ?? user.department_id ?? undefined
+    fetchWorkingDays(companyId, deptId).then(setWorkingDaysConfig)
+  }, [targetEmployee?.department_id])
 
   // Fetch used/pending CONGE days + recovery lots for the target employee
   useEffect(() => {
@@ -581,6 +590,16 @@ export default function NewRequestPage() {
         {/* Step 1: Period + Balances + On-behalf */}
         {currentStep === 1 && (
           <div key="step-1" className="animate-in fade-in duration-300 space-y-6">
+            {/* Non-home, non-manager: show blocking message */}
+            {!isHome && !isManager && activeTab === 'conge' && (
+              <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-medium">Votre solde de congé est sur votre société d&apos;origine.</p>
+                  <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">Basculez vers votre société d&apos;origine pour créer une demande de congé pour vous-même.</p>
+                </div>
+              </div>
+            )}
             {/* Manager: create on behalf of employee */}
             {isManager && (
               <Card className="border-primary/20 bg-primary/[0.02]">
@@ -592,7 +611,7 @@ export default function NewRequestPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {!isHome && isManager && activeTab === 'conge' && (
+                    {!isHome && activeTab === 'conge' && (
                       <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                         Votre solde de conge est sur votre societe d&apos;origine. Vous pouvez creer des demandes pour les employes de {activeCompany?.name || 'cette societe'}.
@@ -602,13 +621,13 @@ export default function NewRequestPage() {
                       <button
                         type="button"
                         onClick={() => { setOnBehalfOfId(''); setEmployeeSearch('') }}
-                        disabled={!isHome && isManager}
+                        disabled={!isHome}
                         className={cn(
                           'rounded-2xl border-2 p-3 sm:p-4 text-left transition-all',
                           !onBehalfOfId
                             ? 'border-primary/50 bg-primary/5'
                             : 'border-border/70 hover:border-border hover:bg-accent/30',
-                          !isHome && isManager && 'cursor-not-allowed opacity-50'
+                          !isHome && 'cursor-not-allowed opacity-50'
                         )}
                       >
                         <p className="font-semibold text-xs sm:text-sm">Pour moi-meme</p>
@@ -666,7 +685,7 @@ export default function NewRequestPage() {
                                   )}
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <p className="text-[10px] text-muted-foreground">Report: {emp.balance_conge}j</p>
+                                  <p className="text-[10px] text-muted-foreground">Solde global: {emp.balance_conge}j</p>
                                   <p className="text-[10px] text-muted-foreground">R: {emp.balance_recuperation}j</p>
                                 </div>
                                 {onBehalfOfId === emp.id && (
@@ -702,17 +721,12 @@ export default function NewRequestPage() {
                     {congeAccrual.carryOver > 0 && (
                       <span className="inline-flex items-center gap-1">
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        Report: <span className="font-medium text-foreground">{congeAccrual.carryOver}j</span>
+                        Solde global: <span className="font-medium text-foreground">{congeAccrual.carryOver}j</span>
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
                       Acquis: <span className="font-medium text-foreground">{congeAccrual.cumulativeEarned}j</span>
-                      <span className="text-muted-foreground/70">({congeAccrual.monthlyRate}j/mois × {congeAccrual.currentMonth})</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-                      Droit/an: <span className="font-medium text-foreground">{congeAccrual.annualEntitlement}j</span>
                     </span>
                   </div>
                 </div>

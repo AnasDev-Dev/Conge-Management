@@ -130,6 +130,8 @@ export interface Notification {
   message: string
   type: string | null
   related_request_id: number | null
+  related_mission_id: number | null
+  related_recovery_id: number | null
   is_read: boolean
   created_at: string
 }
@@ -147,6 +149,7 @@ export interface WorkingDays {
   id: number
   company_id: number | null
   category_id: number | null
+  department_id: number | null
   monday: boolean
   tuesday: boolean
   wednesday: boolean

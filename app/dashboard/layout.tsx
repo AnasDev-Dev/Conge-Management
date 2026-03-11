@@ -36,6 +36,8 @@ import { DbPermissionsProvider } from '@/lib/hooks/use-db-permissions'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { type SidebarItem } from '@/lib/permissions'
 import { getCompanyLogo } from '@/lib/company-logos'
+import { useNotifications } from '@/lib/hooks/use-notifications'
+import { useLoginReminders } from '@/lib/hooks/use-login-reminders'
 
 export default function DashboardLayout({
   children,
@@ -145,8 +147,16 @@ export default function DashboardLayout({
 function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLogout: () => void; children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
-  const { activeCompany } = useCompanyContext()
+  const { activeCompany, activeRole } = useCompanyContext()
+  const effectiveRole = activeRole || user.role
   const { canSee } = usePermissions(user.role)
+  const { unreadCount } = useNotifications(user.id)
+  useLoginReminders({
+    userId: user.id,
+    role: effectiveRole,
+    departmentId: user.department_id,
+    companyId: activeCompany?.id ?? user.company_id,
+  })
 
   // Full nav definition — filtered by permissions below
   type NavItem = {
@@ -247,10 +257,16 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
                     </div>
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="relative rounded-2xl">
-                  <Bell className="h-4 w-4 text-muted-foreground" />
-                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
-                </Button>
+                <Link href="/dashboard/notifications">
+                  <Button variant="ghost" size="icon" className="relative rounded-2xl">
+                    <Bell className="h-4 w-4 text-muted-foreground" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </Link>
               </div>
             </div>
           </header>
@@ -344,7 +360,12 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
                         onClick={() => setSidebarOpen(false)}
                       >
                         <Icon className="h-4 w-4" />
-                        <span>{item.name}</span>
+                        <span className="flex-1">{item.name}</span>
+                        {item.key === 'notifications' && unreadCount > 0 && (
+                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                            {unreadCount > 99 ? '99+' : unreadCount}
+                          </span>
+                        )}
                       </Link>
                     )
                   }

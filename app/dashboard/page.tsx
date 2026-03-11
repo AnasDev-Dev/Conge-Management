@@ -252,7 +252,7 @@ export default function DashboardPage() {
                   </p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-xs">
                     {accrual.monthlyRate}j/mois — Cumulé: {accrual.cumulativeEarned}j
-                    {carryOver > 0 && ` — Report: ${carryOver}j`}
+                    {carryOver > 0 && ` — Solde global: ${carryOver}j`}
                   </p>
                 </>
               )

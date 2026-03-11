@@ -20,6 +20,7 @@ const MOROCCAN_WORKING_DAYS: WorkingDays = {
   id: 1,
   company_id: 1,
   category_id: null,
+  department_id: null,
   monday: true, tuesday: true, wednesday: true,
   thursday: true, friday: true, saturday: true, sunday: false,
   monday_morning: true, monday_afternoon: true,

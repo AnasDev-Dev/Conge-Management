@@ -198,7 +198,7 @@ export default function EmployeeDetailsPage() {
                 <p className="text-xs text-muted-foreground">Congé disponible</p>
                 <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {employee.balance_conge > 0 && `Report: ${employee.balance_conge}j · `}
+                  {employee.balance_conge > 0 && `Solde global: ${employee.balance_conge}j · `}
                   Acquis: {accrual.cumulativeEarned}j
                 </p>
               </div>
