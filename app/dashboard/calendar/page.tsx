@@ -264,19 +264,7 @@ export default function CalendarPage() {
                 Aujourd&apos;hui
               </button>
             </div>
-            <div className="flex items-center gap-3">
-              {isManager ? (
-                <Badge variant="secondary" className="border border-border gap-1.5">
-                  <Users className="h-3 w-3" />
-                  \u00c9quipe
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="border border-border gap-1.5">
-                  <UserRound className="h-3 w-3" />
-                  Personnel
-                </Badge>
-              )}
-            </div>
+            <div className="flex items-center gap-3" />
           </div>
 
           {/* Row 2: Filter pills */}

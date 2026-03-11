@@ -316,28 +316,40 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
                         </button>
                         
                         {isOpen && (
-                          <div className="mt-1 space-y-1 pl-4 animate-in slide-in-from-top-1 duration-200">
-                            {filteredItems.map(subItem => {
-                              const Icon = subItem.icon
-                              const isActive = isNavItemActive(subItem.href)
-                              return (
-                                <Link
-                                  key={subItem.name}
-                                  href={subItem.href}
-                                  className={cn(
-                                    'flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-sm font-medium transition-all relative',
-                                    isActive
-                                      ? 'border-border bg-background text-foreground'
-                                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
-                                  )}
-                                  onClick={() => setSidebarOpen(false)}
-                                >
-                                  {/* Add a vertical line connector visual if needed, but keeping it simple for now */}
-                                  <Icon className="h-4 w-4" />
-                                  <span>{subItem.name}</span>
-                                </Link>
-                              )
-                            })}
+                          <div className="relative mt-1 ml-[1.65rem] animate-in slide-in-from-top-1 duration-200">
+                            {/* Vertical tree line */}
+                            <div className="absolute left-0 top-0 bottom-3 w-px bg-border/60" />
+                            <div className="space-y-0.5">
+                              {filteredItems.map((subItem, subIdx) => {
+                                const Icon = subItem.icon
+                                const isActive = isNavItemActive(subItem.href)
+                                const isLast = subIdx === filteredItems.length - 1
+                                return (
+                                  <div key={subItem.name} className="relative flex items-center">
+                                    {/* Horizontal branch line */}
+                                    <div className={cn(
+                                      'absolute left-0 h-px w-3.5 bg-border/60',
+                                      isLast && 'top-1/2'
+                                    )} style={{ top: isLast ? undefined : '50%' }} />
+                                    {/* Hide vertical line below last item */}
+                                    {isLast && <div className="absolute left-0 top-1/2 bottom-0 w-px bg-sidebar" />}
+                                    <Link
+                                      href={subItem.href}
+                                      className={cn(
+                                        'ml-5 flex flex-1 items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-sm font-medium transition-all',
+                                        isActive
+                                          ? 'border-border bg-background text-foreground'
+                                          : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
+                                      )}
+                                      onClick={() => setSidebarOpen(false)}
+                                    >
+                                      <Icon className="h-4 w-4" />
+                                      <span>{subItem.name}</span>
+                                    </Link>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
                         )}
                       </div>
