@@ -17,7 +17,7 @@ import { Utilisateur } from '@/lib/types/database'
 import { PageGuard } from '@/components/role-gate'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
-import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
+import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -310,7 +310,7 @@ export default function BalanceInitPage() {
                                 className="h-6 w-full border-amber-200 bg-white/80 px-1.5 text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                               />
                             ) : (
-                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{emp.balance_conge} j</p>
+                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{roundHalf(emp.balance_conge)} j</p>
                             )}
                           </div>
                         </div>
@@ -404,7 +404,7 @@ export default function BalanceInitPage() {
                             />
                           ) : (
                             <span className="inline-flex items-center rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20">
-                              {emp.balance_conge} j
+                              {roundHalf(emp.balance_conge)} j
                             </span>
                           )}
                         </td>

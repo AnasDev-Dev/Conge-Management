@@ -15,7 +15,7 @@ import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { PageGuard } from '@/components/role-gate'
 import { AddEmployeeDialog } from '@/components/add-employee-dialog'
-import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
+import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
 
 type EmployeeRow = Pick<
   Utilisateur,
@@ -320,8 +320,8 @@ export default function EmployeesPage() {
                                       <span className="text-muted-foreground"> dispo.</span>
                                     </p>
                                     <p className="text-[11px] text-muted-foreground">
-                                      {employee.balance_conge > 0 && <span>Solde global: {employee.balance_conge}j · </span>}
-                                      Acquis: {accrual.cumulativeEarned}j · Récup: {employee.balance_recuperation}j
+                                      {employee.balance_conge > 0 && <span>Solde global: {roundHalf(employee.balance_conge)}j · </span>}
+                                      Acquis: {accrual.cumulativeEarned}j · Récup: {roundHalf(employee.balance_recuperation)}j
                                     </p>
                                   </div>
                                 )
@@ -382,7 +382,7 @@ export default function EmployeesPage() {
                         </div>
 
                         <p className="mt-3 text-xs text-muted-foreground">
-                          Solde: {employee.balance_conge} congé / {employee.balance_recuperation} récupération
+                          Solde: {roundHalf(employee.balance_conge)} congé / {roundHalf(employee.balance_recuperation)} récupération
                         </p>
 
                         <Link href={`/dashboard/employees/${employee.id}`} className="mt-3 block">

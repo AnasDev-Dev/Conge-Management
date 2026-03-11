@@ -266,6 +266,12 @@ export function nextWorkingDay(
   return d
 }
 
+// ─── Round to nearest 0.5 ────────────────────────────────
+/** Round any number to the nearest 0.5 (e.g. 16.88→17, 5.25→5.5, 1.63→1.5) */
+export function roundHalf(n: number): number {
+  return Math.round(n * 2) / 2
+}
+
 // ─── Monthly Balance Accrual (Req #5) ────────────────────
 
 export interface MonthlyAccrualInfo {
@@ -293,18 +299,18 @@ export function calculateMonthlyAccrual(
   month?: number
 ): MonthlyAccrualInfo {
   const currentMonth = month ?? (new Date().getMonth() + 1) // 1-based
-  const monthlyRate = Math.round((annualEntitlement / 12) * 100) / 100
-  const cumulativeEarned = Math.round(monthlyRate * currentMonth * 100) / 100
-  const availableNow = Math.max(carryOver + cumulativeEarned - daysUsed - daysPending, 0)
+  const monthlyRate = roundHalf(annualEntitlement / 12)
+  const cumulativeEarned = roundHalf(monthlyRate * currentMonth)
+  const availableNow = roundHalf(Math.max(carryOver + cumulativeEarned - daysUsed - daysPending, 0))
 
   return {
-    annualEntitlement,
-    carryOver,
+    annualEntitlement: roundHalf(annualEntitlement),
+    carryOver: roundHalf(carryOver),
     currentMonth,
     monthlyRate,
     cumulativeEarned,
-    daysUsed,
-    daysPending,
+    daysUsed: roundHalf(daysUsed),
+    daysPending: roundHalf(daysPending),
     availableNow,
   }
 }
@@ -338,7 +344,7 @@ export function calculateSeniority(hireDateStr: string | null, deptAnnualDays?: 
   const yearsOfService = diffMs / (365.25 * 24 * 60 * 60 * 1000)
   const seniorityPeriods = Math.floor(Math.max(yearsOfService, 0) / 5)
   const bonusDays = seniorityPeriods * 1.5
-  const totalEntitlement = Math.min(baseDays + bonusDays, maxDays)
+  const totalEntitlement = roundHalf(Math.min(baseDays + bonusDays, maxDays))
 
-  return { yearsOfService: Math.max(yearsOfService, 0), seniorityPeriods, baseDays, bonusDays, totalEntitlement }
+  return { yearsOfService: Math.max(yearsOfService, 0), seniorityPeriods, baseDays, bonusDays: roundHalf(bonusDays), totalEntitlement }
 }

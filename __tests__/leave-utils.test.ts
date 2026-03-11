@@ -347,35 +347,37 @@ describe('nextWorkingDay', () => {
 describe('calculateMonthlyAccrual', () => {
   // New signature: (annualEntitlement, carryOver, daysUsed, daysPending, month?)
 
-  it('calculates monthly rate correctly (22 days / 12 months)', () => {
+  it('calculates monthly rate correctly (22 days / 12 months) rounded to 0.5', () => {
     const result = calculateMonthlyAccrual(22, 0, 0, 0, 1)
-    expect(result.monthlyRate).toBeCloseTo(1.83, 2)
+    // 22/12 = 1.833 → roundHalf → 2
+    expect(result.monthlyRate).toBe(2)
     expect(result.annualEntitlement).toBe(22)
   })
 
   it('calculates cumulative earned for month 6', () => {
     const result = calculateMonthlyAccrual(22, 0, 0, 0, 6)
-    expect(result.cumulativeEarned).toBeCloseTo(1.83 * 6, 1)
+    // monthlyRate=2, cumulative = roundHalf(2*6) = 12
+    expect(result.cumulativeEarned).toBe(12)
   })
 
   it('deducts used and pending days from available', () => {
     const result = calculateMonthlyAccrual(22, 0, 5, 2, 6)
     expect(result.daysUsed).toBe(5)
     expect(result.daysPending).toBe(2)
-    // available = carryOver + cumulative - used - pending
-    expect(result.availableNow).toBeCloseTo(1.83 * 6 - 5 - 2, 1)
+    // available = roundHalf(0 + 12 - 5 - 2) = 5
+    expect(result.availableNow).toBe(5)
   })
 
   it('does not go below 0 for available', () => {
     const result = calculateMonthlyAccrual(22, 0, 20, 5, 1)
-    // cumulative at month 1 ≈ 1.83, used=20, pending=5 → would be negative
+    // cumulative at month 1 = 2, used=20, pending=5 → negative → 0
     expect(result.availableNow).toBe(0)
   })
 
   it('handles month 12 (full year)', () => {
     const result = calculateMonthlyAccrual(22, 0, 0, 0, 12)
-    // cumulative should equal the full annual amount (within rounding)
-    expect(result.cumulativeEarned).toBeCloseTo(22, 0)
+    // monthlyRate=2, cumulative = roundHalf(2*12) = 24
+    expect(result.cumulativeEarned).toBe(24)
   })
 
   it('handles 18 base days (default Moroccan entitlement)', () => {
@@ -386,29 +388,31 @@ describe('calculateMonthlyAccrual', () => {
 
   it('handles MAX_LEAVE_BALANCE (52 days)', () => {
     const result = calculateMonthlyAccrual(52, 0, 0, 0, 12)
-    expect(result.cumulativeEarned).toBeCloseTo(52, 0)
+    // 52/12 = 4.333 → roundHalf → 4.5, cumulative = roundHalf(4.5*12) = 54
+    expect(result.cumulativeEarned).toBe(54)
   })
 
   it('adds carry-over to available balance', () => {
     // 18 entitlement, 10 carry-over, 0 used, 0 pending, month 1
     const result = calculateMonthlyAccrual(18, 10, 0, 0, 1)
     expect(result.carryOver).toBe(10)
-    // available = 10 + 1.5 - 0 - 0 = 11.5
+    // available = roundHalf(10 + 1.5 - 0 - 0) = 11.5
     expect(result.availableNow).toBe(11.5)
   })
 
   it('carry-over is fully available from month 1', () => {
     const result = calculateMonthlyAccrual(18, 15, 0, 0, 1)
-    // available = 15 (carry) + 1.5 (month 1 accrual) = 16.5
+    // available = roundHalf(15 + 1.5) = 16.5
     expect(result.availableNow).toBe(16.5)
   })
 
   it('carry-over + accrual - used gives correct available', () => {
     // 21 entitlement (dept+seniority), 8 carry-over, 5 used, 2 pending, month 3
     const result = calculateMonthlyAccrual(21, 8, 5, 2, 3)
-    const monthlyRate = Math.round((21 / 12) * 100) / 100  // 1.75
-    const cumulative = Math.round(monthlyRate * 3 * 100) / 100  // 5.25
-    expect(result.availableNow).toBeCloseTo(8 + cumulative - 5 - 2, 1)
+    // monthlyRate = roundHalf(21/12) = roundHalf(1.75) = 2
+    // cumulative = roundHalf(2*3) = 6
+    // available = roundHalf(8 + 6 - 5 - 2) = 7
+    expect(result.availableNow).toBe(7)
   })
 })
 

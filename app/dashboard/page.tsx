@@ -26,7 +26,7 @@ import {
   getStatusLabel,
 } from "@/lib/constants";
 import { usePermissions } from "@/lib/hooks/use-permissions";
-import { calculateSeniority, calculateMonthlyAccrual } from "@/lib/leave-utils";
+import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from "@/lib/leave-utils";
 import {
   format,
   startOfMonth,
@@ -227,103 +227,68 @@ export default function DashboardPage() {
           Les soldes affiches sont ceux de votre societe d&apos;origine.
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
         <Card className="border-border/70">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
-                Solde Congé
-              </p>
-              <CalendarIcon className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
+          <CardContent className="flex items-center gap-3 p-2.5 sm:p-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/60">
+              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
             </div>
-            {(() => {
-              const annualEnt = balanceInfo?.annual_entitlement ?? 18
-              const carryOver = balanceInfo?.carry_over ?? user.balance_conge
-              const accrual = balanceInfo
-                ? { availableNow: balanceInfo.available_now, monthlyRate: balanceInfo.monthly_rate, cumulativeEarned: balanceInfo.monthly_accrued, annualEntitlement: annualEnt, carryOver }
-                : calculateMonthlyAccrual(18, user.balance_conge)
-              return (
-                <>
-                  <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
-                    {accrual.availableNow}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
-                      jours disponibles
-                    </span>
-                  </p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-xs">
-                    {accrual.monthlyRate}j/mois — Cumulé: {accrual.cumulativeEarned}j
-                    {carryOver > 0 && ` — Solde global: ${carryOver}j`}
-                  </p>
-                </>
-              )
-            })()}
-            <div className="mt-2.5 h-1.5 w-full rounded-full bg-muted">
-              <div
-                className="h-1.5 rounded-full transition-all bg-foreground/75"
-                style={{
-                  width: `${Math.min(((balanceInfo?.monthly_accrued ?? calculateMonthlyAccrual(18, user.balance_conge).cumulativeEarned) / (balanceInfo?.annual_entitlement || 18)) * 100, 100)}%`,
-                }}
-              />
+            <div className="min-w-0">
+              {(() => {
+                const carryOver = roundHalf(balanceInfo?.carry_over ?? user.balance_conge)
+                const accrual = balanceInfo
+                  ? { availableNow: roundHalf(balanceInfo.available_now), cumulativeEarned: roundHalf(balanceInfo.monthly_accrued) }
+                  : calculateMonthlyAccrual(18, user.balance_conge)
+                return (
+                  <>
+                    <p className="text-lg font-bold leading-tight sm:text-xl">
+                      {accrual.availableNow}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
+                    </p>
+                    <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
+                      Solde congé{carryOver > 0 && ` · ${carryOver}j global`}
+                    </p>
+                  </>
+                )
+              })()}
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/70">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
-                Récupération
-              </p>
-              <TrendingUp className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
+          <CardContent className="flex items-center gap-3 p-2.5 sm:p-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/60">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
-              {user.balance_recuperation}
-              <span className="ml-1 text-xs font-normal text-muted-foreground sm:text-sm">
-                jours
-              </span>
-            </p>
-            <div className="mt-2.5 h-1.5 w-full rounded-full bg-muted">
-              <div
-                className="h-1.5 rounded-full bg-foreground/60 transition-all"
-                style={{
-                  width: `${Math.min((user.balance_recuperation / 10) * 100, 100)}%`,
-                }}
-              />
+            <div className="min-w-0">
+              <p className="text-lg font-bold leading-tight sm:text-xl">
+                {roundHalf(user.balance_recuperation)}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
+              </p>
+              <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">Récupération</p>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/70">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
-                En attente
-              </p>
-              <Clock className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
+          <CardContent className="flex items-center gap-3 p-2.5 sm:p-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/60">
+              <Clock className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
-              {pendingCount}
-            </p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground sm:mt-1 sm:text-xs">
-              En cours de validation
-            </p>
+            <div className="min-w-0">
+              <p className="text-lg font-bold leading-tight sm:text-xl">{pendingCount}</p>
+              <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">En attente</p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/70">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
-                Approuvées
-              </p>
-              <CheckCircle2 className="h-3 w-3 text-muted-foreground sm:h-3.5 sm:w-3.5" />
+          <CardContent className="flex items-center gap-3 p-2.5 sm:p-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/60">
+              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="mt-1.5 text-xl font-bold sm:mt-2 sm:text-2xl">
-              {approvedCount}
-            </p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground sm:mt-1 sm:text-xs">
-              Cette année
-            </p>
+            <div className="min-w-0">
+              <p className="text-lg font-bold leading-tight sm:text-xl">{approvedCount}</p>
+              <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">Approuvées</p>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -28,6 +28,7 @@ import {
   nextWorkingDay,
   calculateMonthlyAccrual,
   calculateSeniority,
+  roundHalf,
 } from '@/lib/leave-utils'
 
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'department_id'> & {
@@ -306,7 +307,7 @@ export default function NewRequestPage() {
     return calculateMonthlyAccrual(annualEntitlement, carryOver, congeUsedDays, congePendingDays)
   }, [targetEmployee?.balance_conge, targetEmployee?.hire_date, targetEmployee?.dept_annual_leave_days, congeUsedDays, congePendingDays])
 
-  const availableRecup = targetEmployee?.balance_recuperation || 0
+  const availableRecup = roundHalf(targetEmployee?.balance_recuperation || 0)
   const availableConge = congeAccrual.availableNow
 
   // Max recovery days in a single request: 5 or available, whichever is less
@@ -324,8 +325,8 @@ export default function NewRequestPage() {
   const congeDaysToUse = Math.max(workingDays - recupDaysToUse, 0)
   const totalAvailable = availableConge + Math.min(availableRecup, MAX_CONSECUTIVE_RECOVERY_DAYS)
   const balanceOk = congeDaysToUse <= availableConge && recupDaysToUse <= availableRecup
-  const balanceAfterConge = availableConge - congeDaysToUse
-  const balanceAfterRecup = availableRecup - recupDaysToUse
+  const balanceAfterConge = roundHalf(availableConge - congeDaysToUse)
+  const balanceAfterRecup = roundHalf(availableRecup - recupDaysToUse)
 
   // Nearest recovery expiration
   const nearestExpiration = recoveryLots.length > 0 ? recoveryLots[0].expires_at : null
@@ -519,7 +520,7 @@ export default function NewRequestPage() {
               Demande pour {targetEmployee.full_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j/{congeAccrual.annualEntitlement}j, Recup: {targetEmployee.balance_recuperation}j
+              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j/{congeAccrual.annualEntitlement}j, Recup: {roundHalf(targetEmployee.balance_recuperation)}j
             </p>
           </div>
           <Button
@@ -685,8 +686,8 @@ export default function NewRequestPage() {
                                   )}
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <p className="text-[10px] text-muted-foreground">Solde global: {emp.balance_conge}j</p>
-                                  <p className="text-[10px] text-muted-foreground">R: {emp.balance_recuperation}j</p>
+                                  <p className="text-[10px] text-muted-foreground">Solde global: {roundHalf(emp.balance_conge)}j</p>
+                                  <p className="text-[10px] text-muted-foreground">R: {roundHalf(emp.balance_recuperation)}j</p>
                                 </div>
                                 {onBehalfOfId === emp.id && (
                                   <Check className="h-4 w-4 shrink-0 text-primary" />
@@ -750,7 +751,7 @@ export default function NewRequestPage() {
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 pl-1">
                   {recoveryLots.map(lot => (
                     <span key={lot.id} className="text-[10px] text-muted-foreground">
-                      {lot.remaining_days}j (acquis {lot.year_acquired}) — exp. {format(new Date(lot.expires_at + 'T00:00:00'), 'dd/MM/yy')}
+                      {roundHalf(lot.remaining_days)}j (acquis {lot.year_acquired}) — exp. {format(new Date(lot.expires_at + 'T00:00:00'), 'dd/MM/yy')}
                     </span>
                   ))}
                 </div>

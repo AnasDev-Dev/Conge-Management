@@ -18,7 +18,7 @@ import { DeleteEmployeeDialog } from '@/components/delete-employee-dialog'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
-import { calculateSeniority, calculateMonthlyAccrual } from '@/lib/leave-utils'
+import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
 
 type EmployeeDetails = Pick<
   Utilisateur,
@@ -198,13 +198,13 @@ export default function EmployeeDetailsPage() {
                 <p className="text-xs text-muted-foreground">Congé disponible</p>
                 <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {employee.balance_conge > 0 && `Solde global: ${employee.balance_conge}j · `}
+                  {employee.balance_conge > 0 && `Solde global: ${roundHalf(employee.balance_conge)}j · `}
                   Acquis: {accrual.cumulativeEarned}j
                 </p>
               </div>
               <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
                 <p className="text-xs text-muted-foreground">Récupération</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{employee.balance_recuperation}j</p>
+                <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{roundHalf(employee.balance_recuperation)}j</p>
               </div>
             </div>
           </CardContent>
