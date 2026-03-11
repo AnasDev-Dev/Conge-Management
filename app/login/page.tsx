@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
@@ -16,21 +16,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [logoIndex, setLogoIndex] = useState(0)
   const router = useRouter()
   const supabase = createClient()
-
-  const logos = [
-    { src: '/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png', alt: 'FRMG' },
-    { src: '/logo/ath_logo.png', alt: 'ATH' },
-  ]
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLogoIndex(prev => (prev + 1) % logos.length)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -101,147 +88,77 @@ export default function LoginPage() {
 
       <div className="surface-shell relative z-10 grid w-full max-w-5xl gap-0 overflow-hidden rounded-none sm:rounded-[2rem] lg:grid-cols-[1.15fr_0.95fr]">
 
-        {/* ─── Left: Golf Illustration Panel ─── */}
-        <section className="relative hidden overflow-hidden rounded-l-[1.85rem] bg-gradient-to-b from-[#f8f3ed] via-[#f3ece3] to-[#ede4d8] lg:flex lg:flex-col">
+        {/* ─── Left: Branding Panel ─── */}
+        <section className="relative hidden overflow-hidden rounded-l-[1.85rem] bg-gradient-to-b from-[#faf7f4] via-[#f5f0ea] to-[#eee7df] lg:flex lg:flex-col">
 
-          {/* Animated background shapes */}
+          {/* Background decorations */}
           <div className="pointer-events-none absolute inset-0">
-            {/* Warm radial glow top-right */}
-            <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-[#a3754a]/8 blur-3xl" />
-            {/* Warm radial glow bottom-left */}
-            <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-[#a3754a]/6 blur-3xl" />
+            <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#a3754a]/8 blur-[100px]" />
+            <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#c99b6d]/6 blur-[80px]" />
 
-            {/* Subtle golf course landscape - warm tones */}
-            <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 600 180" fill="none" preserveAspectRatio="none" style={{ height: '35%' }}>
-              <path d="M0 110 C100 70 200 100 300 80 S500 55 600 85 L600 180 L0 180Z" fill="#a3754a" opacity="0.06">
-                <animate attributeName="d" dur="8s" repeatCount="indefinite" values="M0 110 C100 70 200 100 300 80 S500 55 600 85 L600 180 L0 180Z;M0 100 C100 85 200 65 300 90 S500 70 600 80 L600 180 L0 180Z;M0 110 C100 70 200 100 300 80 S500 55 600 85 L600 180 L0 180Z" />
-              </path>
-              <path d="M0 130 C150 90 250 130 350 105 S500 120 600 110 L600 180 L0 180Z" fill="#a3754a" opacity="0.04">
-                <animate attributeName="d" dur="10s" repeatCount="indefinite" values="M0 130 C150 90 250 130 350 105 S500 120 600 110 L600 180 L0 180Z;M0 125 C150 115 250 90 350 115 S500 100 600 130 L600 180 L0 180Z;M0 130 C150 90 250 130 350 105 S500 120 600 110 L600 180 L0 180Z" />
-              </path>
+            {/* Dot grid */}
+            <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(circle, #a3754a 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+
+            {/* Decorative arcs */}
+            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 500 700" fill="none">
+              <circle cx="250" cy="350" r="180" stroke="#a3754a" strokeWidth="0.5" opacity="0.06" />
+              <circle cx="250" cy="350" r="240" stroke="#a3754a" strokeWidth="0.3" opacity="0.04" />
+              <circle cx="250" cy="350" r="300" stroke="#a3754a" strokeWidth="0.3" opacity="0.03" strokeDasharray="4 8" />
             </svg>
-
-            {/* Floating dots */}
-            <div className="absolute left-[18%] top-[35%] h-1.5 w-1.5 rounded-full bg-[#a3754a]/12 animate-[float-up_6s_ease-in-out_infinite]" />
-            <div className="absolute left-[50%] top-[50%] h-1 w-1 rounded-full bg-[#a3754a]/10 animate-[float-up_8s_ease-in-out_2s_infinite]" />
-            <div className="absolute left-[72%] top-[38%] h-1.5 w-1.5 rounded-full bg-[#a3754a]/12 animate-[float-up_7s_ease-in-out_4s_infinite]" />
-            <div className="absolute left-[35%] top-[62%] h-1 w-1 rounded-full bg-[#a3754a]/8 animate-[float-up_9s_ease-in-out_1s_infinite]" />
-
-            {/* Decorative ring lines */}
-            <div className="absolute right-8 top-[15%] h-32 w-32 rounded-full border border-[#a3754a]/6 animate-[gentle-spin_30s_linear_infinite]" />
-            <div className="absolute right-12 top-[17%] h-24 w-24 rounded-full border border-dashed border-[#a3754a]/5 animate-[gentle-spin_20s_linear_reverse_infinite]" />
           </div>
 
-          {/* Content overlay */}
-          <div className="relative z-10 flex flex-1 flex-col justify-between p-10">
-            {/* Top: Logo */}
-            <div>
-              <div className="relative mb-8 h-[120px] w-[240px] overflow-hidden">
-                {logos.map((logo, i) => (
-                  <Image
-                    key={logo.alt}
-                    src={logo.src}
-                    alt={logo.alt}
-                    width={280}
-                    height={120}
-                    className={`absolute left-0 top-0 h-[120px] w-[240px] object-contain object-left transition-opacity duration-700 ease-in-out ${
-                      i === logoIndex ? 'opacity-100' : 'opacity-0'
-                    }`}
-                    priority={i === 0}
-                  />
-                ))}
-              </div>
+          {/* Content */}
+          <div className="relative z-10 flex flex-1 flex-col items-center justify-center p-10 text-center">
+            {/* Logos */}
+            <div className="mb-10 flex items-center gap-5 rounded-2xl border border-[#a3754a]/10 bg-white/60 px-8 py-5 shadow-sm backdrop-blur-sm">
+              <Image
+                src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
+                alt="FRMG"
+                width={120}
+                height={100}
+                className="h-[80px] w-auto object-contain"
+                priority
+              />
+              <div className="h-12 w-px bg-[#a3754a]/15" />
+              <Image
+                src="/logo/ath_logo.png"
+                alt="ATH"
+                width={120}
+                height={100}
+                className="h-[80px] w-auto object-contain"
+              />
+            </div>
 
-              <h1 className="max-w-[300px] text-[2.4rem] font-semibold leading-[1.1] tracking-[-0.03em] text-foreground">
-                Gestion des
-                <span className="mt-1 block bg-gradient-to-r from-[#a3754a] to-[#c99b6d] bg-clip-text text-transparent">
-                  congés.
+            {/* Title */}
+            <h1 className="text-[2.6rem] font-bold leading-[1.05] tracking-[-0.03em] text-[#2a1f17]">
+              Gestion des
+              <span className="mt-1 block bg-gradient-to-r from-[#a3754a] to-[#c99b6d] bg-clip-text text-transparent">
+                congés.
+              </span>
+            </h1>
+
+            <p className="mt-5 max-w-[300px] text-sm leading-relaxed text-[#8a7566]">
+              Plateforme de gestion des congés.
+              <br />
+              Simple, fluide, élégant.
+            </p>
+
+            {/* Feature pills */}
+            <div className="mt-10 flex flex-wrap justify-center gap-2">
+              {['Demandes', 'Validations', 'Calendrier', 'Missions'].map((f) => (
+                <span key={f} className="rounded-full border border-[#a3754a]/12 bg-white/50 px-3.5 py-1.5 text-[11px] font-medium tracking-wide text-[#a3754a]/70">
+                  {f}
                 </span>
-              </h1>
-
-              <p className="mt-5 max-w-[280px] text-sm leading-relaxed text-muted-foreground">
-                Plateforme de gestion des congés. Simple, fluide, élégant.
-              </p>
+              ))}
             </div>
+          </div>
 
-            {/* Golf illustration scene */}
-            <div className="relative mt-auto">
-              <svg viewBox="0 0 420 180" fill="none" className="w-full" xmlns="http://www.w3.org/2000/svg">
-                {/* Putting green surface */}
-                <ellipse cx="210" cy="160" rx="190" ry="18" fill="#a3754a" opacity="0.06" />
-                <ellipse cx="210" cy="160" rx="140" ry="12" fill="#a3754a" opacity="0.04" />
-
-                {/* Golf hole with shadow */}
-                <ellipse cx="280" cy="155" rx="10" ry="4" fill="#a3754a" opacity="0.25" />
-                <ellipse cx="280" cy="154" rx="7" ry="2.8" fill="#a3754a" opacity="0.12" />
-
-                {/* Flag pole in hole */}
-                <line x1="280" y1="60" x2="280" y2="155" stroke="#a3754a" strokeWidth="1.5" opacity="0.35" />
-                {/* Flag */}
-                <path d="M280 60 L310 72 L280 84Z" fill="#a3754a" opacity="0.22">
-                  <animateTransform attributeName="transform" type="rotate" values="-3 280 72;3 280 72;-3 280 72" dur="3.5s" repeatCount="indefinite" />
-                </path>
-                {/* Flag pole ball top */}
-                <circle cx="280" cy="58" r="2.5" fill="#a3754a" opacity="0.3" />
-
-                {/* Golf club (iron) */}
-                <g transform="translate(120, 45) rotate(15)">
-                  {/* Shaft */}
-                  <line x1="30" y1="0" x2="30" y2="105" stroke="#a3754a" strokeWidth="2" opacity="0.25" />
-                  {/* Grip wrapping */}
-                  <line x1="28" y1="4" x2="32" y2="8" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
-                  <line x1="28" y1="10" x2="32" y2="14" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
-                  <line x1="28" y1="16" x2="32" y2="20" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
-                  <line x1="28" y1="22" x2="32" y2="26" stroke="#a3754a" strokeWidth="0.8" opacity="0.15" />
-                  {/* Club head (iron) */}
-                  <path d="M24 105 Q18 108 16 116 Q15 122 20 124 L36 118 Q34 110 30 105Z" fill="#a3754a" opacity="0.2" stroke="#a3754a" strokeWidth="0.8" strokeOpacity="0.15" />
-                  {/* Club head groove lines */}
-                  <line x1="20" y1="112" x2="30" y2="109" stroke="#a3754a" strokeWidth="0.5" opacity="0.12" />
-                  <line x1="19" y1="115" x2="31" y2="112" stroke="#a3754a" strokeWidth="0.5" opacity="0.12" />
-                  <line x1="19" y1="118" x2="32" y2="115" stroke="#a3754a" strokeWidth="0.5" opacity="0.12" />
-                </g>
-
-                {/* Golf ball on tee */}
-                <g className="animate-[golf-bounce_5s_ease-in-out_infinite]">
-                  {/* Tee */}
-                  <path d="M96 155 L100 140 L104 155" fill="#a3754a" opacity="0.18" />
-                  {/* Ball shadow */}
-                  <ellipse cx="100" cy="156" rx="8" ry="2.5" fill="#a3754a" opacity="0.08" />
-                  {/* Ball */}
-                  <circle cx="100" cy="132" r="9" fill="white" opacity="0.9" stroke="#a3754a" strokeWidth="0.5" strokeOpacity="0.15" />
-                  {/* Ball dimple pattern */}
-                  <circle cx="97" cy="129" r="1.2" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.12" />
-                  <circle cx="103" cy="129" r="1.2" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.12" />
-                  <circle cx="100" cy="134" r="1.2" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.12" />
-                  <circle cx="95" cy="133" r="1" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.1" />
-                  <circle cx="105" cy="133" r="1" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.1" />
-                  <circle cx="100" cy="127" r="1" fill="none" stroke="#a3754a" strokeWidth="0.4" opacity="0.1" />
-                  {/* Ball highlight */}
-                  <ellipse cx="97" cy="128" rx="3" ry="2" fill="white" opacity="0.5" />
-                </g>
-
-                {/* Second golf ball rolling toward hole */}
-                <g>
-                  <ellipse cx="200" cy="157" rx="5" ry="1.8" fill="#a3754a" opacity="0.06" />
-                  <circle cx="200" cy="150" r="6" fill="white" opacity="0.85" stroke="#a3754a" strokeWidth="0.5" strokeOpacity="0.12" />
-                  <circle cx="198" cy="148" r="0.8" fill="none" stroke="#a3754a" strokeWidth="0.3" opacity="0.1" />
-                  <circle cx="202" cy="148" r="0.8" fill="none" stroke="#a3754a" strokeWidth="0.3" opacity="0.1" />
-                  <circle cx="200" cy="152" r="0.8" fill="none" stroke="#a3754a" strokeWidth="0.3" opacity="0.1" />
-                  {/* Dotted path line toward hole */}
-                  <line x1="210" y1="153" x2="268" y2="155" stroke="#a3754a" strokeWidth="0.8" strokeDasharray="3 4" opacity="0.1" />
-                </g>
-
-                {/* Small grass tufts */}
-                <g opacity="0.12">
-                  <path d="M50 158 Q52 148 54 158" stroke="#a3754a" strokeWidth="0.8" fill="none" />
-                  <path d="M52 158 Q55 146 58 158" stroke="#a3754a" strokeWidth="0.8" fill="none" />
-                  <path d="M340 156 Q342 147 344 156" stroke="#a3754a" strokeWidth="0.8" fill="none" />
-                  <path d="M342 156 Q345 145 348 156" stroke="#a3754a" strokeWidth="0.8" fill="none" />
-                  <path d="M370 158 Q371 150 373 158" stroke="#a3754a" strokeWidth="0.8" fill="none" />
-                  <path d="M160 157 Q162 149 164 157" stroke="#a3754a" strokeWidth="0.8" fill="none" />
-                </g>
-              </svg>
-            </div>
+          {/* Bottom */}
+          <div className="relative z-10 px-10 pb-8">
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-[#a3754a]/15 to-transparent" />
+            <p className="mt-4 text-center text-[11px] text-[#a3754a]/35">
+              Hassan II Golf Trophy Association
+            </p>
           </div>
         </section>
 
@@ -323,10 +240,7 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 space-y-1 rounded-2xl border border-border/70 bg-secondary/35 p-3.5 text-center">
-              <p className="text-sm text-muted-foreground">
-                Première connexion: <span className="font-mono font-semibold text-foreground">login1A</span>
-              </p>
+            <div className="mt-6 rounded-2xl border border-border/70 bg-secondary/35 p-3.5 text-center">
               <p className="text-xs text-muted-foreground">Le mot de passe peut être modifié depuis le profil.</p>
             </div>
           </CardContent>

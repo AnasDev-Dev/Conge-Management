@@ -454,7 +454,7 @@ export default function SettingsPage() {
   const deleteHoliday = async (id: number) => {
     setDeletingHolidayId(id)
     try {
-      const { error } = await supabase.from('holidays').delete().eq('id', id)
+      const { error } = await supabase.from('holidays').delete().eq('id', id).select()
       if (error) throw error
       setHolidays(prev => prev.filter(h => h.id !== id))
       clearCaches()

@@ -104,6 +104,7 @@ export default function EmployeesPage() {
   const { activeCompany } = useCompanyContext()
   const { can } = usePermissions(currentUser?.role || 'EMPLOYEE')
   const canCreateEmployee = currentUser && can('employees.create')
+  const canViewBalances = can('employees.viewBalances')
 
   const loadData = useCallback(async () => {
     try {
@@ -281,7 +282,7 @@ export default function EmployeesPage() {
                       <tr className="border-b border-border/70 text-left text-xs uppercase tracking-[0.08em] text-foreground/85">
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">Employé</th>
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">Rôle</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Solde</th>
+                        {canViewBalances && <th className="whitespace-nowrap px-4 py-3 font-semibold">Solde</th>}
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">Congé pris</th>
                         <th className="whitespace-nowrap px-4 py-3 font-semibold">En attente</th>
                         <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Action</th>
@@ -306,27 +307,29 @@ export default function EmployeesPage() {
                                 {employee.role}
                               </Badge>
                             </td>
-                            <td className="border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground">
-                              {(() => {
-                                const deptDays = Array.isArray(employee.departments)
-                                  ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-                                  : employee.departments?.annual_leave_days
-                                const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
-                                const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
-                                return (
-                                  <div className="space-y-0.5">
-                                    <p className="text-sm">
-                                      <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
-                                      <span className="text-muted-foreground"> dispo.</span>
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground">
-                                      {employee.balance_conge > 0 && <span>Solde global: {roundHalf(employee.balance_conge)}j · </span>}
-                                      Acquis: {accrual.cumulativeEarned}j · Récup: {roundHalf(employee.balance_recuperation)}j
-                                    </p>
-                                  </div>
-                                )
-                              })()}
-                            </td>
+                            {canViewBalances && (
+                              <td className="border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground">
+                                {(() => {
+                                  const deptDays = Array.isArray(employee.departments)
+                                    ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+                                    : employee.departments?.annual_leave_days
+                                  const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+                                  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
+                                  return (
+                                    <div className="space-y-0.5">
+                                      <p className="text-sm">
+                                        <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
+                                        <span className="text-muted-foreground"> dispo.</span>
+                                      </p>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        {employee.balance_conge > 0 && <span>Solde global: {roundHalf(employee.balance_conge)}j · </span>}
+                                        Acquis: {accrual.cumulativeEarned}j · Récup: {roundHalf(employee.balance_recuperation)}j
+                                      </p>
+                                    </div>
+                                  )
+                                })()}
+                              </td>
+                            )}
                             <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
                               <span className="font-semibold text-primary">{employeeSummary.approvedDays} jours</span>
                             </td>
@@ -381,9 +384,11 @@ export default function EmployeesPage() {
                           </div>
                         </div>
 
-                        <p className="mt-3 text-xs text-muted-foreground">
-                          Solde: {roundHalf(employee.balance_conge)} congé / {roundHalf(employee.balance_recuperation)} récupération
-                        </p>
+                        {canViewBalances && (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            Solde: {roundHalf(employee.balance_conge)} congé / {roundHalf(employee.balance_recuperation)} récupération
+                          </p>
+                        )}
 
                         <Link href={`/dashboard/employees/${employee.id}`} className="mt-3 block">
                           <Button variant="outline" className="w-full">

@@ -193,20 +193,22 @@ export default function EmployeeDetailsPage() {
             <Separator className="my-6" />
 
             {/* Leave balance summary */}
-            <div className="space-y-3">
-              <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
-                <p className="text-xs text-muted-foreground">Congé disponible</p>
-                <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {employee.balance_conge > 0 && `Solde global: ${roundHalf(employee.balance_conge)}j · `}
-                  Acquis: {accrual.cumulativeEarned}j
-                </p>
+            {can('employees.viewBalances') && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
+                  <p className="text-xs text-muted-foreground">Congé disponible</p>
+                  <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {employee.balance_conge > 0 && `Solde global: ${roundHalf(employee.balance_conge)}j · `}
+                    Acquis: {accrual.cumulativeEarned}j
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
+                  <p className="text-xs text-muted-foreground">Récupération</p>
+                  <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{roundHalf(employee.balance_recuperation)}j</p>
+                </div>
               </div>
-              <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
-                <p className="text-xs text-muted-foreground">Récupération</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{roundHalf(employee.balance_recuperation)}j</p>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
