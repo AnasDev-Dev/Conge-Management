@@ -251,129 +251,11 @@ CREATE POLICY "user_company_roles_manage"
 -- NEW AND UPDATED RPCs
 -- ==============================================================================
 
--- ── REQ #1: Updated count_working_days with category support ──
-CREATE OR REPLACE FUNCTION count_working_days(
-  p_start_date DATE,
-  p_end_date   DATE,
-  p_company_id BIGINT DEFAULT NULL,
-  p_category_id BIGINT DEFAULT NULL,
-  p_start_half_day TEXT DEFAULT 'FULL',
-  p_end_half_day TEXT DEFAULT 'FULL'
-)
-RETURNS FLOAT
-LANGUAGE plpgsql
-STABLE
-AS $$
-DECLARE
-  v_count      FLOAT := 0;
-  v_current    DATE := p_start_date;
-  v_dow        INTEGER;
-  v_company    BIGINT;
-  v_is_holiday BOOLEAN;
-  v_wd         RECORD;
-  v_day_active BOOLEAN;
-  v_morning    BOOLEAN;
-  v_afternoon  BOOLEAN;
-  v_day_value  FLOAT;
-BEGIN
-  v_company := COALESCE(p_company_id, (SELECT id FROM public.companies LIMIT 1));
-
-  -- Try category-specific working days first, fall back to company-level
-  IF p_category_id IS NOT NULL THEN
-    SELECT * INTO v_wd FROM public.working_days WHERE category_id = p_category_id LIMIT 1;
-  END IF;
-
-  IF NOT FOUND OR p_category_id IS NULL THEN
-    SELECT * INTO v_wd FROM public.working_days WHERE company_id = v_company AND category_id IS NULL LIMIT 1;
-  END IF;
-
-  IF NOT FOUND THEN
-    -- Default fallback: Mon-Sat full days
-    v_wd.monday := true; v_wd.tuesday := true; v_wd.wednesday := true;
-    v_wd.thursday := true; v_wd.friday := true; v_wd.saturday := true; v_wd.sunday := false;
-    v_wd.monday_morning := true; v_wd.monday_afternoon := true;
-    v_wd.tuesday_morning := true; v_wd.tuesday_afternoon := true;
-    v_wd.wednesday_morning := true; v_wd.wednesday_afternoon := true;
-    v_wd.thursday_morning := true; v_wd.thursday_afternoon := true;
-    v_wd.friday_morning := true; v_wd.friday_afternoon := true;
-    v_wd.saturday_morning := true; v_wd.saturday_afternoon := false;
-    v_wd.sunday_morning := false; v_wd.sunday_afternoon := false;
-  END IF;
-
-  WHILE v_current <= p_end_date LOOP
-    v_dow := EXTRACT(ISODOW FROM v_current)::INTEGER;
-
-    -- Check if the full day is active (legacy boolean)
-    v_day_active := CASE v_dow
-      WHEN 1 THEN v_wd.monday
-      WHEN 2 THEN v_wd.tuesday
-      WHEN 3 THEN v_wd.wednesday
-      WHEN 4 THEN v_wd.thursday
-      WHEN 5 THEN v_wd.friday
-      WHEN 6 THEN v_wd.saturday
-      WHEN 7 THEN v_wd.sunday
-      ELSE false
-    END;
-
-    IF v_day_active THEN
-      -- Check holiday
-      SELECT EXISTS(
-        SELECT 1 FROM public.holidays h
-        WHERE h.company_id = v_company
-        AND (
-          (h.is_recurring = true
-           AND EXTRACT(MONTH FROM h.date) = EXTRACT(MONTH FROM v_current)
-           AND EXTRACT(DAY FROM h.date) = EXTRACT(DAY FROM v_current))
-          OR
-          (h.is_recurring = false AND h.date = v_current)
-        )
-      ) INTO v_is_holiday;
-
-      IF NOT v_is_holiday THEN
-        -- Check half-day configuration
-        v_morning := COALESCE(CASE v_dow
-          WHEN 1 THEN v_wd.monday_morning
-          WHEN 2 THEN v_wd.tuesday_morning
-          WHEN 3 THEN v_wd.wednesday_morning
-          WHEN 4 THEN v_wd.thursday_morning
-          WHEN 5 THEN v_wd.friday_morning
-          WHEN 6 THEN v_wd.saturday_morning
-          WHEN 7 THEN v_wd.sunday_morning
-        END, true);
-
-        v_afternoon := COALESCE(CASE v_dow
-          WHEN 1 THEN v_wd.monday_afternoon
-          WHEN 2 THEN v_wd.tuesday_afternoon
-          WHEN 3 THEN v_wd.wednesday_afternoon
-          WHEN 4 THEN v_wd.thursday_afternoon
-          WHEN 5 THEN v_wd.friday_afternoon
-          WHEN 6 THEN v_wd.saturday_afternoon
-          WHEN 7 THEN v_wd.sunday_afternoon
-        END, false);
-
-        -- Calculate day value based on which half-days are worked
-        v_day_value := 0;
-        IF v_morning THEN v_day_value := v_day_value + 0.5; END IF;
-        IF v_afternoon THEN v_day_value := v_day_value + 0.5; END IF;
-
-        -- Apply start/end half-day restrictions
-        IF v_current = p_start_date AND p_start_half_day = 'AFTERNOON' AND v_morning THEN
-          v_day_value := v_day_value - 0.5;
-        END IF;
-        IF v_current = p_end_date AND p_end_half_day = 'MORNING' AND v_afternoon THEN
-          v_day_value := v_day_value - 0.5;
-        END IF;
-
-        v_count := v_count + GREATEST(v_day_value, 0);
-      END IF;
-    END IF;
-
-    v_current := v_current + 1;
-  END LOOP;
-
-  RETURN v_count;
-END;
-$$;
+-- ── REQ #1: count_working_days with category support ──
+-- SUPERSEDED: This 6-arg version was replaced by the 7-arg version in
+-- 08_working_days_per_department.sql (adds department support).
+-- Keeping this DROP to prevent overload ambiguity if schema is re-seeded.
+DROP FUNCTION IF EXISTS count_working_days(DATE, DATE, BIGINT, BIGINT, TEXT, TEXT);
 
 
 -- ── REQ #3: Updated calculate_annual_entitlement with category-based days ──
@@ -892,7 +774,7 @@ $$;
 -- GRANTS FOR NEW FUNCTIONS
 -- ==============================================================================
 
-GRANT EXECUTE ON FUNCTION count_working_days(DATE, DATE, BIGINT, BIGINT, TEXT, TEXT) TO authenticated;
+-- count_working_days grant moved to 08_working_days_per_department.sql (7-arg version)
 GRANT EXECUTE ON FUNCTION accrue_monthly_balance(INT, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION submit_recovery_request(UUID, FLOAT, DATE, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION validate_recovery_request(BIGINT, UUID) TO authenticated;

@@ -197,8 +197,12 @@ BEGIN
     SELECT * INTO v_request_user FROM utilisateurs WHERE id = v_request.user_id;
     v_company_id := COALESCE(v_request_user.company_id, (SELECT id FROM companies LIMIT 1));
 
-    -- Recalculate days server-side (holiday-aware)
-    v_days := count_working_days(v_request.start_date, v_request.end_date, v_company_id);
+    -- Recalculate days server-side (holiday-aware, department-aware)
+    v_days := count_working_days(
+      v_request.start_date, v_request.end_date,
+      v_company_id, NULL, 'FULL', 'FULL',
+      v_request_user.department_id
+    );
     UPDATE leave_requests SET days_count = v_days WHERE id = p_request_id;
 
     -- Use the stored split amounts

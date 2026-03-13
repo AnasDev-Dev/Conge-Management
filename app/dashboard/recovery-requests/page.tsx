@@ -145,18 +145,13 @@ export default function RecoveryRequestsPage() {
 
   const loadRequests = async () => {
     try {
-      let query = supabase
-        .from('recovery_requests')
-        .select('*, user:utilisateurs!user_id!inner(id, full_name, job_title, department_id, company_id)')
-        .order('created_at', { ascending: false })
+      const params = new URLSearchParams()
+      if (activeCompany) params.set('company_id', String(activeCompany.id))
 
-      if (activeCompany) {
-        query = query.eq('user.company_id', activeCompany.id)
-      }
+      const res = await fetch(`/api/recovery-requests?${params.toString()}`)
+      const data = await res.json()
 
-      const { data, error } = await query
-
-      if (error) throw error
+      if (!res.ok) throw new Error(data.error || 'Erreur chargement')
       setRequests(data || [])
     } catch (error) {
       console.error('Error loading recovery requests:', error)

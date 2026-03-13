@@ -47,12 +47,12 @@ const steps = [
 
 export default function NewRequestPage() {
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<Tab>(
-    searchParams.get('tab') === 'mission' ? 'mission' : 'conge'
-  )
   const { user } = useCurrentUser()
   const { activeCompany, isHome } = useCompanyContext()
-  const { can, effectiveRole } = usePermissions(user?.role || 'EMPLOYEE')
+  const { can, canSee, effectiveRole } = usePermissions(user?.role || 'EMPLOYEE')
+  const [activeTab, setActiveTab] = useState<Tab>(
+    searchParams.get('tab') === 'mission' && canSee('missions') ? 'mission' : 'conge'
+  )
   const [currentStep, setCurrentStep] = useState(1)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -490,6 +490,7 @@ export default function NewRequestPage() {
             <FileText className={cn('h-4 w-4 shrink-0', activeTab === 'conge' ? 'text-primary' : '')} />
             <span>Congé / Récupération</span>
           </button>
+          {canSee('missions') && (
           <button
             type="button"
             onClick={() => setActiveTab('mission')}
@@ -503,6 +504,7 @@ export default function NewRequestPage() {
             <Briefcase className={cn('h-4 w-4 shrink-0', activeTab === 'mission' ? 'text-primary' : '')} />
             <span>Ordre de Mission</span>
           </button>
+          )}
         </div>
       </div>
 
