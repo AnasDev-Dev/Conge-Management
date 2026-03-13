@@ -1,18 +1,18 @@
 -- ==============================================================================
--- PART 10: COMBINED LEAVE REQUESTS (Congé + Récupération)
+-- FIX: Deduct/restore recovery_balance_lots.remaining_days on leave approval
 -- ==============================================================================
--- Run AFTER 09_fix_login.sql.
--- Safe to re-run: uses CREATE OR REPLACE.
+-- Previously, approve_leave_request() and handle_auto_approved_leave() only
+-- decremented utilisateurs.balance_recuperation but never touched
+-- recovery_balance_lots.remaining_days. This caused expire_recovery_days()
+-- to over-deduct when lots expired (using stale remaining_days values).
 --
--- Changes:
---   1. Updated auto-approval trigger to use balance_conge_used/balance_recuperation_used
---   2. Updated approve_leave_request to deduct from both balances for mixed requests
---   3. Updated undo_approve to restore both balances for mixed requests
+-- This migration re-creates all three functions with FIFO lot tracking.
+-- Safe to re-run: uses CREATE OR REPLACE.
 -- ==============================================================================
 
 
 -- ==============================================================================
--- 1. UPDATE AUTO-APPROVAL TRIGGER: Use balance_conge_used / balance_recuperation_used
+-- 1. AUTO-APPROVAL TRIGGER: Now deducts from recovery_balance_lots FIFO
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_auto_approved_leave()
@@ -92,7 +92,7 @@ $$;
 
 
 -- ==============================================================================
--- 2. UPDATE APPROVE LEAVE REQUEST: Mixed balance deduction on final approval
+-- 2. APPROVE LEAVE REQUEST: Now deducts from recovery_balance_lots FIFO
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.approve_leave_request(
@@ -275,7 +275,7 @@ $$;
 
 
 -- ==============================================================================
--- 3. UPDATE UNDO APPROVE: Restore both balances for mixed requests
+-- 3. UNDO APPROVE: Now restores recovery_balance_lots FIFO
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.undo_approve_leave_request(

@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { CompanySwitcher } from '@/components/company-switcher'
 import { CompanyProvider, useCompanyContext } from '@/lib/hooks/use-company-context'
-import { DbPermissionsProvider } from '@/lib/hooks/use-db-permissions'
+import { DbPermissionsProvider, useDbPermissions } from '@/lib/hooks/use-db-permissions'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { type SidebarItem } from '@/lib/permissions'
 import { getCompanyLogo } from '@/lib/company-logos'
@@ -147,7 +147,8 @@ export default function DashboardLayout({
 function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLogout: () => void; children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
-  const { activeCompany, activeRole } = useCompanyContext()
+  const { activeCompany, activeRole, loading: companyLoading } = useCompanyContext()
+  const { loading: permissionsLoading } = useDbPermissions()
   const effectiveRole = activeRole || user.role
   const { canSee } = usePermissions(user.role)
   const { unreadCount } = useNotifications(user.id)
@@ -225,6 +226,21 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
       prev.includes(title)
         ? prev.filter(t => t !== title)
         : [...prev, title]
+    )
+  }
+
+  // Wait for company context and DB permissions to load before rendering sidebar
+  if (companyLoading || permissionsLoading) {
+    return (
+      <div className="min-h-[100dvh] bg-[var(--shell-bg)] p-0 md:h-[100dvh] md:overflow-hidden md:p-5">
+        <div className="surface-shell mx-auto min-h-[100dvh] max-w-[1600px] rounded-none p-0 md:h-[calc(100dvh-2.5rem)] md:overflow-hidden md:rounded-[2rem] md:p-3">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="text-center">
+              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+            </div>
+          </div>
+        </div>
+      </div>
     )
   }
 

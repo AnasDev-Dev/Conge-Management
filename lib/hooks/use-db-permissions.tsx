@@ -42,7 +42,7 @@ export function DbPermissionsProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     if (!activeCompany) {
-      setLoading(false)
+      // Keep loading=true — we're still waiting for activeCompany
       return
     }
     setLoading(true)
