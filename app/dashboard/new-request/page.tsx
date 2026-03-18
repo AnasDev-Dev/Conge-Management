@@ -688,7 +688,7 @@ export default function NewRequestPage() {
                                   )}
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <p className="text-[10px] text-muted-foreground">Solde global: {roundHalf(emp.balance_conge)}j</p>
+                                  <p className="text-[10px] text-muted-foreground">C: {roundHalf(emp.balance_conge)}j</p>
                                   <p className="text-[10px] text-muted-foreground">R: {roundHalf(emp.balance_recuperation)}j</p>
                                 </div>
                                 {onBehalfOfId === emp.id && (
@@ -720,18 +720,11 @@ export default function NewRequestPage() {
                     <p className="text-xs text-muted-foreground">Congé</p>
                   </div>
                   <p className="text-lg font-bold text-foreground">{congeAccrual.availableNow}<span className="text-xs font-normal text-muted-foreground ml-0.5">j disponibles</span></p>
-                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                    {congeAccrual.carryOver > 0 && (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        Solde global: <span className="font-medium text-foreground">{congeAccrual.carryOver}j</span>
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-                      Acquis: <span className="font-medium text-foreground">{congeAccrual.cumulativeEarned}j</span>
-                    </span>
-                  </div>
+                  {(congeUsedDays > 0 || congePendingDays > 0) && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Consommé: {roundHalf(congeUsedDays + congePendingDays)}j
+                    </p>
+                  )}
                 </div>
                 {/* Récupération pill */}
                 <div className="flex-1 flex items-center gap-2.5 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5">

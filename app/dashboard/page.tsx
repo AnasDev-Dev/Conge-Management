@@ -235,17 +235,22 @@ export default function DashboardPage() {
             </div>
             <div className="min-w-0">
               {(() => {
-                const carryOver = roundHalf(balanceInfo?.carry_over ?? user.balance_conge)
-                const accrual = balanceInfo
-                  ? { availableNow: roundHalf(balanceInfo.available_now), cumulativeEarned: roundHalf(balanceInfo.monthly_accrued) }
-                  : calculateMonthlyAccrual(18, user.balance_conge)
+                if (!balanceInfo) {
+                  return (
+                    <>
+                      <div className="h-5 w-12 animate-pulse rounded bg-muted sm:h-6" />
+                      <div className="mt-1 h-3 w-16 animate-pulse rounded bg-muted" />
+                    </>
+                  )
+                }
+                const carryOver = roundHalf(balanceInfo.carry_over)
                 return (
                   <>
                     <p className="text-lg font-bold leading-tight sm:text-xl">
-                      {accrual.availableNow}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
+                      {roundHalf(balanceInfo.available_now)}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
                     </p>
                     <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
-                      Solde congé{carryOver > 0 && ` · ${carryOver}j global`}
+                      Solde congé{carryOver > 0 && ` · ${carryOver}j report`}
                     </p>
                   </>
                 )

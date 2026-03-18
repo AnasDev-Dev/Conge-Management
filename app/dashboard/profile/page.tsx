@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ import { Utilisateur } from '@/lib/types/database'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import Image from 'next/image'
-import { calculateSeniority } from '@/lib/leave-utils'
+import { calculateSeniority, roundHalf } from '@/lib/leave-utils'
 import { MAX_LEAVE_BALANCE } from '@/lib/constants'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { getCompanyLogo } from '@/lib/company-logos'
@@ -28,7 +28,24 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [balanceInfo, setBalanceInfo] = useState<{
+    available_now: number
+    carry_over: number
+    monthly_accrued: number
+    days_used_this_year: number
+    days_pending: number
+  } | null>(null)
   const supabase = createClient()
+
+  useEffect(() => {
+    if (user) {
+      supabase
+        .rpc('calculate_leave_balance', { p_user_id: user.id })
+        .then(({ data }) => {
+          if (data) setBalanceInfo(data)
+        })
+    }
+  }, [user])
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -345,9 +362,15 @@ export default function ProfilePage() {
             <div className="rounded-2xl border border-primary/25 bg-primary/9 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-foreground">CONGÉ — Report antérieur</p>
-                  <p className="mt-2 text-3xl font-bold text-primary">{user.balance_conge}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">jours reportés</p>
+                  <p className="text-sm text-foreground">Solde congé</p>
+                  <p className="mt-2 text-3xl font-bold text-primary">
+                    {balanceInfo ? roundHalf(balanceInfo.available_now) : roundHalf(user.balance_conge)}
+                  </p>
+                  {balanceInfo && (balanceInfo.days_used_this_year > 0 || balanceInfo.days_pending > 0) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Consommé: {roundHalf(balanceInfo.days_used_this_year + balanceInfo.days_pending)}j
+                    </p>
+                  )}
                 </div>
                 <Calendar className="h-12 w-12 text-primary/30" />
               </div>
@@ -357,7 +380,7 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-foreground">RÉCUPÉRATION</p>
-                  <p className="mt-2 text-3xl font-bold text-[var(--status-success-text)]">{user.balance_recuperation}</p>
+                  <p className="mt-2 text-3xl font-bold text-[var(--status-success-text)]">{roundHalf(user.balance_recuperation)}</p>
                   <p className="mt-1 text-sm text-muted-foreground">jours disponibles</p>
                 </div>
                 <Calendar className="h-12 w-12 text-[var(--status-success-text)]/35" />

@@ -1,22 +1,28 @@
 -- ==============================================================================
--- PART 10: COMBINED LEAVE REQUESTS (Congé + Récupération)
+-- FIX: Stop deducting balance_conge on approval (restore v2 balance model)
 -- ==============================================================================
--- Run AFTER 09_fix_login.sql.
+-- balance_conge is carry-over only (solde anterieur). Available balance is
+-- computed dynamically by calculate_leave_balance() RPC:
+--   available_now = carry_over + monthly_accrued - approved_days - pending_days
+--
+-- Previously, approve_leave_request() and handle_auto_approved_leave() also
+-- decremented utilisateurs.balance_conge, causing double-counting: the RPC
+-- subtracts approved requests AND the field itself was reduced.
+--
+-- This migration:
+--   1. Removes CONGE deduction from handle_auto_approved_leave (trigger)
+--   2. Removes CONGE deduction from approve_leave_request (RPC)
+--   3. Removes CONGE restoration from undo_approve_leave_request (RPC)
+--   4. Repairs carry-over values corrupted by prior double-deductions
+--
+-- RECUPERATION deductions are KEPT (balance_recuperation + recovery_balance_lots).
+-- Audit trail (leave_balance_history) is KEPT for both types.
 -- Safe to re-run: uses CREATE OR REPLACE.
---
--- balance_conge is carry-over only (solde anterieur). CONGE usage is tracked
--- via leave_requests queries in calculate_leave_balance() RPC.
--- Only RECUPERATION is deducted from utilisateurs.balance_recuperation.
---
--- Changes:
---   1. Auto-approval trigger: RECUPERATION deduction + FIFO lots only
---   2. approve_leave_request: RECUPERATION deduction only, CONGE audit trail only
---   3. undo_approve: RECUPERATION restoration only, CONGE audit trail only
 -- ==============================================================================
 
 
 -- ==============================================================================
--- 1. UPDATE AUTO-APPROVAL TRIGGER: RECUPERATION only, CONGE audit trail
+-- 1. AUTO-APPROVAL TRIGGER: Stop deducting CONGE, keep RECUPERATION + FIFO lots
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_auto_approved_leave()
@@ -91,7 +97,7 @@ $$;
 
 
 -- ==============================================================================
--- 2. UPDATE APPROVE LEAVE REQUEST: RECUPERATION deduction only on final approval
+-- 2. APPROVE LEAVE REQUEST: Stop deducting CONGE, keep RECUPERATION + FIFO lots
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.approve_leave_request(
@@ -274,7 +280,7 @@ $$;
 
 
 -- ==============================================================================
--- 3. UPDATE UNDO APPROVE: RECUPERATION restoration only, CONGE audit trail
+-- 3. UNDO APPROVE: Stop restoring CONGE, keep RECUPERATION + FIFO lot restore
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.undo_approve_leave_request(
@@ -404,6 +410,41 @@ BEGIN
   RETURN (SELECT to_jsonb(lr.*) FROM leave_requests lr WHERE lr.id = p_request_id);
 END;
 $$;
+
+
+-- ==============================================================================
+-- 4. DATA REPAIR: Restore carry-over values corrupted by prior CONGE deductions
+-- ==============================================================================
+-- Add back all CONGE approval deductions (negative amounts) and subtract any
+-- undo restorations (positive amounts) to restore the original carry-over.
+
+UPDATE utilisateurs u
+SET balance_conge = balance_conge
+  + COALESCE((
+      SELECT SUM(ABS(amount))
+      FROM leave_balance_history h
+      WHERE h.user_id = u.id
+        AND h.type = 'CONGE'
+        AND amount < 0
+        AND (reason LIKE 'Approbation demande%' OR reason LIKE 'Demande auto-approuvee%')
+    ), 0)
+  - COALESCE((
+      SELECT SUM(amount)
+      FROM leave_balance_history h
+      WHERE h.user_id = u.id
+        AND h.type = 'CONGE'
+        AND amount > 0
+        AND reason LIKE 'Annulation approbation demande%'
+    ), 0)
+WHERE EXISTS (
+  SELECT 1 FROM leave_balance_history h
+  WHERE h.user_id = u.id
+    AND h.type = 'CONGE'
+    AND (
+      (amount < 0 AND (reason LIKE 'Approbation demande%' OR reason LIKE 'Demande auto-approuvee%'))
+      OR (amount > 0 AND reason LIKE 'Annulation approbation demande%')
+    )
+);
 
 
 -- ==============================================================================

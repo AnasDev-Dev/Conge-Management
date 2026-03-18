@@ -24,7 +24,7 @@ type EmployeeRow = Pick<
   departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
 }
 
-type LeaveRow = Pick<LeaveRequest, 'id' | 'user_id' | 'status' | 'days_count' | 'created_at'>
+type LeaveRow = Pick<LeaveRequest, 'id' | 'user_id' | 'status' | 'days_count' | 'created_at' | 'request_type' | 'start_date'>
 
 type EmployeeSummary = {
   totalRequests: number
@@ -129,7 +129,7 @@ export default function EmployeesPage() {
       if (empIds.length > 0) {
         const result = await supabase
           .from('leave_requests')
-          .select('id, user_id, status, days_count, created_at')
+          .select('id, user_id, status, days_count, created_at, request_type, start_date')
           .in('user_id', empIds)
         requestData = (result.data || []) as LeaveRow[]
         requestError = result.error
@@ -167,6 +167,28 @@ export default function EmployeesPage() {
     }
 
     return summary
+  }, [requests])
+
+  // CONGE usage per user for current year (for accurate balance display)
+  const congeUsageByUser = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const usage = new Map<string, { used: number; pending: number }>()
+
+    for (const request of requests) {
+      if (request.request_type !== 'CONGE') continue
+      if (new Date(request.start_date).getFullYear() !== currentYear) continue
+
+      const current = usage.get(request.user_id) || { used: 0, pending: 0 }
+      if (approvedStatuses.has(request.status)) {
+        current.used += request.days_count || 0
+      }
+      if (pendingStatuses.has(request.status)) {
+        current.pending += request.days_count || 0
+      }
+      usage.set(request.user_id, current)
+    }
+
+    return usage
   }, [requests])
 
   const filteredEmployees = useMemo(() => {
@@ -314,16 +336,14 @@ export default function EmployeesPage() {
                                     ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
                                     : employee.departments?.annual_leave_days
                                   const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
-                                  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
+                                  const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
+                                  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
                                   return (
                                     <div className="space-y-0.5">
                                       <p className="text-sm">
                                         <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
-                                        <span className="text-muted-foreground"> dispo.</span>
-                                      </p>
-                                      <p className="text-[11px] text-muted-foreground">
-                                        {employee.balance_conge > 0 && <span>Solde global: {roundHalf(employee.balance_conge)}j · </span>}
-                                        Acquis: {accrual.cumulativeEarned}j · Récup: {roundHalf(employee.balance_recuperation)}j
+                                        <span className="text-muted-foreground"> congé</span>
+                                        <span className="text-muted-foreground"> · {roundHalf(employee.balance_recuperation)}j récup</span>
                                       </p>
                                     </div>
                                   )
@@ -384,11 +404,19 @@ export default function EmployeesPage() {
                           </div>
                         </div>
 
-                        {canViewBalances && (
-                          <p className="mt-3 text-xs text-muted-foreground">
-                            Solde: {roundHalf(employee.balance_conge)} congé / {roundHalf(employee.balance_recuperation)} récupération
-                          </p>
-                        )}
+                        {canViewBalances && (() => {
+                          const deptDays = Array.isArray(employee.departments)
+                            ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+                            : employee.departments?.annual_leave_days
+                          const sen = calculateSeniority(employee.hire_date ?? null, deptDays)
+                          const empUsg = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
+                          const acc = calculateMonthlyAccrual(sen.totalEntitlement, employee.balance_conge, empUsg.used, empUsg.pending)
+                          return (
+                            <p className="mt-3 text-xs text-muted-foreground">
+                              Solde: {acc.availableNow}j congé / {roundHalf(employee.balance_recuperation)}j récupération
+                            </p>
+                          )
+                        })()}
 
                         <Link href={`/dashboard/employees/${employee.id}`} className="mt-3 block">
                           <Button variant="outline" className="w-full">
