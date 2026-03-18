@@ -99,8 +99,6 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
     setRib('')
     setAddress('')
     setCity('')
-    setBalanceConge('0')
-    setBalanceRecuperation('0')
     setCategoryId('')
   }
 
