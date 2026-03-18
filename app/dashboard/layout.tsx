@@ -402,8 +402,19 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
 
               <div className="border-t border-border/60 pt-3 mt-2">
                 <div className="flex items-center gap-3 px-1">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
-                    <User className="h-5 w-5 text-muted-foreground" />
+                  <div className="relative shrink-0">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted border border-border">
+                      <User className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    {activeCompany && (
+                      <Image
+                        src={getCompanyLogo(activeCompany.name)}
+                        alt={activeCompany.name}
+                        width={18}
+                        height={18}
+                        className="absolute -bottom-0.5 -right-0.5 h-[18px] w-[18px] rounded-full border-2 border-sidebar bg-white object-contain"
+                      />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground leading-tight">{user.full_name}</p>
