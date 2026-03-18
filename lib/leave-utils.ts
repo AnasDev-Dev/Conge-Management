@@ -266,10 +266,10 @@ export function nextWorkingDay(
   return d
 }
 
-// ─── Round to nearest 0.5 ────────────────────────────────
-/** Round any number to the nearest 0.5 (e.g. 16.88→17, 5.25→5.5, 1.63→1.5) */
+// ─── Floor to nearest 0.5 ────────────────────────────────
+/** Floor any number to the nearest 0.5 (e.g. 1.9→1.5, 2.3→2, 5.7→5.5, 3.0→3) */
 export function roundHalf(n: number): number {
-  return Math.round(n * 2) / 2
+  return Math.floor(n * 2) / 2
 }
 
 // ─── Monthly Balance Accrual (Req #5) ────────────────────
@@ -299,7 +299,7 @@ export function calculateMonthlyAccrual(
   month?: number
 ): MonthlyAccrualInfo {
   const currentMonth = month ?? (new Date().getMonth() + 1) // 1-based
-  const monthlyRate = roundHalf(annualEntitlement / 12)
+  const monthlyRate = annualEntitlement / 12
   const cumulativeEarned = roundHalf(monthlyRate * currentMonth)
   const availableNow = roundHalf(Math.max(carryOver + cumulativeEarned - daysUsed - daysPending, 0))
 
@@ -307,7 +307,7 @@ export function calculateMonthlyAccrual(
     annualEntitlement: roundHalf(annualEntitlement),
     carryOver: roundHalf(carryOver),
     currentMonth,
-    monthlyRate,
+    monthlyRate: roundHalf(monthlyRate),
     cumulativeEarned,
     daysUsed: roundHalf(daysUsed),
     daysPending: roundHalf(daysPending),

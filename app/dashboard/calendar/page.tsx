@@ -40,7 +40,9 @@ import {
   Palmtree,
   Briefcase,
   RotateCcw,
+  ExternalLink,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 type CalendarLeave = LeaveRequestWithRelations & {
   user?: Pick<Utilisateur, 'id' | 'full_name' | 'role' | 'department_id'>
@@ -80,6 +82,7 @@ export default function CalendarPage() {
   const { user } = useCurrentUser()
   const { activeCompany } = useCompanyContext()
   const { can } = usePermissions(user?.role || 'EMPLOYEE')
+  const router = useRouter()
 
   const supabase = createClient()
 
@@ -474,7 +477,7 @@ export default function CalendarPage() {
 
       {/* Day Detail Dialog */}
       <Dialog open={!!selectedDay} onOpenChange={(open) => !open && setSelectedDay(null)}>
-        <DialogContent className="rounded-2xl sm:max-w-md">
+        <DialogContent className="rounded-2xl sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-primary" />
@@ -489,7 +492,7 @@ export default function CalendarPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto flex-1 pr-1">
             {/* Holiday info */}
             {selectedDayHoliday && (
               <div className="flex items-center gap-3 rounded-xl border border-[var(--status-alert-border)] bg-[var(--status-alert-bg)] p-3">
@@ -497,7 +500,7 @@ export default function CalendarPage() {
                 <div>
                   <p className="text-sm font-medium text-[var(--status-alert-text)]">{selectedDayHoliday.name}</p>
                   <p className="text-xs text-[var(--status-alert-text)]/70">
-                    {selectedDayHoliday.is_recurring ? 'Jour f\u00e9ri\u00e9 r\u00e9current' : 'Jour f\u00e9ri\u00e9'}
+                    {selectedDayHoliday.is_recurring ? 'Jour férié récurrent' : 'Jour férié'}
                   </p>
                 </div>
               </div>
@@ -524,7 +527,7 @@ export default function CalendarPage() {
                       <div>
                         <p className="text-sm font-medium">{req.user?.full_name || 'Inconnu'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {req.request_type === 'CONGE' ? 'Cong\u00e9 annuel' : 'R\u00e9cup\u00e9ration'}
+                          {req.request_type === 'CONGE' ? 'Congé annuel' : 'Récupération'}
                         </p>
                       </div>
                     </div>
@@ -552,10 +555,24 @@ export default function CalendarPage() {
 
             {selectedDayRequests.length === 0 && !selectedDayHoliday && (
               <div className="py-6 text-center text-sm text-muted-foreground">
-                Aucune absence enregistr\u00e9e pour cette journ\u00e9e
+                Aucune absence enregistrée pour cette journée
               </div>
             )}
           </div>
+
+          {/* See details link */}
+          {selectedDayRequests.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedDay(null)
+                router.push('/dashboard/requests')
+              }}
+              className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+            >
+              Voir détails
+              <ExternalLink className="h-3 w-3" />
+            </button>
+          )}
         </DialogContent>
       </Dialog>
     </div>

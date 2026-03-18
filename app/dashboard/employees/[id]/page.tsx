@@ -123,7 +123,14 @@ export default function EmployeeDetailsPage() {
     ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
     : employee.departments?.annual_leave_days
   const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
-  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, 0, 0)
+  const currentYear = new Date().getFullYear()
+  const congeUsed = requests
+    .filter(r => r.request_type === 'CONGE' && r.status === 'APPROVED' && new Date(r.start_date).getFullYear() === currentYear)
+    .reduce((sum, r) => sum + (r.days_count || 0), 0)
+  const congePending = requests
+    .filter(r => r.request_type === 'CONGE' && pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
+    .reduce((sum, r) => sum + (r.days_count || 0), 0)
+  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, congeUsed, congePending)
 
   return (
     <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employee-detail">
@@ -196,12 +203,13 @@ export default function EmployeeDetailsPage() {
             {can('employees.viewBalances') && (
               <div className="space-y-3">
                 <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
-                  <p className="text-xs text-muted-foreground">Congé disponible</p>
+                  <p className="text-xs text-muted-foreground">Solde congé</p>
                   <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {employee.balance_conge > 0 && `Solde global: ${roundHalf(employee.balance_conge)}j · `}
-                    Acquis: {accrual.cumulativeEarned}j
-                  </p>
+                  {(congeUsed > 0 || congePending > 0) && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Consommé: {roundHalf(congeUsed + congePending)}j
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
                   <p className="text-xs text-muted-foreground">Récupération</p>

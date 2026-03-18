@@ -86,8 +86,6 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
   const [rib, setRib] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
-  const [balanceConge, setBalanceConge] = useState('0')
-  const [balanceRecuperation, setBalanceRecuperation] = useState('0')
   const [newPassword, setNewPassword] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
 
@@ -161,8 +159,6 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
       setRib(employee.rib || '')
       setAddress(employee.address || '')
       setCity(employee.city || '')
-      setBalanceConge(String(employee.balance_conge ?? 0))
-      setBalanceRecuperation(String(employee.balance_recuperation ?? 0))
       setNewPassword('')
       setCategoryId(employee.category_id ? String(employee.category_id) : '')
       loadReferenceData()
@@ -253,8 +249,6 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
         rib: rib.trim() || null,
         address: address.trim() || null,
         city: city.trim() || null,
-        balance_conge: balanceConge,
-        balance_recuperation: balanceRecuperation,
         category_id: categoryId || null,
       }
 
@@ -464,17 +458,6 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
             <Input id="edit-address" value={address} onChange={(e) => setAddress(e.target.value)} />
           </div>
 
-          {/* Balances */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-balanceConge">Solde initial (jours)</Label>
-              <Input id="edit-balanceConge" type="number" min="0" step="0.5" value={balanceConge} onChange={(e) => setBalanceConge(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-balanceRecup">Solde recuperation (jours)</Label>
-              <Input id="edit-balanceRecup" type="number" min="0" step="0.5" value={balanceRecuperation} onChange={(e) => setBalanceRecuperation(e.target.value)} />
-            </div>
-          </div>
 
           {/* Multi-company assignments (Req 3) */}
           <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">

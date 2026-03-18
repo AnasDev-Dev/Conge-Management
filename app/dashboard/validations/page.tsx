@@ -112,6 +112,9 @@ export default function ValidationsPage() {
   const [draggedId, setDraggedId] = useState<number | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
 
+  // Balance info per user (from RPC)
+  const [userBalances, setUserBalances] = useState<Map<string, number>>(new Map())
+
   const supabase = createClient()
 
   useEffect(() => {
@@ -123,6 +126,24 @@ export default function ValidationsPage() {
       fetchWorkingDays(companyId).then(setWorkingDaysConfig)
     }
   }, [user, activeCompany])
+
+  // Fetch available balance for each unique user in the validation queue
+  useEffect(() => {
+    const userIds = [...new Set(allRequests.map(r => r.user_id))]
+    if (userIds.length === 0) return
+
+    const fetchBalances = async () => {
+      const balances = new Map<string, number>()
+      await Promise.all(
+        userIds.map(async (uid) => {
+          const { data } = await supabase.rpc('calculate_leave_balance', { p_user_id: uid })
+          if (data) balances.set(uid, data.available_now ?? 0)
+        })
+      )
+      setUserBalances(balances)
+    }
+    fetchBalances()
+  }, [allRequests])
 
   const loadAllRequests = async (currentUserId?: string) => {
     try {
@@ -530,7 +551,7 @@ export default function ValidationsPage() {
     const isProcessing = actionLoading === request.id
     const canEditDates = (isRh || isAdmin) && request.status === 'PENDING'
     const balance = request.request_type === 'CONGE'
-      ? request.user?.balance_conge
+      ? (userBalances.get(request.user_id) ?? request.user?.balance_conge)
       : request.user?.balance_recuperation
     const isDragged = draggedId === request.id
     const showUndo = !rejected && canUndoApprove(request) && !isActive

@@ -59,8 +59,6 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   const [rib, setRib] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
-  const [balanceConge, setBalanceConge] = useState('0')
-  const [balanceRecuperation, setBalanceRecuperation] = useState('0')
   const [categoryId, setCategoryId] = useState<string>('')
 
   const filteredDepartments = useMemo(
@@ -142,8 +140,6 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
         company_id: companyId,
         department_id: departmentId,
         hire_date: hireDate,
-        balance_conge: balanceConge,
-        balance_recuperation: balanceRecuperation,
       }
       if (categoryId) payload.category_id = categoryId
       if (phone.trim()) payload.phone = phone.trim()
@@ -367,17 +363,6 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
             <div className="space-y-1.5" />
           </div>
 
-          {/* Balances */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="balanceConge">Report antérieur (jours)</Label>
-              <Input id="balanceConge" type="number" min="0" step="0.5" value={balanceConge} onChange={(e) => setBalanceConge(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="balanceRecup">Solde récupération (jours)</Label>
-              <Input id="balanceRecup" type="number" min="0" step="0.5" value={balanceRecuperation} onChange={(e) => setBalanceRecuperation(e.target.value)} />
-            </div>
-          </div>
         </div>
 
         <DialogFooter>
