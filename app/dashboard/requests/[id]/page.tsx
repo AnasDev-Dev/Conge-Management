@@ -29,6 +29,7 @@ import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
 import { PrintLeaveDocument } from '@/components/print-leave-document'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 
 interface RequestDetail {
   id: number
@@ -71,6 +72,7 @@ interface UserInfo {
 export default function RequestDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { activeCompany } = useCompanyContext()
   const [request, setRequest] = useState<RequestDetail | null>(null)
   const [approvers, setApprovers] = useState<Record<string, UserInfo>>({})
   const [loading, setLoading] = useState(true)
@@ -522,7 +524,7 @@ export default function RequestDetailPage() {
 
       {/* Print document — rendered in body via portal, hidden on screen */}
       {request.status === 'APPROVED' && createPortal(
-        <PrintLeaveDocument request={request} approvers={approvers} />,
+        <PrintLeaveDocument request={request} approvers={approvers} companyName={activeCompany?.name} />,
         document.body
       )}
     </div>

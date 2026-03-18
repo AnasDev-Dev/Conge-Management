@@ -2,6 +2,7 @@
 
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { getCompanyLogo, getCompanyFullName } from '@/lib/company-logos'
 
 interface PrintRequest {
   id: number
@@ -31,12 +32,16 @@ interface ApproverInfo {
 interface PrintLeaveDocumentProps {
   request: PrintRequest
   approvers: Record<string, ApproverInfo>
+  companyName?: string | null
 }
 
-export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentProps) {
+export function PrintLeaveDocument({ request, approvers, companyName }: PrintLeaveDocumentProps) {
   const balanceAfter = (request.balance_before ?? 0) - request.days_count
   const typeLabel = request.request_type === 'CONGE' ? 'Congé annuel' : 'Récupération'
-  const refNumber = `FRMG-${new Date(request.created_at).getFullYear()}-${String(request.id).padStart(5, '0')}`
+  const companyShort = companyName?.trim().toUpperCase() || 'FRMG'
+  const companyFull = getCompanyFullName(companyName) || 'Fédération Royale Marocaine de Golf'
+  const logoSrc = getCompanyLogo(companyName)
+  const refNumber = `${companyShort}-${new Date(request.created_at).getFullYear()}-${String(request.id).padStart(5, '0')}`
 
   const approvalSteps = [
     {
@@ -66,12 +71,12 @@ export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentPro
         <div className="print-header-left">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo/imgi_55_NV_LOGO_FRMG_ANG-AR-1-removebg-preview.png"
-            alt="FRMG"
+            src={logoSrc}
+            alt={companyShort}
             className="print-logo"
           />
           <div>
-            <div className="print-org-name">Fédération Royale Marocaine de Golf</div>
+            <div className="print-org-name">{companyFull}</div>
             <div className="print-org-sub">Direction des Ressources Humaines</div>
           </div>
         </div>
@@ -259,7 +264,7 @@ export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentPro
       {/* ── Footer ── */}
       <div className="print-accent-bar" />
       <div className="print-footer">
-        FRMG — Fédération Royale Marocaine de Golf · Avenue Ibn Sina, Agdal, Rabat
+        {companyShort} — {companyFull} · Avenue Ibn Sina, Agdal, Rabat
       </div>
     </div>
   )
