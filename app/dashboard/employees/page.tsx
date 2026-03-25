@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { LeaveRequest, Utilisateur } from '@/lib/types/database'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Calendar, ChevronRight, Clock, Search, UserPlus, Users } from 'lucide-react'
+import { Calendar, ChevronRight, Clock, Search, User, UserPlus, Users } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
@@ -19,7 +19,7 @@ import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/le
 
 type EmployeeRow = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'balance_conge' | 'balance_recuperation' | 'hire_date'
+  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'gender'
 > & {
   departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
 }
@@ -110,7 +110,7 @@ export default function EmployeesPage() {
     try {
       let empQuery = supabase
         .from('utilisateurs')
-        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, hire_date, company_id, departments(annual_leave_days)')
+        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, hire_date, gender, company_id, departments(annual_leave_days)')
         .order('full_name')
 
       // Filter by active company if set
@@ -246,192 +246,160 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      <Card className="flex min-h-0 flex-col border-border/70 bg-card shadow-none backdrop-blur-none md:flex-1 md:sticky md:top-0 md:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-11rem)]">
-        <CardHeader className="shrink-0 border-b border-border/70 py-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Users className="h-4.5 w-4.5 text-primary" />
-              Liste des employés
-              {searchTerm && (
-                <span className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-normal text-primary">
-                  {filteredEmployees.length} résultats
-                </span>
-              )}
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <div className="relative w-full md:w-[24rem]">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Recherche: nom, rôle, email, solde..."
-                  className="pl-11"
-                />
-              </div>
-              {canCreateEmployee && (
-                <Button onClick={() => setAddDialogOpen(true)} size="sm" className="shrink-0">
-                  <UserPlus className="mr-1.5 h-4 w-4" />
-                  <span className="hidden sm:inline">Nouvel employé</span>
-                </Button>
-              )}
-            </div>
+      {/* Search + Add bar */}
+      <div className="shrink-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <Users className="h-4.5 w-4.5 text-primary" />
+          Liste des employés
+          {searchTerm && (
+            <span className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-normal text-primary">
+              {filteredEmployees.length} résultats
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-[22rem]">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Recherche: nom, rôle, email, solde..."
+              className="pl-11"
+            />
           </div>
-        </CardHeader>
-        <CardContent className="min-h-0 flex-1 pt-4">
-          {loading ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="rounded-2xl border border-border/70 p-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
+          {canCreateEmployee && (
+            <Button onClick={() => setAddDialogOpen(true)} size="sm" className="shrink-0">
+              <UserPlus className="mr-1.5 h-4 w-4" />
+              <span className="hidden sm:inline">Nouvel employé</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Employee cards grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="rounded-2xl border border-border/70 p-5 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+                <Skeleton className="h-11 w-11 rounded-full" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Skeleton className="h-12 rounded-lg" />
+                <Skeleton className="h-12 rounded-lg" />
+              </div>
+              <Skeleton className="h-9 w-full rounded-lg" />
+            </div>
+          ))}
+        </div>
+      ) : filteredEmployees.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground">Aucun employé trouvé.</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredEmployees.map((employee) => {
+            const employeeSummary = summaryByUser.get(employee.id) || {
+              totalRequests: 0,
+              approvedDays: 0,
+              pendingRequests: 0,
+            }
+
+            // Balance calculations
+            const deptDays = Array.isArray(employee.departments)
+              ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+              : employee.departments?.annual_leave_days
+            const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+            const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
+            const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
+            const recup = roundHalf(employee.balance_recuperation)
+
+            // Progress bar percentages
+            const congeTotal = accrual.carryOver + accrual.cumulativeEarned
+            const congePct = congeTotal > 0 ? Math.min((accrual.availableNow / congeTotal) * 100, 100) : 0
+
+            // Avatar styling by gender
+            const isFemale = employee.gender === 'F'
+            const avatarBg = isFemale ? 'bg-rose-100' : 'bg-sky-100'
+            const avatarIconColor = isFemale ? 'text-rose-500' : 'text-sky-500'
+
+            return (
+              <div
+                key={employee.id}
+                className="group relative rounded-2xl border border-border/70 bg-card p-5 transition-shadow hover:shadow-md"
+              >
+                {/* Header: name + email left, avatar right */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-foreground">{employee.full_name}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{employee.email || 'Email non renseigné'}</p>
+                    <Badge variant="secondary" className={`mt-2 border text-[11px] ${getRoleChipClasses(employee.role)}`}>
+                      {employee.role}
+                    </Badge>
+                  </div>
+                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${avatarBg}`}>
+                    <User className={`h-5 w-5 ${avatarIconColor}`} />
+                  </div>
+                </div>
+
+                {/* Balance bars */}
+                {canViewBalances && (
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-[11px] text-muted-foreground">Congé</span>
+                        <span className="text-sm font-bold text-foreground">{accrual.availableNow}j</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          style={{ width: `${congePct}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-[11px] text-muted-foreground">Récup</span>
+                        <span className="text-sm font-bold text-foreground">{recup}j</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-blue-500 transition-all"
+                          style={{ width: `${recup > 0 ? Math.min(recup * 10, 100) : 0}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <Skeleton className="h-3 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : filteredEmployees.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">Aucun employé trouvé.</div>
-          ) : (
-            <>
-              <div className="hidden h-full min-h-0 md:block">
-                <div className="h-full overflow-auto rounded-2xl border border-border/70 overscroll-contain">
-                  <table className="w-full min-w-[900px] border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-10 bg-secondary">
-                      <tr className="border-b border-border/70 text-left text-xs uppercase tracking-[0.08em] text-foreground/85">
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Employé</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Rôle</th>
-                        {canViewBalances && <th className="whitespace-nowrap px-4 py-3 font-semibold">Solde</th>}
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">Congé pris</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-semibold">En attente</th>
-                        <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredEmployees.map((employee) => {
-                        const employeeSummary = summaryByUser.get(employee.id) || {
-                          totalRequests: 0,
-                          approvedDays: 0,
-                          pendingRequests: 0,
-                        }
+                )}
 
-                        return (
-                          <tr key={employee.id} className="soft-row">
-                            <td className="border-b border-border/45 px-4 py-3.5 align-top">
-                              <p className="font-medium text-foreground">{employee.full_name}</p>
-                              <p className="text-xs text-muted-foreground">{employee.email || 'Email non renseigné'}</p>
-                            </td>
-                            <td className="border-b border-border/45 px-4 py-3.5 align-top">
-                              <Badge variant="secondary" className={`border ${getRoleChipClasses(employee.role)}`}>
-                                {employee.role}
-                              </Badge>
-                            </td>
-                            {canViewBalances && (
-                              <td className="border-b border-border/45 px-4 py-3.5 text-sm text-muted-foreground">
-                                {(() => {
-                                  const deptDays = Array.isArray(employee.departments)
-                                    ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-                                    : employee.departments?.annual_leave_days
-                                  const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
-                                  const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
-                                  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
-                                  return (
-                                    <div className="space-y-0.5">
-                                      <p className="text-sm">
-                                        <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
-                                        <span className="text-muted-foreground"> congé</span>
-                                        <span className="text-muted-foreground"> · {roundHalf(employee.balance_recuperation)}j récup</span>
-                                      </p>
-                                    </div>
-                                  )
-                                })()}
-                              </td>
-                            )}
-                            <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
-                              <span className="font-semibold text-primary">{employeeSummary.approvedDays} jours</span>
-                            </td>
-                            <td className="whitespace-nowrap border-b border-border/45 px-4 py-3.5 align-top">
-                              <span className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</span>
-                            </td>
-                            <td className="border-b border-border/45 px-4 py-3.5 text-right align-top">
-                              <Link href={`/dashboard/employees/${employee.id}`}>
-                                <Button variant="outline" size="sm">
-                                  Voir détails
-                                  <ChevronRight className="ml-1 h-4 w-4" />
-                                </Button>
-                              </Link>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                {/* Stats row */}
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-secondary/50 px-3 py-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Pris </span>
+                    <span className="font-semibold text-primary">{employeeSummary.approvedDays}j</span>
+                  </div>
+                  <div className="h-3 w-px bg-border" />
+                  <div>
+                    <span className="text-muted-foreground">En attente </span>
+                    <span className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</span>
+                  </div>
                 </div>
+
+                {/* Action button */}
+                <Link href={`/dashboard/employees/${employee.id}`} className="mt-3 block">
+                  <Button variant="outline" size="sm" className="w-full justify-between text-xs">
+                    Voir détails
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
               </div>
-
-              <div className="md:hidden">
-                <div className="space-y-3">
-                  {filteredEmployees.map((employee) => {
-                    const employeeSummary = summaryByUser.get(employee.id) || {
-                      totalRequests: 0,
-                      approvedDays: 0,
-                      pendingRequests: 0,
-                    }
-
-                    return (
-                      <div key={employee.id} className="rounded-2xl border border-border/70 bg-background/80 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-foreground">{employee.full_name}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">{employee.email || 'Email non renseigné'}</p>
-                          </div>
-                          <Badge variant="secondary" className={`border ${getRoleChipClasses(employee.role)}`}>
-                            {employee.role}
-                          </Badge>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                          <div className="rounded-xl bg-secondary/60 p-2.5">
-                            <p className="text-xs text-muted-foreground">Congé pris</p>
-                            <p className="font-semibold text-primary">{employeeSummary.approvedDays} jours</p>
-                          </div>
-                          <div className="rounded-xl bg-secondary/60 p-2.5">
-                            <p className="text-xs text-muted-foreground">En attente</p>
-                            <p className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</p>
-                          </div>
-                        </div>
-
-                        {canViewBalances && (() => {
-                          const deptDays = Array.isArray(employee.departments)
-                            ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-                            : employee.departments?.annual_leave_days
-                          const sen = calculateSeniority(employee.hire_date ?? null, deptDays)
-                          const empUsg = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
-                          const acc = calculateMonthlyAccrual(sen.totalEntitlement, employee.balance_conge, empUsg.used, empUsg.pending)
-                          return (
-                            <p className="mt-3 text-xs text-muted-foreground">
-                              Solde: {acc.availableNow}j congé / {roundHalf(employee.balance_recuperation)}j récupération
-                            </p>
-                          )
-                        })()}
-
-                        <Link href={`/dashboard/employees/${employee.id}`} className="mt-3 block">
-                          <Button variant="outline" className="w-full">
-                            Voir les congés
-                          </Button>
-                        </Link>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            )
+          })}
+        </div>
+      )}
 
       {canCreateEmployee && (
         <AddEmployeeDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} onCreated={loadData} />
