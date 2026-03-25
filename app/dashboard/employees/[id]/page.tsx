@@ -19,6 +19,9 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
 import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
+import Image from 'next/image'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { getCompanyLogo } from '@/lib/company-logos'
 
 type EmployeeDetails = Pick<
   Utilisateur,
@@ -44,6 +47,7 @@ const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 export default function EmployeeDetailsPage() {
   const { user: currentUser } = useCurrentUser()
+  const { activeCompany } = useCompanyContext()
   const { can } = usePermissions(currentUser?.role || 'EMPLOYEE')
   const params = useParams<{ id: string }>()
   const [employee, setEmployee] = useState<EmployeeDetails | null>(null)
@@ -186,8 +190,19 @@ export default function EmployeeDetailsPage() {
         <Card className="border-border/70 lg:col-span-1">
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-2 border-border bg-muted/60">
-                <User className="h-11 w-11 text-muted-foreground/70" />
+              <div className="relative mx-auto w-fit">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-border bg-muted/60">
+                  <User className="h-11 w-11 text-muted-foreground/70" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-background bg-white shadow-sm">
+                  <Image
+                    src={getCompanyLogo(activeCompany?.name)}
+                    alt={activeCompany?.name || 'Logo'}
+                    width={28}
+                    height={28}
+                    className="h-7 w-7 object-contain"
+                  />
+                </div>
               </div>
               <h2 className="mt-4 text-xl font-bold">{employee.full_name}</h2>
               <p className="text-muted-foreground">{employee.job_title || 'Non renseigné'}</p>

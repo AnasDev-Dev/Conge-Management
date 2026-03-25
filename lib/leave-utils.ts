@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
-import { Holiday, WorkingDays } from '@/lib/types/database'
-import { addDays } from 'date-fns'
+import { Holiday, LeaveRequestDetail, LeaveSegment, WorkingDays } from '@/lib/types/database'
+import { addDays, format } from 'date-fns'
 
 // ─── In-memory caches (per session) ───────────────────────
 let cachedHolidays: Holiday[] | null = null
@@ -264,6 +264,128 @@ export function nextWorkingDay(
     d = addDays(d, 1)
   }
   return d
+}
+
+// ─── Enumerate individual working days ───────────────────
+
+export interface WorkingDayEntry {
+  date: string   // yyyy-MM-dd
+  value: number  // 0.5 or 1
+}
+
+/**
+ * Like countWorkingDays but returns each individual working day
+ * instead of a total. Used for inserting leave_request_details rows.
+ */
+export function enumerateWorkingDays(
+  start: string,
+  end: string,
+  config: WorkingDays,
+  holidays: Holiday[],
+  startHalfDay: string = 'FULL',
+  endHalfDay: string = 'FULL'
+): WorkingDayEntry[] {
+  if (!start || !end) return []
+  const result: WorkingDayEntry[] = []
+  let current = new Date(start + 'T00:00:00')
+  const last = new Date(end + 'T00:00:00')
+  const startDate = new Date(start + 'T00:00:00')
+
+  while (current <= last) {
+    let dayValue = getDayWorkValue(current, config, holidays)
+
+    if (dayValue > 0) {
+      if (current.getTime() === startDate.getTime() && startHalfDay === 'AFTERNOON') {
+        dayValue = Math.max(dayValue - 0.5, 0)
+      }
+      if (current.getTime() === last.getTime() && endHalfDay === 'MORNING') {
+        dayValue = Math.max(dayValue - 0.5, 0)
+      }
+
+      if (dayValue > 0) {
+        result.push({
+          date: format(current, 'yyyy-MM-dd'),
+          value: dayValue,
+        })
+      }
+    }
+    current = addDays(current, 1)
+  }
+  return result
+}
+
+// ─── Segment grouping ────────────────────────────────────
+
+export interface SegmentSummary {
+  type: 'CONGE' | 'RECUPERATION'
+  startDate: string
+  endDate: string
+  workingDays: number
+  details: LeaveRequestDetail[]
+}
+
+/**
+ * Groups sorted leave_request_details rows into contiguous same-type segments.
+ * Used to display segments on the request detail and validation pages.
+ */
+export function groupDetailsIntoSegments(details: LeaveRequestDetail[]): SegmentSummary[] {
+  if (!details.length) return []
+
+  const segments: SegmentSummary[] = []
+  let currentSegment: SegmentSummary = {
+    type: details[0].type,
+    startDate: details[0].date,
+    endDate: details[0].date,
+    workingDays: 1,
+    details: [details[0]],
+  }
+
+  for (let i = 1; i < details.length; i++) {
+    const d = details[i]
+    if (d.type === currentSegment.type) {
+      currentSegment.endDate = d.date
+      currentSegment.workingDays++
+      currentSegment.details.push(d)
+    } else {
+      segments.push(currentSegment)
+      currentSegment = {
+        type: d.type,
+        startDate: d.date,
+        endDate: d.date,
+        workingDays: 1,
+        details: [d],
+      }
+    }
+  }
+  segments.push(currentSegment)
+  return segments
+}
+
+/**
+ * Validates the 5-consecutive-récup-day rule across segments.
+ * Returns error messages (empty array = valid).
+ */
+export function validateSegments(
+  segments: LeaveSegment[],
+): string[] {
+  const errors: string[] = []
+  if (segments.length === 0) return errors
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]
+    if (seg.type === 'RECUPERATION' && seg.workingDays > 5) {
+      errors.push(`Segment ${i + 1}: maximum 5 jours consécutifs de récupération (actuellement ${seg.workingDays}j)`)
+    }
+  }
+
+  // Check consecutive RECUPERATION segments (no CONGE break between them)
+  for (let i = 1; i < segments.length; i++) {
+    if (segments[i].type === 'RECUPERATION' && segments[i - 1].type === 'RECUPERATION') {
+      errors.push(`Segments ${i} et ${i + 1}: deux blocs de récupération consécutifs — insérez au moins 1 jour de congé entre eux`)
+    }
+  }
+
+  return errors
 }
 
 // ─── Floor to nearest 0.5 ────────────────────────────────

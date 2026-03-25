@@ -2,6 +2,7 @@
 
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { getCompanyLogo, getCompanyFullName } from '@/lib/company-logos'
 
 interface PrintRequest {
   id: number
@@ -26,17 +27,23 @@ interface PrintRequest {
 
 interface ApproverInfo {
   full_name: string
+  signature_file?: string | null
 }
 
 interface PrintLeaveDocumentProps {
   request: PrintRequest
   approvers: Record<string, ApproverInfo>
+  employeeSignatureUrl?: string | null
+  companyName?: string | null
 }
 
-export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentProps) {
+export function PrintLeaveDocument({ request, approvers, employeeSignatureUrl, companyName }: PrintLeaveDocumentProps) {
   const balanceAfter = (request.balance_before ?? 0) - request.days_count
   const typeLabel = request.request_type === 'CONGE' ? 'Congé annuel' : 'Récupération'
-  const refNumber = `FRMG-${new Date(request.created_at).getFullYear()}-${String(request.id).padStart(5, '0')}`
+  const companyKey = (companyName || 'FRMG').trim().toUpperCase()
+  const companyFullName = getCompanyFullName(companyName)
+  const companyLogo = getCompanyLogo(companyName)
+  const refNumber = `${companyKey}-${new Date(request.created_at).getFullYear()}-${String(request.id).padStart(5, '0')}`
 
   const approvalSteps = [
     {
@@ -66,12 +73,12 @@ export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentPro
         <div className="print-header-left">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo/imgi_55_NV_LOGO_FRMG_ANG-AR-1-removebg-preview.png"
-            alt="FRMG"
+            src={companyLogo}
+            alt={companyKey}
             className="print-logo"
           />
           <div>
-            <div className="print-org-name">Fédération Royale Marocaine de Golf</div>
+            <div className="print-org-name">{companyFullName}</div>
             <div className="print-org-sub">Direction des Ressources Humaines</div>
           </div>
         </div>
@@ -241,25 +248,55 @@ export function PrintLeaveDocument({ request, approvers }: PrintLeaveDocumentPro
       <div className="print-signatures">
         <div className="print-signature-block">
           <div className="print-signature-title">Visa RH</div>
-          <div className="print-signature-line" />
-          <div className="print-signature-sub">Nom et cachet</div>
+          {request.approved_by_rp && approvers[request.approved_by_rp]?.signature_file ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={approvers[request.approved_by_rp].signature_file!} alt="Signature RH" className="print-signature-img" />
+              <div className="print-signature-sub">{approvers[request.approved_by_rp].full_name}</div>
+            </>
+          ) : (
+            <>
+              <div className="print-signature-line" />
+              <div className="print-signature-sub">Nom et cachet</div>
+            </>
+          )}
         </div>
         <div className="print-signature-block">
           <div className="print-signature-title">Visa Direction</div>
-          <div className="print-signature-line" />
-          <div className="print-signature-sub">Nom et cachet</div>
+          {request.approved_by_de && approvers[request.approved_by_de]?.signature_file ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={approvers[request.approved_by_de].signature_file!} alt="Signature Direction" className="print-signature-img" />
+              <div className="print-signature-sub">{approvers[request.approved_by_de].full_name}</div>
+            </>
+          ) : (
+            <>
+              <div className="print-signature-line" />
+              <div className="print-signature-sub">Nom et cachet</div>
+            </>
+          )}
         </div>
         <div className="print-signature-block">
           <div className="print-signature-title">L&apos;intéressé(e)</div>
-          <div className="print-signature-line" />
-          <div className="print-signature-sub">Signature</div>
+          {employeeSignatureUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={employeeSignatureUrl} alt="Signature employé" className="print-signature-img" />
+              <div className="print-signature-sub">{request.user?.full_name}</div>
+            </>
+          ) : (
+            <>
+              <div className="print-signature-line" />
+              <div className="print-signature-sub">Signature</div>
+            </>
+          )}
         </div>
       </div>
 
       {/* ── Footer ── */}
       <div className="print-accent-bar" />
       <div className="print-footer">
-        FRMG — Fédération Royale Marocaine de Golf · Avenue Ibn Sina, Agdal, Rabat
+        {companyKey} — {companyFullName} · Avenue Ibn Sina, Agdal, Rabat
       </div>
     </div>
   )

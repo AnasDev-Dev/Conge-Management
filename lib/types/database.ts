@@ -229,6 +229,17 @@ export interface LeaveRequestDetail {
   half_day: 'FULL' | 'MORNING' | 'AFTERNOON'
 }
 
+// Req #9: Segment for the segment builder UI
+export interface LeaveSegment {
+  id: string                  // crypto.randomUUID() for React keys
+  type: 'CONGE' | 'RECUPERATION'
+  startDate: string           // yyyy-MM-dd
+  endDate: string             // yyyy-MM-dd
+  startHalfDay: 'FULL' | 'MORNING' | 'AFTERNOON'
+  endHalfDay: 'FULL' | 'MORNING' | 'AFTERNOON'
+  workingDays: number         // computed via countWorkingDays()
+}
+
 // Req #10: Recovery Balance Lots
 export interface RecoveryBalanceLot {
   id: number

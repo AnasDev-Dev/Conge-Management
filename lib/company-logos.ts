@@ -1,7 +1,7 @@
 /** Map company name to its logo path */
 const COMPANY_LOGOS: Record<string, string> = {
-  FRMG: '/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png',
-  ATH: '/logo/ath_logo.png',
+  FRMG: '/logo/FRMG_LOGO.png',
+  ATH: '/logo/ATH_LOGO.png',
 }
 
 const COMPANY_FULL_NAMES: Record<string, string> = {
@@ -9,7 +9,7 @@ const COMPANY_FULL_NAMES: Record<string, string> = {
   ATH: 'Hassan II Golf Trophy Association',
 }
 
-const DEFAULT_LOGO = '/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png'
+const DEFAULT_LOGO = '/logo/FRMG_LOGO.png'
 
 export function getCompanyLogo(companyName?: string | null): string {
   if (!companyName) return DEFAULT_LOGO

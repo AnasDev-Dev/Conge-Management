@@ -40,7 +40,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react'
-import { LeaveRequest, Utilisateur, Holiday, WorkingDays } from '@/lib/types/database'
+import { LeaveRequest, LeaveRequestDetail, Utilisateur, Holiday, WorkingDays } from '@/lib/types/database'
 import { format, formatDistanceToNow } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
@@ -48,7 +48,11 @@ import {
   countWorkingDays as countWorkingDaysUtil,
   fetchHolidays,
   fetchWorkingDays,
+  groupDetailsIntoSegments,
+  SegmentSummary,
 } from '@/lib/leave-utils'
+import { cn } from '@/lib/utils'
+import { SignatureDialog } from '@/components/signature-dialog'
 
 interface RequestWithUser extends LeaveRequest {
   user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'balance_conge' | 'balance_recuperation' | 'gender'>
@@ -93,6 +97,13 @@ export default function ValidationsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL')
   const [mobileTab, setMobileTab] = useState(0)
   const [showRejected, setShowRejected] = useState(false)
+  const [requestDetails, setRequestDetails] = useState<Record<number, SegmentSummary[]>>({})
+
+  // Signature dialog state
+  const [signatureDialogOpen, setSignatureDialogOpen] = useState(false)
+  const [pendingApproveRequest, setPendingApproveRequest] = useState<RequestWithUser | null>(null)
+  const [signatureLoading, setSignatureLoading] = useState(false)
+  const [signatureAction, setSignatureAction] = useState<'approve' | 'reject'>('approve')
 
   // Holiday-aware day counting
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -169,6 +180,29 @@ export default function ValidationsPage() {
 
       if (error) throw error
       setAllRequests(data || [])
+
+      // Batch-fetch leave_request_details for segment display
+      const requestIds = (data || []).map((r: RequestWithUser) => r.id)
+      if (requestIds.length > 0) {
+        const { data: detailRows } = await supabase
+          .from('leave_request_details')
+          .select('*')
+          .in('request_id', requestIds)
+          .order('date', { ascending: true })
+
+        if (detailRows && detailRows.length > 0) {
+          const grouped: Record<number, LeaveRequestDetail[]> = {}
+          for (const row of detailRows as LeaveRequestDetail[]) {
+            if (!grouped[row.request_id]) grouped[row.request_id] = []
+            grouped[row.request_id].push(row)
+          }
+          const segments: Record<number, SegmentSummary[]> = {}
+          for (const [rid, details] of Object.entries(grouped)) {
+            segments[Number(rid)] = groupDetailsIntoSegments(details)
+          }
+          setRequestDetails(segments)
+        }
+      }
     } catch (error) {
       console.error('Error loading requests:', error)
     } finally {
@@ -293,6 +327,63 @@ export default function ValidationsPage() {
       console.error('Error approving request:', error)
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // Signature-gated approve — opens signature dialog before approving
+  // ──────────────────────────────────────────────
+  const openApproveWithSignature = (request: RequestWithUser) => {
+    setPendingApproveRequest(request)
+    setSignatureAction('approve')
+    setSignatureDialogOpen(true)
+  }
+
+  const handleSignatureConfirm = async (signatureDataUrl: string, saveForFuture: boolean) => {
+    if (!pendingApproveRequest || !user) return
+
+    setSignatureLoading(true)
+    try {
+      // If the user wants to save their signature for future use
+      if (saveForFuture) {
+        // Convert data URL to blob for upload
+        const res = await fetch(signatureDataUrl)
+        const blob = await res.blob()
+        const filePath = `signatures/${user.id}.png`
+
+        const { error: uploadError } = await supabase.storage
+          .from('signatures')
+          .upload(filePath, blob, { upsert: true, contentType: 'image/png' })
+
+        if (uploadError) {
+          console.error('Error uploading signature:', uploadError)
+          toast.error("Erreur lors de la sauvegarde de la signature")
+        } else {
+          // Get the public URL
+          const { data: publicUrlData } = supabase.storage
+            .from('signatures')
+            .getPublicUrl(filePath)
+
+          if (publicUrlData?.publicUrl) {
+            // Update the user's signature_file in the database
+            await supabase
+              .from('utilisateurs')
+              .update({ signature_file: publicUrlData.publicUrl })
+              .eq('id', user.id)
+          }
+        }
+      }
+
+      // Proceed with the actual action (approve or reject)
+      if (signatureAction === 'reject') {
+        await handleReject()
+      } else {
+        await handleApprove(pendingApproveRequest)
+      }
+    } finally {
+      setSignatureLoading(false)
+      setSignatureDialogOpen(false)
+      setPendingApproveRequest(null)
     }
   }
 
@@ -501,7 +592,7 @@ export default function ValidationsPage() {
     // Validate role
     if (!canActOnStage(request.status)) return
 
-    await handleApprove(request)
+    openApproveWithSignature(request)
   }
 
   if (!user) return null
@@ -628,6 +719,21 @@ export default function ValidationsPage() {
             )}
           </div>
 
+          {requestDetails[request.id] && requestDetails[request.id].length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {requestDetails[request.id].map((seg, i) => (
+                <span key={i} className={cn(
+                  'text-[10px] px-1.5 py-0 rounded-md font-medium',
+                  seg.type === 'RECUPERATION'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-blue-100 text-blue-700'
+                )}>
+                  {seg.workingDays}{seg.type === 'RECUPERATION' ? 'R' : 'C'}
+                </span>
+              ))}
+            </div>
+          )}
+
           {request.reason && (
             <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
               {request.reason}
@@ -706,7 +812,7 @@ export default function ValidationsPage() {
             <div className="flex-1" />
             <Button
               size="sm"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleApprove(request); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openApproveWithSignature(request); }}
               disabled={isProcessing}
               className="h-7 px-3 text-xs gap-1 bg-[var(--status-success-text)] text-white hover:bg-[var(--status-success-text)]/90"
             >
@@ -1066,7 +1172,12 @@ export default function ValidationsPage() {
               Annuler
             </Button>
             <Button
-              onClick={handleReject}
+              onClick={() => {
+                setRejectDialogOpen(false)
+                setPendingApproveRequest(rejectingRequest)
+                setSignatureAction('reject')
+                setSignatureDialogOpen(true)
+              }}
               disabled={!rejectReason.trim() || actionLoading !== null}
               className="bg-[var(--status-alert-text)] text-white hover:bg-[var(--status-alert-text)]/90"
             >
@@ -1080,6 +1191,17 @@ export default function ValidationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Signature Dialog for approval */}
+      <SignatureDialog
+        open={signatureDialogOpen}
+        onClose={() => { setSignatureDialogOpen(false); setPendingApproveRequest(null); }}
+        onConfirm={handleSignatureConfirm}
+        savedSignatureUrl={user?.signature_file}
+        mode="approver"
+        title={signatureAction === 'reject' ? 'Signature pour rejet' : 'Signature pour approbation'}
+        loading={signatureLoading}
+      />
 
     </div>
     </PageGuard>

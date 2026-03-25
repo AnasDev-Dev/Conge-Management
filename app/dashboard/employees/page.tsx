@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { LeaveRequest, Utilisateur } from '@/lib/types/database'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Calendar, ChevronRight, Clock, Search, User, UserPlus, Users } from 'lucide-react'
+import { ChevronRight, LayoutGrid, List, Search, User, UserPlus, Users } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
@@ -98,6 +98,7 @@ export default function EmployeesPage() {
   const [requests, setRequests] = useState<LeaveRow[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   const { user: currentUser } = useCurrentUser()
@@ -202,48 +203,12 @@ export default function EmployeesPage() {
     })
   }, [employees, searchTerm, summaryByUser])
 
-  const activeEmployees = employees.filter((employee) => employee.is_active).length
-  const totalApprovedDays = Array.from(summaryByUser.values()).reduce((sum, user) => sum + user.approvedDays, 0)
-
-  const pendingTotal = Array.from(summaryByUser.values()).reduce((sum, user) => sum + user.pendingRequests, 0)
-
   return (
     <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employees">
     <div className="flex min-h-full flex-col gap-4">
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Employés</h1>
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">Consultez les collaborateurs et leurs historiques de congés.</p>
-      </div>
-
-      {/* KPI cards */}
-      <div className="shrink-0 grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-primary/10 sm:flex">
-            <Users className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-xl font-bold text-foreground sm:text-2xl">{activeEmployees}</p>
-            <p className="text-[11px] text-muted-foreground sm:text-xs">Actifs</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 sm:flex">
-            <Calendar className="h-5 w-5 text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-xl font-bold text-foreground sm:text-2xl">{totalApprovedDays}</p>
-            <p className="text-[11px] text-muted-foreground sm:text-xs">Congé pris</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
-          <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 sm:flex">
-            <Clock className="h-5 w-5 text-amber-600" />
-          </div>
-          <div>
-            <p className="text-xl font-bold text-foreground sm:text-2xl">{pendingTotal}</p>
-            <p className="text-[11px] text-muted-foreground sm:text-xs">En attente</p>
-          </div>
-        </div>
       </div>
 
       {/* Search + Add bar */}
@@ -267,6 +232,20 @@ export default function EmployeesPage() {
               className="pl-11"
             />
           </div>
+          <div className="hidden sm:flex items-center rounded-lg border border-border/70 p-0.5">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`rounded-md p-1.5 transition-colors ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`rounded-md p-1.5 transition-colors ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
           {canCreateEmployee && (
             <Button onClick={() => setAddDialogOpen(true)} size="sm" className="shrink-0">
               <UserPlus className="mr-1.5 h-4 w-4" />
@@ -276,7 +255,7 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Employee cards grid */}
+      {/* Employee list */}
       {loading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => (
@@ -299,7 +278,87 @@ export default function EmployeesPage() {
         </div>
       ) : filteredEmployees.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">Aucun employé trouvé.</div>
+      ) : viewMode === 'table' ? (
+        /* ── TABLE VIEW ── */
+        <div className="overflow-auto rounded-2xl border border-border/70">
+          <table className="w-full min-w-[800px] border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-secondary">
+              <tr className="text-left text-xs uppercase tracking-[0.08em] text-foreground/85">
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Employé</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Rôle</th>
+                {canViewBalances && <th className="whitespace-nowrap px-4 py-3 font-semibold">Solde</th>}
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">Congé pris</th>
+                <th className="whitespace-nowrap px-4 py-3 font-semibold">En attente</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEmployees.map((employee) => {
+                const employeeSummary = summaryByUser.get(employee.id) || {
+                  totalRequests: 0,
+                  approvedDays: 0,
+                  pendingRequests: 0,
+                }
+                const isFemale = employee.gender === 'F'
+
+                return (
+                  <tr key={employee.id} className="soft-row">
+                    <td className="border-b border-border/45 px-4 py-3 align-middle">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isFemale ? 'bg-rose-100' : 'bg-sky-100'}`}>
+                          <User className={`h-4 w-4 ${isFemale ? 'text-rose-500' : 'text-sky-500'}`} />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{employee.full_name}</p>
+                          <p className="text-xs text-muted-foreground">{employee.email || 'Email non renseigné'}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="border-b border-border/45 px-4 py-3 align-middle">
+                      <Badge variant="secondary" className={`border ${getRoleChipClasses(employee.role)}`}>
+                        {employee.role}
+                      </Badge>
+                    </td>
+                    {canViewBalances && (
+                      <td className="border-b border-border/45 px-4 py-3 text-sm text-muted-foreground align-middle">
+                        {(() => {
+                          const deptDays = Array.isArray(employee.departments)
+                            ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
+                            : employee.departments?.annual_leave_days
+                          const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+                          const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
+                          const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
+                          return (
+                            <p className="text-sm">
+                              <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
+                              <span className="text-muted-foreground"> congé · {roundHalf(employee.balance_recuperation)}j récup</span>
+                            </p>
+                          )
+                        })()}
+                      </td>
+                    )}
+                    <td className="whitespace-nowrap border-b border-border/45 px-4 py-3 align-middle">
+                      <span className="font-semibold text-primary">{employeeSummary.approvedDays} jours</span>
+                    </td>
+                    <td className="whitespace-nowrap border-b border-border/45 px-4 py-3 align-middle">
+                      <span className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</span>
+                    </td>
+                    <td className="border-b border-border/45 px-4 py-3 text-right align-middle">
+                      <Link href={`/dashboard/employees/${employee.id}`}>
+                        <Button variant="outline" size="sm">
+                          Voir détails
+                          <ChevronRight className="ml-1 h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
+        /* ── CARDS VIEW ── */
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredEmployees.map((employee) => {
             const employeeSummary = summaryByUser.get(employee.id) || {

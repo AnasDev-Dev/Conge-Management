@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus, Heart, Gift } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot } from '@/lib/types/database'
+import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot, LeaveSegment } from '@/lib/types/database'
 import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format, addDays } from 'date-fns'
@@ -23,6 +23,7 @@ import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import {
   countWorkingDays as countWorkingDaysUtil,
+  enumerateWorkingDays,
   fetchHolidays,
   fetchWorkingDays,
   getHolidaysInRange,
@@ -30,7 +31,9 @@ import {
   calculateMonthlyAccrual,
   calculateSeniority,
   roundHalf,
+  validateSegments,
 } from '@/lib/leave-utils'
+import { SignatureDialog } from '@/components/signature-dialog'
 
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'department_id'> & {
   dept_annual_leave_days?: number
@@ -44,12 +47,13 @@ type ExceptionalLeaveType = {
   days_granted: number
 }
 
-const TOTAL_STEPS = 3
+const TOTAL_STEPS = 4
 
 const steps = [
-  { number: 1, label: 'Demande', description: 'Periode et soldes' },
-  { number: 2, label: 'Details', description: 'Infos complementaires' },
-  { number: 3, label: 'Resume', description: 'Verification et envoi' },
+  { number: 1, label: 'Demande', description: 'Employe et soldes' },
+  { number: 2, label: 'Segments', description: 'Periodes et types' },
+  { number: 3, label: 'Details', description: 'Infos complementaires' },
+  { number: 4, label: 'Resume', description: 'Verification et envoi' },
 ]
 
 export default function NewRequestPage() {
@@ -69,6 +73,10 @@ export default function NewRequestPage() {
   const [replacementId, setReplacementId] = useState('')
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Signature dialog state
+  const [signatureDialogOpen, setSignatureDialogOpen] = useState(false)
+  const [signatureLoading, setSignatureLoading] = useState(false)
 
   // On-behalf-of state
   const [onBehalfOfId, setOnBehalfOfId] = useState<string>('')
@@ -128,9 +136,12 @@ export default function NewRequestPage() {
   const [congeUsedDays, setCongeUsedDays] = useState(0)
   const [congePendingDays, setCongePendingDays] = useState(0)
 
-  // Recovery/Congé split
+  // Recovery/Congé split (legacy — now derived from segments)
   const [recupDaysToUse, setRecupDaysToUse] = useState(0)
   const [recoveryLots, setRecoveryLots] = useState<RecoveryBalanceLot[]>([])
+
+  // Segment builder state
+  const [segments, setSegments] = useState<LeaveSegment[]>([])
 
   // Derogation: allow submit when balance is insufficient (CPA override)
   const [isDerogation, setIsDerogation] = useState(false)
@@ -483,6 +494,13 @@ export default function NewRequestPage() {
 
   const workingDays = countWorkingDaysUtil(startDate, endDate, workingDaysConfig, holidays, startHalfDay, endHalfDay)
 
+  // Segment-derived computed values
+  const totalWorkingDays = useMemo(() => segments.reduce((s, seg) => s + seg.workingDays, 0), [segments])
+  const totalRecupDays = useMemo(() => segments.filter(s => s.type === 'RECUPERATION').reduce((s, seg) => s + seg.workingDays, 0), [segments])
+  const totalCongeDays = useMemo(() => segments.filter(s => s.type === 'CONGE').reduce((s, seg) => s + seg.workingDays, 0), [segments])
+  const segmentErrors = useMemo(() => validateSegments(segments), [segments])
+  const allSegmentsValid = segments.length > 0 && segments.every(s => s.workingDays > 0 && s.startDate && s.endDate) && segmentErrors.length === 0
+
   // Monthly accrual for CONGE: available = carry_over + (entitlement/12 * month) - used - pending
   const congeAccrual = useMemo(() => {
     const deptDays = targetEmployee?.dept_annual_leave_days
@@ -518,18 +536,28 @@ export default function NewRequestPage() {
   // Nearest recovery expiration
   const nearestExpiration = recoveryLots.length > 0 ? recoveryLots[0].expires_at : null
 
+  // Balance checks derived from segments
+  const segBalanceOkNatural = totalCongeDays <= availableConge && totalRecupDays <= availableRecup
+  const segBalanceOk = segBalanceOkNatural || isDerogation
+  const segCongeInsufficient = totalCongeDays > availableConge
+  const segBalanceAfterConge = roundHalf(availableConge - totalCongeDays)
+  const segBalanceAfterRecup = roundHalf(availableRecup - totalRecupDays)
+
   const canProceedToNext = (): boolean => {
     switch (currentStep) {
       case 1:
-        // If balance insufficient and no derogation yet, show dialog instead of blocking
-        if (!!startDate && !!endDate && workingDays > 0 && !balanceOkNatural && !isDerogation && congeInsufficient) {
-          return false // will be handled by derogation prompt
-        }
-        return !!startDate && !!endDate && workingDays > 0 && balanceOk
-      case 2:
+        // Step 1: just needs a target employee (self or on-behalf selected)
+        if (onBehalfOfId === '_selecting') return false
         return true
+      case 2:
+        // Step 2 (segments): at least 1 valid segment, balance ok, no validation errors
+        if (!allSegmentsValid) return false
+        if (!segBalanceOkNatural && !isDerogation && segCongeInsufficient) return false
+        return segBalanceOk
       case 3:
-        return balanceOk && workingDays > 0
+        return true
+      case 4:
+        return segBalanceOk && totalWorkingDays > 0
       default:
         return false
     }
@@ -547,51 +575,52 @@ export default function NewRequestPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
 
     if (!user || !targetEmployee) return
-
-    if (workingDays <= 0) {
-      toast.error('La date de fin doit etre apres la date de debut')
+    if (segments.length === 0 || totalWorkingDays <= 0) {
+      toast.error('Ajoutez au moins un segment de dates')
       return
     }
-
-    if (!balanceOk && !isDerogation) {
+    if (!segBalanceOk && !isDerogation) {
       toast.error('Solde insuffisant. Veuillez ajuster la repartition ou les dates.')
       return
     }
-
-    if (recupDaysToUse > MAX_CONSECUTIVE_RECOVERY_DAYS) {
-      toast.error(`La recuperation ne peut pas depasser ${MAX_CONSECUTIVE_RECOVERY_DAYS} jours par demande.`)
+    if (segmentErrors.length > 0) {
+      toast.error(segmentErrors[0])
       return
     }
 
     setIsSubmitting(true)
 
     try {
-      const returnDate = nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays)
+      const firstSeg = segments[0]
+      const lastSeg = segments[segments.length - 1]
+      const overallStart = firstSeg.startDate
+      const overallEnd = lastSeg.endDate
+      const returnDate = nextWorkingDay(addDays(new Date(overallEnd), 1), workingDaysConfig, holidays)
       const targetUserId = targetEmployee.id
-      const isMixed = recupDaysToUse > 0 && congeDaysToUse > 0
-      const requestType = recupDaysToUse > 0 && congeDaysToUse === 0 ? 'RECUPERATION' : 'CONGE'
+      const isMixed = totalRecupDays > 0 && totalCongeDays > 0
+      const requestType = totalCongeDays > 0 ? 'CONGE' : 'RECUPERATION'
 
       const { data: insertedRequest, error } = await supabase
         .from('leave_requests')
         .insert({
           user_id: targetUserId,
           request_type: requestType,
-          start_date: startDate,
-          end_date: endDate,
-          start_half_day: startHalfDay,
-          end_half_day: endHalfDay,
-          days_count: workingDays,
+          start_date: overallStart,
+          end_date: overallEnd,
+          start_half_day: firstSeg.startHalfDay,
+          end_half_day: lastSeg.endHalfDay,
+          days_count: totalWorkingDays,
           return_date: format(returnDate, 'yyyy-MM-dd'),
           replacement_user_id: replacementId || null,
           reason: reason || null,
           is_mixed: isMixed,
           balance_before: availableConge,
-          balance_conge_used: congeDaysToUse,
-          balance_recuperation_used: recupDaysToUse,
+          balance_conge_used: totalCongeDays,
+          balance_recuperation_used: totalRecupDays,
           is_derogation: isDerogation,
         })
         .select()
@@ -599,18 +628,34 @@ export default function NewRequestPage() {
 
       if (error) throw error
 
+      // Insert leave_request_details (per-day breakdown)
+      if (insertedRequest) {
+        const detailRows = segments.flatMap(seg => {
+          const days = enumerateWorkingDays(seg.startDate, seg.endDate, workingDaysConfig, holidays, seg.startHalfDay, seg.endHalfDay)
+          return days.map(d => ({
+            request_id: insertedRequest.id,
+            date: d.date,
+            type: seg.type,
+            half_day: 'FULL' as const,
+          }))
+        })
+        if (detailRows.length > 0) {
+          await supabase.from('leave_request_details').insert(detailRows)
+        }
+      }
+
       const wasAutoApproved = insertedRequest?.status === 'APPROVED'
 
       // If created on behalf of someone, notify that employee
       if (isOnBehalf && insertedRequest) {
         const parts = []
-        if (congeDaysToUse > 0) parts.push(`${congeDaysToUse}j conge`)
-        if (recupDaysToUse > 0) parts.push(`${recupDaysToUse}j recuperation`)
+        if (totalCongeDays > 0) parts.push(`${totalCongeDays}j conge`)
+        if (totalRecupDays > 0) parts.push(`${totalRecupDays}j recuperation`)
         const typeLabel = parts.join(' + ')
         await supabase.from('notifications').insert({
           user_id: targetUserId,
           title: wasAutoApproved ? 'Demande approuvee automatiquement' : 'Nouvelle demande creee pour vous',
-          message: `${user.full_name} a cree une demande de ${typeLabel} du ${format(new Date(startDate), 'dd/MM/yyyy')} au ${format(new Date(endDate), 'dd/MM/yyyy')} (${workingDays} jours) en votre nom.${wasAutoApproved ? ' La demande a ete approuvee automatiquement.' : ''}`,
+          message: `${user.full_name} a cree une demande de ${typeLabel} du ${format(new Date(overallStart), 'dd/MM/yyyy')} au ${format(new Date(overallEnd), 'dd/MM/yyyy')} (${totalWorkingDays} jours) en votre nom.${wasAutoApproved ? ' La demande a ete approuvee automatiquement.' : ''}`,
           type: 'LEAVE_CREATED',
           related_request_id: insertedRequest.id,
           is_read: false,
@@ -632,6 +677,47 @@ export default function NewRequestPage() {
       toast.error('Erreur lors de la soumission de la demande')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // Signature dialog confirm handler (congé tab only)
+  const handleSignatureConfirm = async (signatureDataUrl: string, saveForFuture: boolean) => {
+    if (!user) return
+    setSignatureLoading(true)
+    try {
+      // If user wants to save signature for future use, upload to storage
+      if (saveForFuture) {
+        // Convert data URL to blob for upload
+        const res = await fetch(signatureDataUrl)
+        const blob = await res.blob()
+        const filePath = `signatures/${user.id}.png`
+
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(filePath, blob, { upsert: true, contentType: 'image/png' })
+
+        if (uploadError) {
+          console.error('Signature upload error:', uploadError)
+          toast.error('Erreur lors de la sauvegarde de la signature')
+        } else {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+          const publicUrl = `${supabaseUrl}/storage/v1/object/public/documents/${filePath}`
+          // Update user record with saved signature URL
+          await supabase
+            .from('utilisateurs')
+            .update({ signature_file: publicUrl })
+            .eq('id', user.id)
+        }
+      }
+
+      // Close dialog and proceed with actual form submission
+      setSignatureDialogOpen(false)
+      await handleSubmit()
+    } catch (err) {
+      console.error('Signature confirm error:', err)
+      toast.error('Erreur lors du traitement de la signature')
+    } finally {
+      setSignatureLoading(false)
     }
   }
 
@@ -975,232 +1061,317 @@ export default function NewRequestPage() {
               )}
             </div>
 
-            {/* Dates */}
-            <Card className="border-border/70">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Periode du conge
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="startDate">Date de debut</Label>
-                    <DatePicker
-                      id="startDate"
-                      value={startDate}
-                      onChange={setStartDate}
-                      min={format(new Date(), 'yyyy-MM-dd')}
-                      placeholder="Date de debut"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="endDate">Date de fin</Label>
-                    <DatePicker
-                      id="endDate"
-                      value={endDate}
-                      onChange={setEndDate}
-                      min={startDate || format(new Date(), 'yyyy-MM-dd')}
-                      placeholder="Date de fin"
-                    />
-                  </div>
-                </div>
+          </div>
+        )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Demi-journee debut</Label>
-                    <div className="flex gap-2">
-                      {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
-                        <button key={hd} type="button"
-                          onClick={() => setStartHalfDay(hd)}
-                          className={cn(
-                            'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
-                            startHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
-                          )}
-                        >{HALF_DAY_LABELS[hd]}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Demi-journee fin</Label>
-                    <div className="flex gap-2">
-                      {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
-                        <button key={hd} type="button"
-                          onClick={() => setEndHalfDay(hd)}
-                          className={cn(
-                            'rounded-lg border px-3 py-1.5 text-xs font-medium transition-all',
-                            endHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
-                          )}
-                        >{HALF_DAY_LABELS[hd]}</button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+        {/* Step 2: Segment Builder */}
+        {currentStep === 2 && (
+          <div key="step-2" className="animate-in fade-in duration-300 space-y-6">
+            {/* Balance reminder bar */}
+            <div className="flex items-center gap-4 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Sun className="h-4 w-4 text-primary" />
+                <span className="text-xs text-muted-foreground">Congé:</span>
+                <span className="text-sm font-semibold">{availableConge}j</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-4 w-4 text-[var(--status-success-text)]" />
+                <span className="text-xs text-muted-foreground">Récup:</span>
+                <span className="text-sm font-semibold">{availableRecup}j</span>
+              </div>
+            </div>
 
-                {startDate && endDate && workingDays > 0 && (() => {
-                  const excludedHolidays = getHolidaysInRange(startDate, endDate, workingDaysConfig, holidays)
-                  const returnDate = nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays)
-                  return (
-                    <>
-                      <div className="status-progress rounded-2xl border p-4">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">
-                              Duree calculee: {workingDays} jours ouvrables
-                            </p>
-                            <p className="mt-1 text-sm">
-                              Date de reprise: {format(returnDate, 'EEEE dd MMMM yyyy', { locale: fr })}
-                            </p>
+            {/* Segment cards */}
+            <div className="space-y-4">
+              {segments.map((seg, index) => {
+                const segDays = seg.workingDays
+                const isRecup = seg.type === 'RECUPERATION'
+                const hasError = isRecup && segDays > MAX_CONSECUTIVE_RECOVERY_DAYS
+                const prevIsRecup = index > 0 && segments[index - 1].type === 'RECUPERATION'
+                const consecutiveError = isRecup && prevIsRecup
+
+                return (
+                  <Card key={seg.id} className={cn(
+                    'border-border/70 transition-all',
+                    hasError || consecutiveError ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/20' : ''
+                  )}>
+                    <CardContent className="pt-5 pb-4 space-y-4">
+                      {/* Header: segment number + type toggle + delete */}
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-muted-foreground">Segment {index + 1}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="flex rounded-xl border border-border overflow-hidden">
+                            {availableRecup > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...segments]
+                                updated[index] = { ...seg, type: 'RECUPERATION' }
+                                setSegments(updated)
+                              }}
+                              className={cn(
+                                'px-3 py-1.5 text-xs font-medium transition-all',
+                                seg.type === 'RECUPERATION'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                  : 'bg-background text-muted-foreground hover:bg-muted/50'
+                              )}
+                            >
+                              Récup
+                            </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...segments]
+                                updated[index] = { ...seg, type: 'CONGE' }
+                                setSegments(updated)
+                              }}
+                              className={cn(
+                                'px-3 py-1.5 text-xs font-medium transition-all',
+                                seg.type === 'CONGE'
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                  : 'bg-background text-muted-foreground hover:bg-muted/50'
+                              )}
+                            >
+                              Congé
+                            </button>
+                          </div>
+                          {segments.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setSegments(segments.filter((_, i) => i !== index))}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Date pickers */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Date de début</Label>
+                          <DatePicker
+                            value={seg.startDate}
+                            onChange={(val) => {
+                              const updated = [...segments]
+                              updated[index] = {
+                                ...seg,
+                                startDate: val,
+                                endDate: seg.endDate && val > seg.endDate ? val : seg.endDate,
+                                workingDays: countWorkingDaysUtil(val, seg.endDate && val <= seg.endDate ? seg.endDate : val, workingDaysConfig, holidays, seg.startHalfDay, seg.endHalfDay)
+                              }
+                              setSegments(updated)
+                            }}
+                            min={index > 0 && segments[index - 1].endDate
+                              ? format(nextWorkingDay(addDays(new Date(segments[index - 1].endDate), 1), workingDaysConfig, holidays), 'yyyy-MM-dd')
+                              : format(new Date(), 'yyyy-MM-dd')}
+                            placeholder="Début"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Date de fin</Label>
+                          <DatePicker
+                            value={seg.endDate}
+                            onChange={(val) => {
+                              const updated = [...segments]
+                              updated[index] = {
+                                ...seg,
+                                endDate: val,
+                                workingDays: countWorkingDaysUtil(seg.startDate, val, workingDaysConfig, holidays, seg.startHalfDay, seg.endHalfDay)
+                              }
+                              setSegments(updated)
+                            }}
+                            min={seg.startDate || format(new Date(), 'yyyy-MM-dd')}
+                            placeholder="Fin"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Half-day selectors */}
+                      {seg.startDate && seg.endDate && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Demi-journée début</Label>
+                            <div className="flex gap-1">
+                              {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
+                                <button key={hd} type="button"
+                                  onClick={() => {
+                                    const updated = [...segments]
+                                    updated[index] = {
+                                      ...seg,
+                                      startHalfDay: hd,
+                                      workingDays: countWorkingDaysUtil(seg.startDate, seg.endDate, workingDaysConfig, holidays, hd, seg.endHalfDay)
+                                    }
+                                    setSegments(updated)
+                                  }}
+                                  className={cn(
+                                    'rounded-lg border px-2 py-1 text-[10px] font-medium transition-all',
+                                    seg.startHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
+                                  )}
+                                >{HALF_DAY_LABELS[hd]}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Demi-journée fin</Label>
+                            <div className="flex gap-1">
+                              {(['FULL', 'MORNING', 'AFTERNOON'] as const).map(hd => (
+                                <button key={hd} type="button"
+                                  onClick={() => {
+                                    const updated = [...segments]
+                                    updated[index] = {
+                                      ...seg,
+                                      endHalfDay: hd,
+                                      workingDays: countWorkingDaysUtil(seg.startDate, seg.endDate, workingDaysConfig, holidays, seg.startHalfDay, hd)
+                                    }
+                                    setSegments(updated)
+                                  }}
+                                  className={cn(
+                                    'rounded-lg border px-2 py-1 text-[10px] font-medium transition-all',
+                                    seg.endHalfDay === hd ? 'border-primary bg-primary/5 text-foreground' : 'border-border/70 text-muted-foreground'
+                                  )}
+                                >{HALF_DAY_LABELS[hd]}</button>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      {excludedHolidays.length > 0 && (
-                        <div className="rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3">
-                          <p className="text-sm font-medium text-[var(--status-success-text)]">
-                            {excludedHolidays.length} jour(s) ferie(s) exclu(s) du decompte :
-                          </p>
-                          <ul className="mt-1.5 space-y-0.5">
-                            {excludedHolidays.map(h => (
-                              <li key={h.id} className="text-sm text-[var(--status-success-text)]">
-                                • {h.name} ({format(new Date(h.date + 'T00:00:00'), 'dd/MM', { locale: fr })})
-                              </li>
-                            ))}
-                          </ul>
+                      )}
+
+                      {/* Working days count */}
+                      {segDays > 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Jours ouvrables</span>
+                          <Badge className={cn(
+                            'text-xs',
+                            isRecup
+                              ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700'
+                              : 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700'
+                          )}>
+                            {segDays}j {isRecup ? 'récupération' : 'congé'}
+                          </Badge>
                         </div>
                       )}
-                    </>
-                  )
-                })()}
-              </CardContent>
-            </Card>
 
-            {/* Balance split controls — only when dates are selected */}
-            {startDate && endDate && workingDays > 0 && (
-              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 space-y-4">
-                <p className="text-sm font-medium text-foreground">
-                  Repartition des {workingDays} jours demandes
-                </p>
+                      {/* Error messages */}
+                      {hasError && (
+                        <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          Maximum {MAX_CONSECUTIVE_RECOVERY_DAYS} jours consécutifs de récupération
+                        </div>
+                      )}
+                      {consecutiveError && (
+                        <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          Insérez au moins 1 jour de congé entre deux blocs de récupération
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
 
-                {/* Recovery days control */}
-                {availableRecup > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <RotateCcw className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
-                        <span className="text-xs sm:text-sm text-muted-foreground">Recuperation</span>
-                        <span className="text-[10px] text-muted-foreground">(max {MAX_CONSECUTIVE_RECOVERY_DAYS}j/demande)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setRecupDaysToUse(Math.max(0, recupDaysToUse - 0.5))}
-                          disabled={recupDaysToUse <= 0}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-accent disabled:opacity-30"
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="w-10 text-center text-sm font-semibold">{recupDaysToUse}j</span>
-                        <button
-                          type="button"
-                          onClick={() => setRecupDaysToUse(Math.min(maxRecupForRequest, recupDaysToUse + 0.5))}
-                          disabled={recupDaysToUse >= maxRecupForRequest}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-accent disabled:opacity-30"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
+              {/* Add segment button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const lastSeg = segments[segments.length - 1]
+                  const defaultType: 'CONGE' | 'RECUPERATION' =
+                    availableRecup <= 0 ? 'CONGE'
+                    : !lastSeg ? 'RECUPERATION'
+                    : lastSeg.type === 'RECUPERATION' && lastSeg.workingDays >= MAX_CONSECUTIVE_RECOVERY_DAYS ? 'CONGE'
+                    : lastSeg.type === 'CONGE' ? 'RECUPERATION'
+                    : 'RECUPERATION'
+
+                  const defaultStart = lastSeg?.endDate
+                    ? format(nextWorkingDay(addDays(new Date(lastSeg.endDate), 1), workingDaysConfig, holidays), 'yyyy-MM-dd')
+                    : format(new Date(), 'yyyy-MM-dd')
+
+                  setSegments([...segments, {
+                    id: crypto.randomUUID(),
+                    type: defaultType,
+                    startDate: defaultStart,
+                    endDate: '',
+                    startHalfDay: 'FULL',
+                    endHalfDay: 'FULL',
+                    workingDays: 0,
+                  }])
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/70 bg-muted/20 px-4 py-4 text-sm font-medium text-muted-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-all"
+              >
+                <Plus className="h-4 w-4" />
+                Ajouter un segment
+              </button>
+            </div>
+
+            {/* Totals bar */}
+            {segments.length > 0 && totalWorkingDays > 0 && (
+              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">Total</span>
+                  <span className="text-sm font-bold text-foreground">{totalWorkingDays}j</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Récupération</span>
+                    <span className={cn('font-semibold', totalRecupDays > availableRecup ? 'text-red-600' : 'text-emerald-600')}>
+                      {totalRecupDays}j (reste {segBalanceAfterRecup}j)
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Congé</span>
+                    <span className={cn('font-semibold', totalCongeDays > availableConge ? 'text-red-600' : 'text-blue-600')}>
+                      {totalCongeDays}j (reste {segBalanceAfterConge}j)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Derogation */}
+                {!segBalanceOkNatural && segCongeInsufficient && !isDerogation && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-amber-800">
+                          Solde congé insuffisant ({roundHalf(totalCongeDays - availableConge)}j en dépassement)
+                        </p>
+                        <p className="text-[11px] text-amber-700 mt-0.5">
+                          Vous pouvez demander une dérogation.
+                        </p>
                       </div>
                     </div>
-                    {nearestExpiration && recupDaysToUse > 0 && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        Recuperation expire le {format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yyyy')} — utilisez-la en priorite
-                      </div>
-                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-amber-400 text-amber-800 hover:bg-amber-100 text-xs h-8"
+                      onClick={() => setIsDerogation(true)}
+                    >
+                      Demander une dérogation
+                    </Button>
                   </div>
                 )}
-
-                {/* Congé days (auto-calculated) */}
-                <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                  <div className="flex items-center gap-2">
-                    <Sun className="h-3.5 w-3.5 text-primary" />
-                    <span className="text-xs sm:text-sm text-muted-foreground">Conge annuel</span>
+                {isDerogation && (
+                  <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50/50 p-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      <p className="text-xs font-medium text-amber-800">Dérogation demandée</p>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-amber-700" onClick={() => setIsDerogation(false)}>
+                      Annuler
+                    </Button>
                   </div>
-                  <span className="text-sm font-semibold">{congeDaysToUse}j</span>
-                </div>
-
-                {/* Inline balance after */}
-                <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Conge apres</span>
-                    <span className={cn('font-semibold', balanceAfterConge >= 0 ? 'text-foreground' : 'text-[var(--status-alert-text)]')}>
-                      {balanceAfterConge}j / {availableConge}j
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Recup. apres</span>
-                    <span className={cn('font-semibold', balanceAfterRecup >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
-                      {balanceAfterRecup}j / {availableRecup}j
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!balanceOkNatural && startDate && endDate && workingDays > 0 && !isDerogation && (
-              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">
-                      Solde insuffisant ({roundHalf(congeDaysToUse - availableConge)}j en depassement)
-                    </p>
-                    <p className="text-xs text-amber-700 mt-1">
-                      Vous pouvez demander une derogation. Les jours en depassement seront deduits de vos droits futurs apres validation par la CPA.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => { setIsDerogation(true); setShowDerogationDialog(false) }}
-                >
-                  Demander une derogation
-                </Button>
-              </div>
-            )}
-
-            {isDerogation && (
-              <div className="rounded-2xl border border-amber-300 bg-amber-50/50 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                    <p className="text-sm font-medium text-amber-800">Derogation demandee</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-amber-700 hover:text-amber-900"
-                    onClick={() => setIsDerogation(false)}
-                  >
-                    Annuler
-                  </Button>
-                </div>
-                <p className="text-xs text-amber-700 mt-1">
-                  {roundHalf(congeDaysToUse - availableConge)}j seront deduits de vos droits futurs.
-                </p>
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* Step 2: Additional Info */}
-        {currentStep === 2 && (
-          <div key="step-2" className="animate-in fade-in duration-300 space-y-6">
+
+        {/* Step 3: Additional Info */}
+        {currentStep === 3 && (
+          <div key="step-3" className="animate-in fade-in duration-300 space-y-6">
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1256,9 +1427,9 @@ export default function NewRequestPage() {
           </div>
         )}
 
-        {/* Step 3: Summary */}
-        {currentStep === 3 && (
-          <div key="step-3" className="animate-in fade-in duration-300 space-y-6">
+        {/* Step 4: Summary */}
+        {currentStep === 4 && (
+          <div key="step-4" className="animate-in fade-in duration-300 space-y-6">
             <Card className="border-border/70">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1279,36 +1450,60 @@ export default function NewRequestPage() {
                   <div className="flex items-center justify-between py-3.5">
                     <span className="text-sm text-muted-foreground">Type de demande</span>
                     <span className="text-sm font-medium text-foreground">
-                      {recupDaysToUse > 0 && congeDaysToUse > 0
-                        ? 'Combine (Conge + Recuperation)'
-                        : recupDaysToUse > 0 ? 'Recuperation' : 'Conge annuel'}
+                      {totalRecupDays > 0 && totalCongeDays > 0
+                        ? 'Combiné (Congé + Récupération)'
+                        : totalRecupDays > 0 ? 'Récupération' : 'Congé annuel'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-3.5">
-                    <span className="text-sm text-muted-foreground">Date de debut</span>
+                    <span className="text-sm text-muted-foreground">Période</span>
                     <span className="text-sm font-medium text-foreground">
-                      {startDate ? format(new Date(startDate), 'EEEE dd MMMM yyyy', { locale: fr }) : '—'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-3.5">
-                    <span className="text-sm text-muted-foreground">Date de fin</span>
-                    <span className="text-sm font-medium text-foreground">
-                      {endDate ? format(new Date(endDate), 'EEEE dd MMMM yyyy', { locale: fr }) : '—'}
+                      {segments.length > 0
+                        ? `${format(new Date(segments[0].startDate), 'dd MMM yyyy', { locale: fr })} → ${format(new Date(segments[segments.length - 1].endDate), 'dd MMM yyyy', { locale: fr })}`
+                        : '—'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-3.5">
                     <span className="text-sm text-muted-foreground">Jours ouvrables</span>
-                    <span className="text-sm font-semibold text-foreground">{workingDays} jours</span>
+                    <span className="text-sm font-semibold text-foreground">{totalWorkingDays} jours</span>
                   </div>
                   <div className="flex items-center justify-between py-3.5">
                     <span className="text-sm text-muted-foreground">Date de reprise</span>
                     <span className="text-sm font-medium text-foreground">
-                      {endDate ? format(nextWorkingDay(addDays(new Date(endDate), 1), workingDaysConfig, holidays), 'EEEE dd MMMM yyyy', { locale: fr }) : '—'}
+                      {segments.length > 0 ? format(nextWorkingDay(addDays(new Date(segments[segments.length - 1].endDate), 1), workingDaysConfig, holidays), 'EEEE dd MMMM yyyy', { locale: fr }) : '—'}
                     </span>
                   </div>
+
+                  {/* Segment breakdown */}
+                  <div className="py-3.5 space-y-2">
+                    <span className="text-sm text-muted-foreground">Segments</span>
+                    <div className="mt-2 space-y-1.5">
+                      {segments.map((seg, i) => (
+                        <div key={seg.id} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                            <Badge className={cn(
+                              'text-[10px] px-2 py-0',
+                              seg.type === 'RECUPERATION'
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : 'bg-blue-100 text-blue-700 border-blue-200'
+                            )}>
+                              {seg.type === 'RECUPERATION' ? 'Récup' : 'Congé'}
+                            </Badge>
+                            <span className="text-xs text-foreground">
+                              {format(new Date(seg.startDate), 'dd MMM', { locale: fr })}
+                              {seg.startDate !== seg.endDate && ` → ${format(new Date(seg.endDate), 'dd MMM', { locale: fr })}`}
+                            </span>
+                          </div>
+                          <span className="text-xs font-medium">{seg.workingDays}j</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   {replacementName && (
                     <div className="flex items-center justify-between py-3.5">
-                      <span className="text-sm text-muted-foreground">Remplacant</span>
+                      <span className="text-sm text-muted-foreground">Remplaçant</span>
                       <span className="text-sm font-medium text-foreground">{replacementName}</span>
                     </div>
                   )}
@@ -1320,7 +1515,7 @@ export default function NewRequestPage() {
                   )}
                   {isOnBehalf && (
                     <div className="flex items-center justify-between py-3.5">
-                      <span className="text-sm text-muted-foreground">Cree par</span>
+                      <span className="text-sm text-muted-foreground">Créé par</span>
                       <span className="text-sm font-medium text-foreground">{user.full_name}</span>
                     </div>
                   )}
@@ -1330,86 +1525,70 @@ export default function NewRequestPage() {
 
             <Card className={cn(
               'border-border/70',
-              balanceOk ? 'bg-[var(--status-success-bg)]/30' : 'bg-[var(--status-alert-bg)]/30'
+              segBalanceOk ? 'bg-[var(--status-success-bg)]/30' : 'bg-[var(--status-alert-bg)]/30'
             )}>
               <CardHeader>
                 <CardTitle className="text-base">Impact sur les soldes {isOnBehalf ? `de ${selectedEmployeeName}` : ''}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {/* Congé section */}
-                {congeDaysToUse > 0 && (
+                {totalCongeDays > 0 && (
                   <>
                     <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                       <Sun className="h-3.5 w-3.5 text-primary" />
-                      Conge annuel
+                      Congé annuel
                     </div>
-                    <div className="flex justify-between text-sm pl-5">
-                      <span className="text-muted-foreground">Acquis (mois {congeAccrual.currentMonth}/12)</span>
-                      <span className="font-medium">{congeAccrual.cumulativeEarned}j</span>
-                    </div>
-                    {(congeUsedDays > 0 || congePendingDays > 0) && (
-                      <div className="flex justify-between text-sm pl-5">
-                        <span className="text-muted-foreground">Deja utilise/en cours</span>
-                        <span className="font-medium">- {congeUsedDays + congePendingDays}j</span>
-                      </div>
-                    )}
                     <div className="flex justify-between text-sm pl-5">
                       <span className="text-muted-foreground">Disponible</span>
                       <span className="font-medium">{availableConge}j</span>
                     </div>
                     <div className="flex justify-between text-sm pl-5">
-                      <span className="text-muted-foreground">Jours conge demandes</span>
-                      <span className="font-medium">- {congeDaysToUse}j</span>
+                      <span className="text-muted-foreground">Jours congé demandés</span>
+                      <span className="font-medium">- {totalCongeDays}j</span>
                     </div>
                     <div className="flex justify-between text-sm pl-5 border-t border-border/30 pt-1">
-                      <span className="font-medium">Solde conge apres</span>
-                      <span className={cn('font-bold', balanceAfterConge >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
-                        {balanceAfterConge}j
+                      <span className="font-medium">Solde congé après</span>
+                      <span className={cn('font-bold', segBalanceAfterConge >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
+                        {segBalanceAfterConge}j
                       </span>
                     </div>
                   </>
                 )}
 
                 {/* Récupération section */}
-                {recupDaysToUse > 0 && (
+                {totalRecupDays > 0 && (
                   <>
-                    <div className={cn('flex items-center gap-2 text-sm font-medium text-foreground', congeDaysToUse > 0 && 'mt-2 pt-3 border-t border-border/50')}>
+                    <div className={cn('flex items-center gap-2 text-sm font-medium text-foreground', totalCongeDays > 0 && 'mt-2 pt-3 border-t border-border/50')}>
                       <RotateCcw className="h-3.5 w-3.5 text-[var(--status-success-text)]" />
-                      Recuperation
+                      Récupération
                     </div>
                     <div className="flex justify-between text-sm pl-5">
                       <span className="text-muted-foreground">Disponible</span>
                       <span className="font-medium">{availableRecup}j</span>
                     </div>
                     <div className="flex justify-between text-sm pl-5">
-                      <span className="text-muted-foreground">Jours recup. demandes</span>
-                      <span className="font-medium">- {recupDaysToUse}j</span>
+                      <span className="text-muted-foreground">Jours récup. demandés</span>
+                      <span className="font-medium">- {totalRecupDays}j</span>
                     </div>
                     <div className="flex justify-between text-sm pl-5 border-t border-border/30 pt-1">
-                      <span className="font-medium">Solde recup. apres</span>
-                      <span className={cn('font-bold', balanceAfterRecup >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
-                        {balanceAfterRecup}j
+                      <span className="font-medium">Solde récup. après</span>
+                      <span className={cn('font-bold', segBalanceAfterRecup >= 0 ? 'text-[var(--status-success-text)]' : 'text-[var(--status-alert-text)]')}>
+                        {segBalanceAfterRecup}j
                       </span>
                     </div>
-                    {nearestExpiration && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 pl-5">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        Prochaine expiration: {format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yyyy')}
-                      </div>
-                    )}
                   </>
                 )}
 
                 {/* Total */}
                 <div className="flex justify-between border-t border-border/50 pt-3 text-sm">
-                  <span className="font-medium text-foreground">Total jours demandes</span>
-                  <span className="font-bold text-foreground">{workingDays}j</span>
+                  <span className="font-medium text-foreground">Total jours demandés</span>
+                  <span className="font-bold text-foreground">{totalWorkingDays}j</span>
                 </div>
 
-                {!balanceOk && (
+                {!segBalanceOk && (
                   <div className="status-rejected rounded-2xl border p-3 mt-2">
                     <p className="text-sm font-medium">
-                      Solde insuffisant ! Veuillez revenir en arriere et ajuster la repartition.
+                      Solde insuffisant ! Veuillez revenir en arrière et ajuster la répartition.
                     </p>
                   </div>
                 )}
@@ -1453,9 +1632,10 @@ export default function NewRequestPage() {
             </Button>
           ) : (
             <Button
-              type="submit"
+              type="button"
               className="h-11 w-full"
-              disabled={isSubmitting || (!balanceOkNatural && !isDerogation) || workingDays <= 0}
+              disabled={isSubmitting || (!segBalanceOkNatural && !isDerogation) || totalWorkingDays <= 0}
+              onClick={() => setSignatureDialogOpen(true)}
             >
               {isSubmitting ? (
                 <>
@@ -1469,6 +1649,16 @@ export default function NewRequestPage() {
           )}
         </div>
       </form>
+
+      <SignatureDialog
+        open={signatureDialogOpen}
+        onClose={() => setSignatureDialogOpen(false)}
+        onConfirm={handleSignatureConfirm}
+        savedSignatureUrl={user.signature_file}
+        mode="employee"
+        title="Votre signature"
+        loading={signatureLoading}
+      />
 
       </>)}
 

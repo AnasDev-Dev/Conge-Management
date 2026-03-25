@@ -28,7 +28,11 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
+import { getCompanyLogo } from '@/lib/company-logos'
 import { PrintLeaveDocument } from '@/components/print-leave-document'
+import { LeaveRequestDetail } from '@/lib/types/database'
+import { groupDetailsIntoSegments, SegmentSummary } from '@/lib/leave-utils'
 
 interface RequestDetail {
   id: number
@@ -67,6 +71,7 @@ interface UserInfo {
   id: string
   full_name: string
   role?: string
+  signature_file?: string | null
 }
 
 export default function RequestDetailPage() {
@@ -74,7 +79,10 @@ export default function RequestDetailPage() {
   const router = useRouter()
   const [request, setRequest] = useState<RequestDetail | null>(null)
   const [approvers, setApprovers] = useState<Record<string, UserInfo>>({})
+  const [segments, setSegments] = useState<SegmentSummary[]>([])
+  const [employeeSignatureUrl, setEmployeeSignatureUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { activeCompany } = useCompanyContext()
   const supabase = createClient()
 
   useEffect(() => {
@@ -98,6 +106,26 @@ export default function RequestDetailPage() {
       if (error) throw error
       setRequest(data)
 
+      // Fetch employee signature
+      if (data.user_id) {
+        const { data: empData } = await supabase
+          .from('utilisateurs')
+          .select('signature_file')
+          .eq('id', data.user_id)
+          .single()
+        if (empData?.signature_file) setEmployeeSignatureUrl(empData.signature_file)
+      }
+
+      // Fetch per-day details for segment display
+      const { data: details } = await supabase
+        .from('leave_request_details')
+        .select('*')
+        .eq('request_id', data.id)
+        .order('date', { ascending: true })
+      if (details && details.length > 0) {
+        setSegments(groupDetailsIntoSegments(details as LeaveRequestDetail[]))
+      }
+
       // Fetch approver/rejector names separately (no FK constraints for these)
       const approverIds = [
         data.approved_by_rp,
@@ -111,7 +139,7 @@ export default function RequestDetailPage() {
         const uniqueIds = [...new Set(approverIds)]
         const { data: users } = await supabase
           .from('utilisateurs')
-          .select('id, full_name, role')
+          .select('id, full_name, role, signature_file')
           .in('id', uniqueIds)
 
         if (users) {
@@ -286,8 +314,8 @@ export default function RequestDetailPage() {
                   <User className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <Image
-                  src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
-                  alt="FRMG"
+                  src={getCompanyLogo(activeCompany?.name)}
+                  alt={activeCompany?.name || 'Logo'}
                   width={22}
                   height={22}
                   className="absolute -bottom-0.5 -right-0.5 h-[22px] w-[22px] rounded-full border-2 border-background bg-white object-contain"
@@ -462,6 +490,39 @@ export default function RequestDetailPage() {
         </Card>
       </div>
 
+      {/* ── Segments breakdown (mixed requests) ── */}
+      {segments.length > 0 && (
+        <Card className="border-border/70">
+          <div className="border-b border-border/50 px-5 py-3.5">
+            <h3 className="text-sm font-semibold text-foreground">Segments de la demande</h3>
+          </div>
+          <CardContent className="p-5">
+            <div className="space-y-2">
+              {segments.map((seg, i) => (
+                <div key={i} className="flex items-center justify-between rounded-xl border border-border/50 px-4 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground font-medium w-4">{i + 1}.</span>
+                    <Badge className={cn(
+                      'text-[10px] px-2 py-0',
+                      seg.type === 'RECUPERATION'
+                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                        : 'bg-blue-100 text-blue-700 border-blue-200'
+                    )}>
+                      {seg.type === 'RECUPERATION' ? 'Récupération' : 'Congé'}
+                    </Badge>
+                    <span className="text-sm text-foreground">
+                      {format(new Date(seg.startDate + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                      {seg.startDate !== seg.endDate && ` → ${format(new Date(seg.endDate + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}`}
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold">{seg.workingDays}j</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Bottom row: Balance + Details side by side ── */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {/* Balance impact */}
@@ -530,7 +591,7 @@ export default function RequestDetailPage() {
 
       {/* Print document — rendered in body via portal, hidden on screen */}
       {request.status === 'APPROVED' && createPortal(
-        <PrintLeaveDocument request={request} approvers={approvers} />,
+        <PrintLeaveDocument request={request} approvers={approvers} employeeSignatureUrl={employeeSignatureUrl} companyName={activeCompany?.name} />,
         document.body
       )}
     </div>

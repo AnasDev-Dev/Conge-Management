@@ -112,7 +112,7 @@ export default function LoginPage() {
             {/* Logos */}
             <div className="mb-10 flex items-center gap-5 rounded-2xl border border-[#a3754a]/10 bg-white/60 px-8 py-5 shadow-sm backdrop-blur-sm">
               <Image
-                src="/logo/imgi_57_NV_LOGO_FRMG_ANG-AR-3-removebg-preview.png"
+                src="/logo/FRMG_LOGO.png"
                 alt="FRMG"
                 width={120}
                 height={100}
@@ -121,7 +121,7 @@ export default function LoginPage() {
               />
               <div className="h-12 w-px bg-[#a3754a]/15" />
               <Image
-                src="/logo/ath_logo.png"
+                src="/logo/ATH_LOGO.png"
                 alt="ATH"
                 width={120}
                 height={100}
