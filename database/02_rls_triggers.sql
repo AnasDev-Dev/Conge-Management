@@ -355,26 +355,48 @@ SET search_path = public
 AS $$
 BEGIN
   IF NEW.status = 'APPROVED'::public.leave_status THEN
-    IF NEW.request_type = 'CONGE' THEN
+    -- CONGE: NO balance deduction (tracked dynamically via calculate_leave_balance)
+    -- RECUPERATION: deduct from utilisateurs + recovery_balance_lots FIFO
+    IF COALESCE(NEW.balance_recuperation_used, 0) > 0 THEN
       UPDATE utilisateurs
-      SET balance_conge = balance_conge - NEW.days_count
+      SET balance_recuperation = GREATEST(balance_recuperation - NEW.balance_recuperation_used, 0)
       WHERE id = NEW.user_id;
-    ELSE
-      UPDATE utilisateurs
-      SET balance_recuperation = balance_recuperation - NEW.days_count
-      WHERE id = NEW.user_id;
+
+      DECLARE
+        v_lot RECORD;
+        v_remaining FLOAT := NEW.balance_recuperation_used;
+      BEGIN
+        FOR v_lot IN
+          SELECT id, remaining_days FROM recovery_balance_lots
+          WHERE user_id = NEW.user_id AND expired = false AND remaining_days > 0
+          ORDER BY expires_at ASC, id ASC
+        LOOP
+          EXIT WHEN v_remaining <= 0;
+          IF v_lot.remaining_days >= v_remaining THEN
+            UPDATE recovery_balance_lots SET remaining_days = remaining_days - v_remaining WHERE id = v_lot.id;
+            v_remaining := 0;
+          ELSE
+            v_remaining := v_remaining - v_lot.remaining_days;
+            UPDATE recovery_balance_lots SET remaining_days = 0 WHERE id = v_lot.id;
+          END IF;
+        END LOOP;
+      END;
     END IF;
 
-    INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
-    VALUES (
-      NEW.user_id,
-      NEW.request_type,
-      -NEW.days_count,
-      'Demande auto-approuvee #' || NEW.id,
-      EXTRACT(YEAR FROM NEW.start_date)::INT,
-      NEW.start_date,
-      NEW.end_date
-    );
+    -- Audit trail (no balance mutation for CONGE)
+    IF COALESCE(NEW.balance_conge_used, 0) > 0 THEN
+      INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
+      VALUES (NEW.user_id, 'CONGE', -NEW.balance_conge_used,
+        'Demande auto-approuvee #' || NEW.id || ' (conge)',
+        EXTRACT(YEAR FROM NEW.start_date)::INT, NEW.start_date, NEW.end_date);
+    END IF;
+
+    IF COALESCE(NEW.balance_recuperation_used, 0) > 0 THEN
+      INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
+      VALUES (NEW.user_id, 'RECUPERATION', -NEW.balance_recuperation_used,
+        'Demande auto-approuvee #' || NEW.id || ' (recuperation)',
+        EXTRACT(YEAR FROM NEW.start_date)::INT, NEW.start_date, NEW.end_date);
+    END IF;
   END IF;
 
   RETURN NEW;

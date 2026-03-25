@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { PageGuard } from '@/components/role-gate'
@@ -41,6 +41,9 @@ import {
   Sun,
   Moon,
   Info,
+  ChevronDown,
+  ChevronRight,
+  Users,
 } from 'lucide-react'
 import { Holiday, WorkingDays } from '@/lib/types/database'
 import { PermissionsManager } from '@/components/permissions-manager'
@@ -56,6 +59,14 @@ interface DepartmentWithDays {
   name: string
   company_id: number | null
   annual_leave_days: number
+}
+
+interface DeptEmployee {
+  id: string
+  full_name: string
+  job_title: string | null
+  annual_leave_days: number | null
+  department_id: number | null
 }
 
 const DAY_LABELS = [
@@ -87,6 +98,13 @@ export default function SettingsPage() {
   const [editDeptId, setEditDeptId] = useState<number | null>(null)
   const [editDeptName, setEditDeptName] = useState('')
   const [deletingDeptId, setDeletingDeptId] = useState<number | null>(null)
+
+  // ─── Employee leave days per department ────────────
+  const [expandedDepts, setExpandedDepts] = useState<Set<number>>(new Set())
+  const [deptEmployees, setDeptEmployees] = useState<Map<number, DeptEmployee[]>>(new Map())
+  const [deptEmpLoading, setDeptEmpLoading] = useState<Set<number>>(new Set())
+  const [empEdits, setEmpEdits] = useState<Map<string, number | null>>(new Map()) // userId -> value (null = inherit)
+  const [savingEmps, setSavingEmps] = useState(false)
 
   // ─── Working days state ───────────────────────────
   const [workingDays, setWorkingDays] = useState<WorkingDays | null>(null)
@@ -212,6 +230,97 @@ export default function SettingsPage() {
     if (!res.ok) { toast.error(data.error || 'Erreur lors de la suppression') }
     else { toast.success('Département supprimé'); setDeptsLoading(true); await loadDepartments(companyId) }
     setDeletingDeptId(null)
+  }
+
+  // ─── Employee leave days per department ────────────
+  const toggleDeptExpand = async (deptId: number) => {
+    const next = new Set(expandedDepts)
+    if (next.has(deptId)) {
+      next.delete(deptId)
+    } else {
+      next.add(deptId)
+      if (!deptEmployees.has(deptId)) {
+        await loadDeptEmployees(deptId)
+      }
+    }
+    setExpandedDepts(next)
+  }
+
+  const loadDeptEmployees = async (deptId: number) => {
+    setDeptEmpLoading(prev => new Set(prev).add(deptId))
+    try {
+      const { data, error } = await supabase
+        .from('utilisateurs')
+        .select('id, full_name, job_title, annual_leave_days, department_id')
+        .eq('department_id', deptId)
+        .eq('is_active', true)
+        .order('full_name')
+      if (error) throw error
+      setDeptEmployees(prev => new Map(prev).set(deptId, (data || []) as DeptEmployee[]))
+    } catch (error) {
+      console.error('Error loading dept employees:', error)
+      toast.error('Erreur lors du chargement des employés')
+    } finally {
+      setDeptEmpLoading(prev => { const n = new Set(prev); n.delete(deptId); return n })
+    }
+  }
+
+  const handleEmpDaysChange = (userId: string, value: string) => {
+    const next = new Map(empEdits)
+    if (value === '') {
+      next.set(userId, null) // inherit from department
+    } else {
+      const parsed = parseFloat(value)
+      if (!isNaN(parsed)) {
+        next.set(userId, Math.max(parsed, 0))
+      }
+    }
+    setEmpEdits(next)
+  }
+
+  const empModifiedCount = useMemo(() => {
+    let count = 0
+    for (const [userId, val] of empEdits) {
+      // Find which department this employee belongs to
+      for (const [, emps] of deptEmployees) {
+        const emp = emps.find(e => e.id === userId)
+        if (emp) {
+          if (val !== emp.annual_leave_days) count++
+          break
+        }
+      }
+    }
+    return count
+  }, [empEdits, deptEmployees])
+
+  const saveEmpDays = async () => {
+    setSavingEmps(true)
+    let ok = 0
+    let fail = 0
+    for (const [userId, val] of empEdits) {
+      // Find the original to compare
+      let original: DeptEmployee | undefined
+      for (const [, emps] of deptEmployees) {
+        original = emps.find(e => e.id === userId)
+        if (original) break
+      }
+      if (!original || val === original.annual_leave_days) continue
+      const { error } = await supabase
+        .from('utilisateurs')
+        .update({ annual_leave_days: val })
+        .eq('id', userId)
+        .select()
+      if (error) { fail++; console.error('Error updating employee:', error) }
+      else { ok++ }
+    }
+    if (ok > 0) toast.success(`${ok} employé(s) mis à jour`)
+    if (fail > 0) toast.error(`${fail} erreur(s)`)
+    setEmpEdits(new Map())
+    // Reload employees for expanded departments
+    for (const deptId of expandedDepts) {
+      await loadDeptEmployees(deptId)
+    }
+    setSavingEmps(false)
   }
 
   // ─── Working Days ─────────────────────────────────
@@ -524,6 +633,15 @@ export default function SettingsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {empModifiedCount > 0 && (
+                <Button onClick={saveEmpDays} disabled={savingEmps} size="sm" variant="outline">
+                  {savingEmps ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                  Employés
+                  <Badge variant="secondary" className="ml-1.5 border border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground text-[10px] px-1.5">
+                    {empModifiedCount}
+                  </Badge>
+                </Button>
+              )}
               {deptModifiedCount > 0 && (
                 <Button onClick={saveDeptDays} disabled={savingDepts} size="sm">
                   {savingDepts ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
@@ -570,13 +688,26 @@ export default function SettingsPage() {
                     const edited = deptEdits.get(dept.id)
                     const displayVal = edited !== undefined ? String(edited) : String(dept.annual_leave_days)
                     const isModified = edited !== undefined && edited !== dept.annual_leave_days
+                    const isExpanded = expandedDepts.has(dept.id)
+                    const employees = deptEmployees.get(dept.id) || []
+                    const isLoadingEmps = deptEmpLoading.has(dept.id)
+                    const colSpan = can('settings.departments') ? 3 : 2
                     return (
-                      <tr key={dept.id} className="group transition-colors hover:bg-accent/40">
+                      <React.Fragment key={dept.id}>
+                      <tr className="group transition-colors hover:bg-accent/40">
                         <td className="border-b border-border/45 px-5 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                              <Building2 className="h-4 w-4 text-primary" />
-                            </div>
+                            <button
+                              onClick={() => toggleDeptExpand(dept.id)}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 transition-colors hover:bg-primary/20"
+                              title={isExpanded ? 'Masquer les employés' : 'Afficher les employés'}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-primary" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-primary" />
+                              )}
+                            </button>
                             {editDeptId === dept.id ? (
                               <div className="flex items-center gap-2">
                                 <Input
@@ -594,7 +725,15 @@ export default function SettingsPage() {
                                 </Button>
                               </div>
                             ) : (
-                              <span className="text-sm font-semibold text-foreground">{dept.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-foreground">{dept.name}</span>
+                                {employees.length > 0 && (
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                    <Users className="mr-1 h-3 w-3" />
+                                    {employees.length}
+                                  </Badge>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -644,6 +783,92 @@ export default function SettingsPage() {
                           </td>
                         )}
                       </tr>
+                      {/* ─── Employee sub-rows ─────────────────── */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={colSpan} className="border-b border-border/45 bg-muted/15 px-0 py-0">
+                            {isLoadingEmps ? (
+                              <div className="flex items-center justify-center gap-2 py-6">
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                <span className="text-xs text-muted-foreground">Chargement des employés...</span>
+                              </div>
+                            ) : employees.length === 0 ? (
+                              <div className="flex items-center justify-center gap-2 py-6">
+                                <Users className="h-4 w-4 text-muted-foreground/40" />
+                                <span className="text-xs text-muted-foreground">Aucun employé dans ce département</span>
+                              </div>
+                            ) : (
+                              <div className="px-5 py-3">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                    Employés — Jours/an
+                                  </span>
+                                </div>
+                                <div className="space-y-1.5">
+                                  {employees.map((emp) => {
+                                    const empEdit = empEdits.get(emp.id)
+                                    const hasEdit = empEdits.has(emp.id)
+                                    const currentVal = hasEdit ? empEdit : emp.annual_leave_days
+                                    const isInherited = currentVal === null || currentVal === undefined
+                                    const inputVal = hasEdit
+                                      ? (empEdit === null ? '' : String(empEdit))
+                                      : (emp.annual_leave_days !== null ? String(emp.annual_leave_days) : '')
+                                    const isEmpModified = hasEdit && empEdit !== emp.annual_leave_days
+                                    return (
+                                      <div
+                                        key={emp.id}
+                                        className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-background/60"
+                                      >
+                                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/5 text-xs font-medium text-primary/70">
+                                            {emp.full_name?.charAt(0)?.toUpperCase() || '?'}
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-medium text-foreground">{emp.full_name}</p>
+                                            {emp.job_title && (
+                                              <p className="truncate text-[11px] text-muted-foreground">{emp.job_title}</p>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            type="number"
+                                            step="0.5"
+                                            min="0"
+                                            max="60"
+                                            value={inputVal}
+                                            placeholder={String(dept.annual_leave_days)}
+                                            onChange={(e) => handleEmpDaysChange(emp.id, e.target.value)}
+                                            className={`h-8 w-20 text-center text-sm ${
+                                              isEmpModified
+                                                ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30'
+                                                : isInherited
+                                                ? 'border-border/40 text-muted-foreground italic'
+                                                : 'border-border/60'
+                                            }`}
+                                          />
+                                          {isInherited && !isEmpModified && (
+                                            <span className="whitespace-nowrap text-[10px] italic text-muted-foreground/70">
+                                              Hérite du dept.
+                                            </span>
+                                          )}
+                                          {isEmpModified && (
+                                            <Badge className="border-0 bg-emerald-100 text-emerald-700 text-[10px] px-1.5">
+                                              modifié
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>

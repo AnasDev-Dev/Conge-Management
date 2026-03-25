@@ -23,7 +23,7 @@ import { fr } from 'date-fns/locale'
 
 type EmployeeWithDept = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'job_title' | 'hire_date' | 'balance_conge' | 'department_id'
+  'id' | 'full_name' | 'job_title' | 'hire_date' | 'date_anciennete' | 'balance_conge' | 'department_id'
 > & {
   departments: { name: string; annual_leave_days: number } | null
 }
@@ -59,7 +59,7 @@ export default function BalanceInitPage() {
       const currentYear = new Date().getFullYear()
       let empQuery = supabase
         .from('utilisateurs')
-        .select('id, full_name, job_title, hire_date, balance_conge, department_id, departments(name, annual_leave_days)')
+        .select('id, full_name, job_title, hire_date, date_anciennete, balance_conge, department_id, departments(name, annual_leave_days)')
         .eq('is_active', true)
         .order('full_name')
       if (companyId) empQuery = empQuery.eq('company_id', companyId)
@@ -162,7 +162,7 @@ export default function BalanceInitPage() {
     const map = new Map<string, ReturnType<typeof calculateSeniority>>()
     for (const emp of employees) {
       const deptDays = emp.departments?.annual_leave_days
-      map.set(emp.id, calculateSeniority(emp.hire_date, deptDays))
+      map.set(emp.id, calculateSeniority(emp.hire_date, deptDays, null, emp.date_anciennete))
     }
     return map
   }, [employees])
@@ -205,7 +205,7 @@ export default function BalanceInitPage() {
           Reports & Soldes
         </h1>
         <p className="mt-1 text-xs text-muted-foreground sm:text-sm md:text-base">
-          Saisissez le solde initial de l&apos;année précédente. Le droit annuel est calculé automatiquement depuis le département.
+          Saisissez le solde antérieur de l&apos;année précédente. La dotation annuelle est calculée automatiquement depuis le département.
         </p>
       </div>
 
@@ -296,11 +296,11 @@ export default function BalanceInitPage() {
                             </p>
                           </div>
                           <div className="rounded-lg bg-violet-50/60 px-2 py-1.5 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/20 dark:ring-violet-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Droit/an</p>
+                            <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Dotation annuelle</p>
                             <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">{seniority.totalEntitlement} j</p>
                           </div>
                           <div className="rounded-lg bg-amber-50/60 px-2 py-1.5 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/20 dark:ring-amber-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-amber-500 dark:text-amber-400">Solde initial</p>
+                            <p className="text-[9px] uppercase tracking-wide text-amber-500 dark:text-amber-400">Solde antérieur</p>
                             {canEditBalance ? (
                               <Input
                                 type="number"
@@ -348,8 +348,8 @@ export default function BalanceInitPage() {
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold">Département</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold">Embauche</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Ancienneté</th>
-                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Droit/an</th>
-                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Solde initial</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Dotation annuelle</th>
+                    <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Solde antérieur</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">/mois</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Cumulé</th>
                     <th className="whitespace-nowrap border-b border-border/50 bg-muted/80 backdrop-blur-sm px-4 py-3 font-semibold text-center">Disponible</th>
@@ -372,9 +372,20 @@ export default function BalanceInitPage() {
                             {emp.departments?.name || '—'}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-sm text-muted-foreground align-middle">
+                        <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 align-middle">
                           {emp.hire_date
-                            ? format(new Date(emp.hire_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })
+                            ? (
+                              <div>
+                                <p className="text-sm text-muted-foreground leading-tight">
+                                  {format(new Date(emp.hire_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                                </p>
+                                {emp.date_anciennete && emp.date_anciennete !== emp.hire_date && (
+                                  <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-tight mt-0.5">
+                                    Anc. {format(new Date(emp.date_anciennete + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                                  </p>
+                                )}
+                              </div>
+                            )
                             : <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20">Non renseignée</span>
                           }
                         </td>

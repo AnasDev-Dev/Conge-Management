@@ -609,6 +609,13 @@ export default function ValidationsPage() {
             <Badge className={`text-[10px] px-1.5 py-0 ${getTypeBadgeClass(request.request_type)}`}>
               {getTypeLabel(request.request_type)}
             </Badge>
+            {request.is_derogation && (
+              <Badge className="text-[10px] px-1.5 py-0 border-amber-300 bg-amber-50 text-amber-700">
+                Dérogation · {request.balance_conge_used != null && request.balance_before != null
+                  ? `${Math.max(request.balance_conge_used - request.balance_before, 0)}j`
+                  : `${request.days_count}j`}
+              </Badge>
+            )}
             <span className="text-xs font-medium text-foreground">
               {request.days_count}j
             </span>

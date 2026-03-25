@@ -67,6 +67,9 @@ export interface Utilisateur {
   city: string | null
   gender: string | null
   legacy_profile_id: number | null
+  superior_id: string | null
+  date_anciennete: string | null
+  annual_leave_days: number | null
   is_signatory: boolean
   signatory_type: string | null
   signature_file: string | null
@@ -102,6 +105,8 @@ export interface LeaveRequest {
   approved_at_rp: string | null
   approved_at_tg: string | null
   approved_at_de: string | null
+  is_derogation: boolean
+  derogation_approved_by: string | null
   rejected_by: string | null
   rejected_at: string | null
   rejection_reason: string | null
@@ -132,6 +137,8 @@ export interface Notification {
   related_request_id: number | null
   related_mission_id: number | null
   related_recovery_id: number | null
+  related_exceptional_claim_id: number | null
+  related_sick_leave_id: number | null
   is_read: boolean
   created_at: string
 }
@@ -199,6 +206,7 @@ export interface RecoveryRequest {
   work_type: RecoveryWorkType
   period: RecoveryPeriod
   reason: string | null
+  mission_request_id: number | null
   status: 'PENDING' | 'VALIDATED' | 'REJECTED'
   validated_by: string | null
   validated_at: string | null
@@ -311,4 +319,53 @@ export interface LeaveRequestWithRelations extends LeaveRequest {
   approver_tg?: Utilisateur
   approver_de?: Utilisateur
   rejector?: Utilisateur
+}
+
+// New Requirements — Exceptional Leave Types
+export interface ExceptionalLeaveType {
+  id: number
+  company_id: number | null
+  name: string
+  description: string | null
+  days_granted: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ExceptionalLeaveClaim {
+  id: number
+  user_id: string
+  exceptional_leave_type_id: number | null
+  autre_type_name: string | null
+  claim_date: string
+  start_date: string | null
+  end_date: string | null
+  days_count: number | null
+  days_granted: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ExceptionalLeaveClaimWithRelations extends ExceptionalLeaveClaim {
+  user?: Utilisateur
+  exceptional_leave_type?: ExceptionalLeaveType
+}
+
+export interface SickLeave {
+  id: number
+  user_id: string
+  start_date: string
+  end_date: string
+  days_count: number
+  reason: string | null
+  certificate_url: string | null
+  year: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SickLeaveWithRelations extends SickLeave {
+  user?: Utilisateur
 }

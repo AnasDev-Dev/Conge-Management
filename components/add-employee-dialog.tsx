@@ -60,6 +60,8 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
+  const [dateAnciennete, setDateAnciennete] = useState('')
+  const [annualLeaveDays, setAnnualLeaveDays] = useState('')
 
   const filteredDepartments = useMemo(
     () => (companyId ? departments.filter((d) => String(d.company_id) === companyId) : departments),
@@ -100,6 +102,8 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
     setAddress('')
     setCity('')
     setCategoryId('')
+    setDateAnciennete('')
+    setAnnualLeaveDays('')
   }
 
   async function handleSubmit() {
@@ -150,6 +154,8 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
       if (rib.trim()) payload.rib = rib.trim()
       if (address.trim()) payload.address = address.trim()
       if (city.trim()) payload.city = city.trim()
+      if (dateAnciennete) payload.date_anciennete = dateAnciennete
+      if (annualLeaveDays !== '') payload.annual_leave_days = parseFloat(annualLeaveDays)
 
       const res = await fetch('/api/employees', {
         method: 'POST',
@@ -320,13 +326,31 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
             </div>
           </div>
 
-          {/* Matricule */}
+          {/* Date d'ancienneté */}
+          <div className="space-y-1.5">
+            <Label htmlFor="dateAnciennete">Date d&apos;ancienneté</Label>
+            <Input id="dateAnciennete" type="date" value={dateAnciennete} onChange={(e) => setDateAnciennete(e.target.value)} />
+            <p className="text-muted-foreground text-xs">Si différente de la date d&apos;embauche</p>
+          </div>
+
+          {/* Matricule & Annual leave days */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="matricule">Matricule</Label>
               <Input id="matricule" value={matricule} onChange={(e) => setMatricule(e.target.value)} />
             </div>
-            <div className="space-y-1.5" />
+            <div className="space-y-1.5">
+              <Label htmlFor="annualLeaveDays">Jours de congé annuel</Label>
+              <Input
+                id="annualLeaveDays"
+                type="number"
+                step="0.5"
+                min="0"
+                value={annualLeaveDays}
+                onChange={(e) => setAnnualLeaveDays(e.target.value)}
+                placeholder="Hérite du département"
+              />
+            </div>
           </div>
 
           {/* Administrative */}

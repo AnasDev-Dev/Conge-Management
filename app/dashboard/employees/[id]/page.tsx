@@ -29,6 +29,8 @@ type EmployeeDetails = Pick<
   rib?: string | null
   address?: string | null
   city?: string | null
+  date_anciennete?: string | null
+  annual_leave_days?: number | null
   departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
 }
 
@@ -46,6 +48,7 @@ export default function EmployeeDetailsPage() {
   const params = useParams<{ id: string }>()
   const [employee, setEmployee] = useState<EmployeeDetails | null>(null)
   const [requests, setRequests] = useState<RequestDetails[]>([])
+  const [chefService, setChefService] = useState<{ full_name: string; job_title: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -57,7 +60,7 @@ export default function EmployeeDetailsPage() {
         await Promise.all([
           supabase
             .from('utilisateurs')
-            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, birth_date, gender, matricule, company_id, department_id, category_id, cin, cnss, rib, address, city, departments(annual_leave_days)')
+            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, birth_date, gender, matricule, company_id, department_id, category_id, cin, cnss, rib, address, city, date_anciennete, annual_leave_days, departments(annual_leave_days)')
             .eq('id', employeeId)
             .single(),
           supabase
@@ -72,6 +75,20 @@ export default function EmployeeDetailsPage() {
 
       setEmployee(employeeData as EmployeeDetails)
       setRequests((requestData || []) as RequestDetails[])
+
+      // Fetch CHEF_SERVICE of the same department as the superior
+      if (employeeData?.department_id) {
+        const { data: chefData } = await supabase
+          .from('utilisateurs')
+          .select('full_name, job_title')
+          .eq('department_id', employeeData.department_id)
+          .eq('role', 'CHEF_SERVICE')
+          .eq('is_active', true)
+          .neq('id', employeeId)
+          .limit(1)
+          .single()
+        if (chefData) setChefService(chefData)
+      }
     } catch (error) {
       console.error('Error loading employee details:', error)
     } finally {
@@ -204,7 +221,7 @@ export default function EmployeeDetailsPage() {
               <div className="space-y-3">
                 <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
                   <p className="text-xs text-muted-foreground">Solde congé</p>
-                  <p className="mt-1 text-2xl font-bold text-primary">{accrual.availableNow}j</p>
+                  <p className={`mt-1 text-2xl font-bold ${accrual.availableNow < 0 ? 'text-red-500' : 'text-primary'}`}>{accrual.availableNow}j</p>
                   {(congeUsed > 0 || congePending > 0) && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       Consommé: {roundHalf(congeUsed + congePending)}j
@@ -270,6 +287,14 @@ export default function EmployeeDetailsPage() {
                   </p>
                 </div>
               )}
+              {employee.date_anciennete && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Date d&apos;ancienneté</p>
+                  <p className="font-medium mt-1">
+                    {format(new Date(employee.date_anciennete), 'dd MMMM yyyy', { locale: fr })}
+                  </p>
+                </div>
+              )}
               {employee.birth_date && (
                 <div>
                   <p className="text-sm text-muted-foreground">Date de naissance</p>
@@ -283,9 +308,18 @@ export default function EmployeeDetailsPage() {
                   <p className="text-sm text-muted-foreground">Ancienneté</p>
                   <p className="font-medium mt-1">{Math.floor(seniority.yearsOfService)} an(s)</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Droit annuel: {seniority.totalEntitlement} jours
+                    Dotation annuelle: {seniority.totalEntitlement} jours
                     {seniority.bonusDays > 0 && ` (dont ${seniority.bonusDays} bonus ancienneté)`}
                   </p>
+                </div>
+              )}
+              {chefService && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Responsable (N+1)</p>
+                  <p className="font-medium mt-1">{chefService.full_name}</p>
+                  {chefService.job_title && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{chefService.job_title}</p>
+                  )}
                 </div>
               )}
             </div>

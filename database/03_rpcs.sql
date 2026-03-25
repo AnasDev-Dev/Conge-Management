@@ -115,7 +115,7 @@ BEGIN
     v_field, v_field
   ) USING v_next_status, p_approver_id, p_request_id;
 
-  -- On final approval: recalculate days, deduct balance, record history
+  -- On final approval: recalculate days, deduct RECUPERATION only, record audit trail
   IF v_next_status = 'APPROVED' THEN
     SELECT * INTO v_request_user FROM utilisateurs WHERE id = v_request.user_id;
     v_company_id := COALESCE(v_request_user.company_id, (SELECT id FROM companies LIMIT 1));
@@ -124,27 +124,23 @@ BEGIN
     v_days := count_working_days(v_request.start_date, v_request.end_date, v_company_id);
     UPDATE leave_requests SET days_count = v_days WHERE id = p_request_id;
 
+    -- *** CONGE: audit trail ONLY — NO balance_conge deduction ***
+    -- (balance is computed dynamically by calculate_leave_balance)
     IF v_request.request_type = 'CONGE' THEN
-      v_balance_field := 'balance_conge';
+      INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
+      VALUES (v_request.user_id, 'CONGE', -v_days,
+        'Approbation demande #' || p_request_id || ' (conge)',
+        EXTRACT(YEAR FROM v_request.start_date)::INT, v_request.start_date, v_request.end_date);
     ELSE
-      v_balance_field := 'balance_recuperation';
+      -- RECUPERATION: deduct from balance
+      UPDATE utilisateurs SET balance_recuperation = GREATEST(balance_recuperation - v_days, 0)
+      WHERE id = v_request.user_id;
+
+      INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
+      VALUES (v_request.user_id, 'RECUPERATION', -v_days,
+        'Approbation demande #' || p_request_id || ' (recuperation)',
+        EXTRACT(YEAR FROM v_request.start_date)::INT, v_request.start_date, v_request.end_date);
     END IF;
-
-    EXECUTE format(
-      'UPDATE utilisateurs SET %I = GREATEST(%I - $1, 0) WHERE id = $2',
-      v_balance_field, v_balance_field
-    ) USING v_days, v_request.user_id;
-
-    INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
-    VALUES (
-      v_request.user_id,
-      v_request.request_type,
-      -v_days,
-      'Demande approuvee #' || p_request_id,
-      EXTRACT(YEAR FROM v_request.start_date)::INT,
-      v_request.start_date,
-      v_request.end_date
-    );
   END IF;
 
   RETURN (SELECT to_jsonb(lr.*) FROM leave_requests lr WHERE lr.id = p_request_id);
@@ -282,28 +278,22 @@ BEGIN
         RAISE EXCEPTION 'Seul l''approbateur ou un admin peut annuler cette validation';
       END IF;
 
-      -- Reverse balance deduction
+      -- *** CONGE: audit trail ONLY — NO balance_conge restoration ***
       IF v_request.request_type = 'CONGE' THEN
-        v_balance_field := 'balance_conge';
+        INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
+        VALUES (v_request.user_id, 'CONGE', v_request.days_count,
+          'Annulation approbation demande #' || p_request_id || ' (conge)',
+          EXTRACT(YEAR FROM v_request.start_date)::INT, v_request.start_date, v_request.end_date);
       ELSE
-        v_balance_field := 'balance_recuperation';
+        -- RECUPERATION: restore balance
+        UPDATE utilisateurs SET balance_recuperation = balance_recuperation + v_request.days_count
+        WHERE id = v_request.user_id;
+
+        INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
+        VALUES (v_request.user_id, 'RECUPERATION', v_request.days_count,
+          'Annulation approbation demande #' || p_request_id || ' (recuperation)',
+          EXTRACT(YEAR FROM v_request.start_date)::INT, v_request.start_date, v_request.end_date);
       END IF;
-
-      EXECUTE format(
-        'UPDATE utilisateurs SET %I = %I + $1 WHERE id = $2',
-        v_balance_field, v_balance_field
-      ) USING v_request.days_count, v_request.user_id;
-
-      INSERT INTO leave_balance_history (user_id, type, amount, reason, year, date_from, date_to)
-      VALUES (
-        v_request.user_id,
-        v_request.request_type,
-        v_request.days_count,
-        'Annulation approbation demande #' || p_request_id,
-        EXTRACT(YEAR FROM v_request.start_date)::INT,
-        v_request.start_date,
-        v_request.end_date
-      );
     ELSE
       RAISE EXCEPTION 'La demande #% est au statut %, impossible d''annuler', p_request_id, v_request.status;
   END CASE;

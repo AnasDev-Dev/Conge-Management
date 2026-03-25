@@ -326,21 +326,31 @@ export interface SeniorityInfo {
 }
 
 /**
- * Moroccan law entitlement based on hire date.
- * Uses jours ouvrables: 18 days/year base + 1.5/5yr seniority, max 30.
- * Supports department-based annual leave days.
+ * Moroccan law entitlement based on seniority date.
+ * Uses jours ouvrables: base days/year + 1.5/5yr seniority bonus, max 30.
+ * Priority: employee override > department default > 18.
+ * Seniority calc uses date_anciennete if available, otherwise hire_date.
  */
-export function calculateSeniority(hireDateStr: string | null, deptAnnualDays?: number): SeniorityInfo {
-  const baseDays = deptAnnualDays ?? 18 // department-based or default (Article 231)
+export function calculateSeniority(
+  hireDateStr: string | null,
+  deptAnnualDays?: number,
+  employeeAnnualDays?: number | null,
+  dateAncienneteStr?: string | null
+): SeniorityInfo {
+  // Simple priority: employee override > department > default 18
+  const baseDays = employeeAnnualDays ?? deptAnnualDays ?? 18
   const maxDays = 30  // max jours ouvrables (Article 232)
 
-  if (!hireDateStr) {
+  // Use date_anciennete for seniority calculation, fallback to hire_date
+  const seniorityDateStr = dateAncienneteStr || hireDateStr
+
+  if (!seniorityDateStr) {
     return { yearsOfService: 0, seniorityPeriods: 0, baseDays, bonusDays: 0, totalEntitlement: baseDays }
   }
 
-  const hireDate = new Date(hireDateStr + 'T00:00:00')
+  const seniorityDate = new Date(seniorityDateStr + 'T00:00:00')
   const now = new Date()
-  const diffMs = now.getTime() - hireDate.getTime()
+  const diffMs = now.getTime() - seniorityDate.getTime()
   const yearsOfService = diffMs / (365.25 * 24 * 60 * 60 * 1000)
   const seniorityPeriods = Math.floor(Math.max(yearsOfService, 0) / 5)
   const bonusDays = seniorityPeriods * 1.5

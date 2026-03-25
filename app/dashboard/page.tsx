@@ -246,7 +246,7 @@ export default function DashboardPage() {
                 const carryOver = roundHalf(balanceInfo.carry_over)
                 return (
                   <>
-                    <p className="text-lg font-bold leading-tight sm:text-xl">
+                    <p className={`text-lg font-bold leading-tight sm:text-xl ${balanceInfo.available_now < 0 ? 'text-red-500' : ''}`}>
                       {roundHalf(balanceInfo.available_now)}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
                     </p>
                     <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">

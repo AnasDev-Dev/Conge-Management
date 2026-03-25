@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus } from 'lucide-react'
+import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus, Heart, Gift } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot } from '@/lib/types/database'
 import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
@@ -35,7 +36,13 @@ type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'bala
   dept_annual_leave_days?: number
 }
 type Colleague = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'department_id'>
-type Tab = 'conge' | 'mission'
+type Tab = 'conge' | 'exceptionnel' | 'maladie' | 'mission'
+
+type ExceptionalLeaveType = {
+  id: string
+  name: string
+  days_granted: number
+}
 
 const TOTAL_STEPS = 3
 
@@ -83,6 +90,26 @@ export default function NewRequestPage() {
   const [colleagues, setColleagues] = useState<Colleague[]>([])
   const [isSubmittingMission, setIsSubmittingMission] = useState(false)
 
+  // --- Conge Exceptionnel form state ---
+  const [exceptionalTypes, setExceptionalTypes] = useState<ExceptionalLeaveType[]>([])
+  const [selectedExceptionalTypeId, setSelectedExceptionalTypeId] = useState('')
+  const [isAutreType, setIsAutreType] = useState(false)
+  const [autreTypeName, setAutreTypeName] = useState('')
+  const [exceptionalStartDate, setExceptionalStartDate] = useState('')
+  const [exceptionalEndDate, setExceptionalEndDate] = useState('')
+  const [exceptionalNotes, setExceptionalNotes] = useState('')
+  const [isSubmittingExceptionnel, setIsSubmittingExceptionnel] = useState(false)
+
+  // --- Maladie form state ---
+  const [maladieStartDate, setMaladieStartDate] = useState('')
+  const [maladieEndDate, setMaladieEndDate] = useState('')
+  const [maladieReason, setMaladieReason] = useState('')
+  const [maladieCertificateUrl, setMaladieCertificateUrl] = useState('')
+  const [maladieCertificateFile, setMaladieCertificateFile] = useState<File | null>(null)
+  const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
+  const [maladieSickDaysUsed, setMaladieSickDaysUsed] = useState(0)
+  const [isSubmittingMaladie, setIsSubmittingMaladie] = useState(false)
+
   // Holiday-aware day counting
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [workingDaysConfig, setWorkingDaysConfig] = useState<WorkingDays>({
@@ -104,6 +131,10 @@ export default function NewRequestPage() {
   // Recovery/Congé split
   const [recupDaysToUse, setRecupDaysToUse] = useState(0)
   const [recoveryLots, setRecoveryLots] = useState<RecoveryBalanceLot[]>([])
+
+  // Derogation: allow submit when balance is insufficient (CPA override)
+  const [isDerogation, setIsDerogation] = useState(false)
+  const [showDerogationDialog, setShowDerogationDialog] = useState(false)
 
   // Department annual leave days for current user (for self-service requests)
   const [userDeptDays, setUserDeptDays] = useState<number | null>(null)
@@ -166,6 +197,37 @@ export default function NewRequestPage() {
     const deptId = targetEmployee?.department_id ?? user.department_id ?? undefined
     fetchWorkingDays(companyId, deptId).then(setWorkingDaysConfig)
   }, [targetEmployee?.department_id])
+
+  // Fetch exceptional leave types for current company
+  useEffect(() => {
+    if (!activeCompany?.id) return
+    const fetchExceptionalTypes = async () => {
+      const { data, error } = await supabase
+        .from('exceptional_leave_types')
+        .select('id, name, days_granted')
+        .eq('company_id', activeCompany.id)
+        .order('name')
+      if (!error && data) setExceptionalTypes(data as ExceptionalLeaveType[])
+    }
+    fetchExceptionalTypes()
+  }, [activeCompany?.id])
+
+  // Fetch sick days used this year for current user
+  useEffect(() => {
+    if (!user) return
+    const currentYear = new Date().getFullYear()
+    const fetchSickDays = async () => {
+      const { data, error } = await supabase
+        .from('sick_leaves')
+        .select('days_count')
+        .eq('user_id', user.id)
+        .eq('year', currentYear)
+      if (!error && data) {
+        setMaladieSickDaysUsed(data.reduce((sum, r) => sum + (r.days_count || 0), 0))
+      }
+    }
+    fetchSickDays()
+  }, [user?.id])
 
   // Fetch used/pending CONGE days + recovery lots for the target employee
   useEffect(() => {
@@ -250,6 +312,129 @@ export default function NewRequestPage() {
     }
   }
 
+  // Computed values for new tabs
+  const selectedExceptionalType = exceptionalTypes.find(t => String(t.id) === selectedExceptionalTypeId)
+  const exceptionalWorkingDays = countWorkingDaysUtil(exceptionalStartDate, exceptionalEndDate, workingDaysConfig, holidays)
+  const exceptionalGrantedDays = selectedExceptionalType?.days_granted ?? 3
+  const maladieWorkingDays = countWorkingDaysUtil(maladieStartDate, maladieEndDate, workingDaysConfig, holidays)
+  const maladieSickDaysRemaining = 3 - maladieSickDaysUsed
+  const maladieWouldExceed = maladieWorkingDays + maladieSickDaysUsed > 3
+
+  const handleExceptionnelSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    if (!isAutreType && (!selectedExceptionalTypeId || !selectedExceptionalType)) return
+    if (isAutreType && !autreTypeName.trim()) { toast.error('Veuillez preciser le type de conge'); return }
+    if (!exceptionalStartDate || !exceptionalEndDate) { toast.error('Veuillez selectionner les dates'); return }
+    if (exceptionalWorkingDays <= 0) { toast.error('La periode selectionnee ne contient aucun jour ouvre'); return }
+    if (exceptionalWorkingDays > exceptionalGrantedDays) { toast.error(`Le conge exceptionnel est limite a ${exceptionalGrantedDays} jours maximum`); return }
+    setIsSubmittingExceptionnel(true)
+    try {
+      const notesParts: string[] = []
+      if (exceptionalNotes.trim()) notesParts.push(exceptionalNotes.trim())
+
+      const { error } = await supabase
+        .from('exceptional_leave_claims')
+        .insert({
+          user_id: user.id,
+          exceptional_leave_type_id: isAutreType ? null : Number(selectedExceptionalTypeId),
+          autre_type_name: isAutreType ? autreTypeName.trim() : null,
+          start_date: exceptionalStartDate,
+          end_date: exceptionalEndDate,
+          days_count: exceptionalWorkingDays,
+          days_granted: Math.min(exceptionalWorkingDays, exceptionalGrantedDays),
+          notes: notesParts.join(' | ') || null,
+          claim_date: exceptionalStartDate,
+        })
+      if (error) throw error
+
+      toast.success('Demande de conge exceptionnel soumise avec succes !')
+      setSelectedExceptionalTypeId('')
+      setIsAutreType(false)
+      setAutreTypeName('')
+      setExceptionalStartDate('')
+      setExceptionalEndDate('')
+      setExceptionalNotes('')
+    } catch (error) {
+      console.error('Error submitting exceptional leave:', error)
+      toast.error('Erreur lors de la soumission de la demande')
+    } finally {
+      setIsSubmittingExceptionnel(false)
+    }
+  }
+
+  const handleCertificateUpload = async (file: File): Promise<string | null> => {
+    if (!user) return null
+    setIsUploadingCertificate(true)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf'
+      const allowed = ['pdf', 'png', 'jpg', 'jpeg', 'webp']
+      if (!allowed.includes(ext)) {
+        toast.error('Format non supporte. Utilisez PDF, PNG, JPG ou WEBP.')
+        return null
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Le fichier ne doit pas depasser 5 Mo.')
+        return null
+      }
+      const fileName = `sick-certificates/${user.id}/${Date.now()}.${ext}`
+      const { error } = await supabase.storage
+        .from('documents')
+        .upload(fileName, file, { upsert: false })
+      if (error) throw error
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+      return `${supabaseUrl}/storage/v1/object/public/documents/${fileName}`
+    } catch (err) {
+      console.error('Certificate upload error:', err)
+      toast.error('Erreur lors du telechargement du certificat')
+      return null
+    } finally {
+      setIsUploadingCertificate(false)
+    }
+  }
+
+  const handleMaladieSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    if (maladieWorkingDays <= 0) { toast.error('La date de fin doit etre apres la date de debut'); return }
+    if (maladieWouldExceed) { toast.error('Vous depasseriez le quota de 3 jours maladie par an'); return }
+    setIsSubmittingMaladie(true)
+    try {
+      // Upload certificate file if provided
+      let certificateUrl = maladieCertificateUrl.trim() || null
+      if (maladieCertificateFile) {
+        const uploadedUrl = await handleCertificateUpload(maladieCertificateFile)
+        if (uploadedUrl) certificateUrl = uploadedUrl
+      }
+
+      const currentYear = new Date().getFullYear()
+      const { error } = await supabase
+        .from('sick_leaves')
+        .insert({
+          user_id: user.id,
+          start_date: maladieStartDate,
+          end_date: maladieEndDate,
+          days_count: maladieWorkingDays,
+          reason: maladieReason.trim() || null,
+          certificate_url: certificateUrl,
+          year: currentYear,
+        })
+      if (error) throw error
+      toast.success('Demande de conge maladie soumise avec succes !')
+      setMaladieStartDate('')
+      setMaladieEndDate('')
+      setMaladieReason('')
+      setMaladieCertificateUrl('')
+      setMaladieCertificateFile(null)
+      setMaladieSickDaysUsed(prev => prev + maladieWorkingDays)
+    } catch (error) {
+      console.error('Error submitting sick leave:', error)
+      toast.error('Erreur lors de la soumission de la demande')
+    } finally {
+      setIsSubmittingMaladie(false)
+    }
+  }
+
   const missionWorkingDays = countWorkingDaysUtil(missionStartDate, missionEndDate, workingDaysConfig, holidays)
 
   const handleMissionSubmit = async (e: React.FormEvent) => {
@@ -324,7 +509,9 @@ export default function NewRequestPage() {
 
   const congeDaysToUse = Math.max(workingDays - recupDaysToUse, 0)
   const totalAvailable = availableConge + Math.min(availableRecup, MAX_CONSECUTIVE_RECOVERY_DAYS)
-  const balanceOk = congeDaysToUse <= availableConge && recupDaysToUse <= availableRecup
+  const balanceOkNatural = congeDaysToUse <= availableConge && recupDaysToUse <= availableRecup
+  const balanceOk = balanceOkNatural || isDerogation
+  const congeInsufficient = congeDaysToUse > availableConge
   const balanceAfterConge = roundHalf(availableConge - congeDaysToUse)
   const balanceAfterRecup = roundHalf(availableRecup - recupDaysToUse)
 
@@ -334,6 +521,10 @@ export default function NewRequestPage() {
   const canProceedToNext = (): boolean => {
     switch (currentStep) {
       case 1:
+        // If balance insufficient and no derogation yet, show dialog instead of blocking
+        if (!!startDate && !!endDate && workingDays > 0 && !balanceOkNatural && !isDerogation && congeInsufficient) {
+          return false // will be handled by derogation prompt
+        }
         return !!startDate && !!endDate && workingDays > 0 && balanceOk
       case 2:
         return true
@@ -366,7 +557,7 @@ export default function NewRequestPage() {
       return
     }
 
-    if (!balanceOk) {
+    if (!balanceOk && !isDerogation) {
       toast.error('Solde insuffisant. Veuillez ajuster la repartition ou les dates.')
       return
     }
@@ -401,6 +592,7 @@ export default function NewRequestPage() {
           balance_before: availableConge,
           balance_conge_used: congeDaysToUse,
           balance_recuperation_used: recupDaysToUse,
+          is_derogation: isDerogation,
         })
         .select()
         .single()
@@ -472,6 +664,10 @@ export default function NewRequestPage() {
         <p className="mt-2 text-muted-foreground">
           {activeTab === 'conge'
             ? `${steps[currentStep - 1].description} — Etape ${currentStep} sur ${TOTAL_STEPS}`
+            : activeTab === 'exceptionnel'
+            ? 'Demande de conge exceptionnel (naissance, mariage, deces...)'
+            : activeTab === 'maladie'
+            ? 'Declaration de conge maladie (3 jours/an)'
             : 'Remplissez le formulaire pour soumettre un ordre de mission'}
         </p>
 
@@ -489,6 +685,32 @@ export default function NewRequestPage() {
           >
             <FileText className={cn('h-4 w-4 shrink-0', activeTab === 'conge' ? 'text-primary' : '')} />
             <span>Congé / Récupération</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('exceptionnel')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-xl px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium transition-all',
+              activeTab === 'exceptionnel'
+                ? 'bg-background text-foreground shadow-sm border border-border/80'
+                : 'text-muted-foreground/70 hover:text-muted-foreground border border-transparent'
+            )}
+          >
+            <Gift className={cn('h-4 w-4 shrink-0', activeTab === 'exceptionnel' ? 'text-primary' : '')} />
+            <span>Congé Exceptionnel</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('maladie')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-xl px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium transition-all',
+              activeTab === 'maladie'
+                ? 'bg-background text-foreground shadow-sm border border-border/80'
+                : 'text-muted-foreground/70 hover:text-muted-foreground border border-transparent'
+            )}
+          >
+            <Heart className={cn('h-4 w-4 shrink-0', activeTab === 'maladie' ? 'text-primary' : '')} />
+            <span>Maladie</span>
           </button>
           {canSee('missions') && (
           <button
@@ -926,10 +1148,50 @@ export default function NewRequestPage() {
               </div>
             )}
 
-            {!balanceOk && startDate && endDate && workingDays > 0 && (
-              <div className="status-rejected rounded-2xl border p-3">
-                <p className="text-sm font-medium">
-                  Solde insuffisant ! Veuillez reduire la duree ou ajuster la repartition.
+            {!balanceOkNatural && startDate && endDate && workingDays > 0 && !isDerogation && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">
+                      Solde insuffisant ({roundHalf(congeDaysToUse - availableConge)}j en depassement)
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Vous pouvez demander une derogation. Les jours en depassement seront deduits de vos droits futurs apres validation par la CPA.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-amber-400 text-amber-800 hover:bg-amber-100"
+                  onClick={() => { setIsDerogation(true); setShowDerogationDialog(false) }}
+                >
+                  Demander une derogation
+                </Button>
+              </div>
+            )}
+
+            {isDerogation && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50/50 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <p className="text-sm font-medium text-amber-800">Derogation demandee</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-amber-700 hover:text-amber-900"
+                    onClick={() => setIsDerogation(false)}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+                <p className="text-xs text-amber-700 mt-1">
+                  {roundHalf(congeDaysToUse - availableConge)}j seront deduits de vos droits futurs.
                 </p>
               </div>
             )}
@@ -1193,7 +1455,7 @@ export default function NewRequestPage() {
             <Button
               type="submit"
               className="h-11 w-full"
-              disabled={isSubmitting || !balanceOk || workingDays <= 0}
+              disabled={isSubmitting || (!balanceOkNatural && !isDerogation) || workingDays <= 0}
             >
               {isSubmitting ? (
                 <>
@@ -1209,6 +1471,339 @@ export default function NewRequestPage() {
       </form>
 
       </>)}
+
+      {/* ========== CONGE EXCEPTIONNEL TAB ========== */}
+      {activeTab === 'exceptionnel' && (
+        <form onSubmit={handleExceptionnelSubmit} className="space-y-6">
+          {/* Type selection */}
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Gift className="h-5 w-5 text-primary" />
+                Type de conge exceptionnel
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Selectionnez le type *</Label>
+                <Select
+                  value={isAutreType ? '__autre__' : selectedExceptionalTypeId}
+                  onValueChange={(val) => {
+                    if (val === '__autre__') {
+                      setIsAutreType(true)
+                      setSelectedExceptionalTypeId('')
+                    } else {
+                      setIsAutreType(false)
+                      setAutreTypeName('')
+                      setSelectedExceptionalTypeId(val)
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="-- Choisir un type --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {exceptionalTypes.map(type => (
+                      <SelectItem key={type.id} value={String(type.id)}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__autre__">Autre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {isAutreType && (
+                <div className="space-y-2">
+                  <Label>Precisez le type *</Label>
+                  <Input
+                    placeholder="Ex: Demenagement, Examen..."
+                    value={autreTypeName}
+                    onChange={(e) => setAutreTypeName(e.target.value)}
+                    maxLength={100}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Date selection */}
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Periode du conge
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Date de debut *</Label>
+                  <DatePicker
+                    value={exceptionalStartDate}
+                    onChange={setExceptionalStartDate}
+                    placeholder="Date de debut"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date de fin *</Label>
+                  <DatePicker
+                    value={exceptionalEndDate}
+                    onChange={setExceptionalEndDate}
+                    min={exceptionalStartDate || undefined}
+                    placeholder="Date de fin"
+                  />
+                </div>
+              </div>
+
+              {exceptionalWorkingDays > 0 && (
+                <div className="rounded-2xl border border-border/70 bg-secondary/30 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Jours ouvres demandes</span>
+                    <span className={cn('text-sm font-semibold', exceptionalWorkingDays > exceptionalGrantedDays ? 'text-[var(--status-alert-text)]' : 'text-foreground')}>{exceptionalWorkingDays}j</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Maximum autorise</span>
+                    <Badge className="bg-primary/10 text-primary border border-primary/25">
+                      {exceptionalGrantedDays}j
+                    </Badge>
+                  </div>
+                  {exceptionalWorkingDays > exceptionalGrantedDays && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                      <p className="text-xs text-red-700">
+                        La duree depasse le maximum de {exceptionalGrantedDays} jours. Reduisez la periode ou soumettez une demande de conge separee pour les jours supplementaires.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Notes */}
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquareText className="h-5 w-5 text-primary" />
+                Notes (Optionnel)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                placeholder="Ajoutez des precisions si necessaire..."
+                value={exceptionalNotes}
+                onChange={(e) => setExceptionalNotes(e.target.value)}
+                rows={3}
+                maxLength={500}
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                {exceptionalNotes.length}/500 caracteres
+              </p>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <Button type="button" variant="outline" className="h-11 w-full" onClick={() => router.back()}>
+              Annuler
+            </Button>
+            <Button
+              type="submit"
+              className="h-11 w-full"
+              disabled={isSubmittingExceptionnel || (!isAutreType && !selectedExceptionalTypeId) || (isAutreType && !autreTypeName.trim()) || !exceptionalStartDate || !exceptionalEndDate || exceptionalWorkingDays <= 0 || exceptionalWorkingDays > exceptionalGrantedDays}
+            >
+              {isSubmittingExceptionnel ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <span className="text-sm">Soumission...</span>
+                </>
+              ) : (
+                <span className="text-sm">Soumettre la demande</span>
+              )}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {/* ========== MALADIE TAB ========== */}
+      {activeTab === 'maladie' && (
+        <form onSubmit={handleMaladieSubmit} className="space-y-6">
+          {/* Sick days balance */}
+          <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Heart className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">Solde maladie annuel</p>
+              </div>
+              <Badge variant={maladieSickDaysRemaining <= 0 ? 'destructive' : 'secondary'}>
+                {maladieSickDaysUsed}/3 jours utilises
+              </Badge>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all',
+                  maladieSickDaysUsed >= 3 ? 'bg-destructive' : maladieSickDaysUsed >= 2 ? 'bg-amber-500' : 'bg-primary'
+                )}
+                style={{ width: `${Math.min((maladieSickDaysUsed / 3) * 100, 100)}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {maladieSickDaysRemaining > 0
+                ? `${maladieSickDaysRemaining} jour${maladieSickDaysRemaining > 1 ? 's' : ''} restant${maladieSickDaysRemaining > 1 ? 's' : ''}`
+                : 'Quota annuel atteint'}
+            </p>
+          </div>
+
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Periode de maladie *
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="maladieStartDate">Date de debut</Label>
+                  <DatePicker
+                    id="maladieStartDate"
+                    value={maladieStartDate}
+                    onChange={setMaladieStartDate}
+                    placeholder="Date de debut"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maladieEndDate">Date de fin</Label>
+                  <DatePicker
+                    id="maladieEndDate"
+                    value={maladieEndDate}
+                    onChange={setMaladieEndDate}
+                    min={maladieStartDate || undefined}
+                    placeholder="Date de fin"
+                  />
+                </div>
+              </div>
+
+              {maladieStartDate && maladieEndDate && maladieWorkingDays > 0 && (
+                <div className={cn(
+                  'rounded-2xl border p-4',
+                  maladieWouldExceed ? 'border-destructive/50 bg-destructive/5' : 'status-progress'
+                )}>
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className={cn('mt-0.5 h-5 w-5 shrink-0', maladieWouldExceed && 'text-destructive')} />
+                    <div className="flex-1">
+                      <p className={cn('text-sm font-medium', maladieWouldExceed && 'text-destructive')}>
+                        Duree: {maladieWorkingDays} jour{maladieWorkingDays > 1 ? 's' : ''} ouvrable{maladieWorkingDays > 1 ? 's' : ''}
+                      </p>
+                      {maladieWouldExceed && (
+                        <p className="mt-1 text-sm text-destructive">
+                          Depassement du quota ! ({maladieSickDaysUsed + maladieWorkingDays}/3 jours)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquareText className="h-5 w-5 text-primary" />
+                Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="maladieReason">Motif (Optionnel)</Label>
+                <Textarea
+                  id="maladieReason"
+                  placeholder="Decrivez le motif de l'arret maladie..."
+                  value={maladieReason}
+                  onChange={(e) => setMaladieReason(e.target.value)}
+                  rows={3}
+                  maxLength={500}
+                />
+                <p className="text-xs text-muted-foreground">{maladieReason.length}/500 caracteres</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Certificat medical (Optionnel)</Label>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="maladieCertificateFile"
+                    className={cn(
+                      'flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed p-4 transition-colors',
+                      maladieCertificateFile
+                        ? 'border-emerald-300 bg-emerald-50/50'
+                        : 'border-border/70 hover:border-foreground/30 hover:bg-secondary/30'
+                    )}
+                  >
+                    {isUploadingCertificate ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : maladieCertificateFile ? (
+                      <>
+                        <Check className="h-4 w-4 text-emerald-600" />
+                        <span className="text-sm font-medium text-emerald-700 truncate max-w-[200px]">
+                          {maladieCertificateFile.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="ml-1 text-muted-foreground hover:text-foreground"
+                          onClick={(e) => { e.preventDefault(); setMaladieCertificateFile(null) }}
+                        >
+                          <AlertCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
+                          Cliquez pour joindre un fichier (PDF, PNG, JPG)
+                        </span>
+                      </>
+                    )}
+                  </label>
+                  <input
+                    id="maladieCertificateFile"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) setMaladieCertificateFile(file)
+                      e.target.value = ''
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    PDF, PNG, JPG — 5 Mo maximum
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <Button type="button" variant="outline" className="h-11 w-full" onClick={() => router.back()}>
+              Annuler
+            </Button>
+            <Button
+              type="submit"
+              className="h-11 w-full"
+              disabled={isSubmittingMaladie || maladieWorkingDays <= 0 || maladieWouldExceed}
+            >
+              {isSubmittingMaladie ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <span className="text-sm">Soumission...</span>
+                </>
+              ) : (
+                <span className="text-sm">Soumettre la demande</span>
+              )}
+            </Button>
+          </div>
+        </form>
+      )}
 
       {/* ========== MISSION TAB ========== */}
       {activeTab === 'mission' && (

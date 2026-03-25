@@ -204,7 +204,7 @@ export default function ProfilePage() {
                       {Math.floor(seniority.yearsOfService)} an(s)
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Droit annuel: {seniority.totalEntitlement} jours
+                      Dotation annuelle: {seniority.totalEntitlement} jours
                       {seniority.bonusDays > 0 && (
                         <span> (dont {seniority.bonusDays} bonus ancienneté)</span>
                       )}
@@ -363,7 +363,7 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-foreground">Solde congé</p>
-                  <p className="mt-2 text-3xl font-bold text-primary">
+                  <p className={`mt-2 text-3xl font-bold ${(balanceInfo ? balanceInfo.available_now : user.balance_conge) < 0 ? 'text-red-500' : 'text-primary'}`}>
                     {balanceInfo ? roundHalf(balanceInfo.available_now) : roundHalf(user.balance_conge)}
                   </p>
                   {balanceInfo && (balanceInfo.days_used_this_year > 0 || balanceInfo.days_pending > 0) && (

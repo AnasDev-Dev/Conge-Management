@@ -63,6 +63,14 @@ function getNotificationIcon(type: string | null) {
     case 'NEW_RECOVERY_TO_VALIDATE':
       return <ClipboardCheck className="h-5 w-5 text-primary" />
 
+    // Exceptional leave (informational)
+    case 'NEW_EXCEPTIONAL_LEAVE':
+      return <FileText className="h-5 w-5 text-amber-500" />
+
+    // Sick leave (informational)
+    case 'NEW_SICK_LEAVE':
+      return <FileText className="h-5 w-5 text-red-400" />
+
     // Legacy types
     case 'success':
       return <CheckCircle2 className="h-5 w-5 text-[var(--status-success-text)]" />
@@ -103,6 +111,16 @@ function getNotificationLink(notification: Notification): string | null {
   // Recovery → recovery page
   if (notification.related_recovery_id) {
     return '/dashboard/recovery-requests'
+  }
+
+  // Exceptional leave → requests page
+  if (t === 'NEW_EXCEPTIONAL_LEAVE') {
+    return '/dashboard/requests'
+  }
+
+  // Sick leave → requests page
+  if (t === 'NEW_SICK_LEAVE') {
+    return '/dashboard/requests'
   }
 
   return null

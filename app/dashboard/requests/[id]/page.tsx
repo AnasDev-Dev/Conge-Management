@@ -56,6 +56,7 @@ interface RequestDetail {
   rejected_by: string | null
   rejected_at: string | null
   rejection_reason: string | null
+  is_derogation: boolean
   created_at: string
   updated_at: string
   user?: { id: string; full_name: string; job_title: string | null; email: string | null } | null
@@ -248,6 +249,13 @@ export default function RequestDetailPage() {
               <Badge className={cn('border text-xs', getStatusClass(request.status))}>
                 {getStatusLabel(request.status)}
               </Badge>
+              {request.is_derogation && (
+                <Badge className="border border-amber-300 bg-amber-50 text-amber-700 text-xs">
+                  Dérogation · {request.balance_conge_used != null && request.balance_before != null
+                    ? `${Math.max(request.balance_conge_used - request.balance_before, 0)}j`
+                    : `${request.days_count}j`}
+                </Badge>
+              )}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               Soumise le {format(new Date(request.created_at), 'd MMMM yyyy à HH:mm', { locale: fr })}
