@@ -1,6 +1,6 @@
 # FRMG - Gestion des Congés | Project Status
 
-> **Last updated:** 18 March 2026
+> **Last updated:** 26 March 2026
 > **Branch:** `main`
 > **Build status:** Passing
 
@@ -47,17 +47,21 @@ Leave management platform built for the **Federation Royale Marocaine de Golf (F
 - [x] Role-aware: managers see all requests, employees see only their own
 
 ### Leave Request Creation (`/dashboard/new-request`)
-- [x] 4-step wizard: Type > Dates > Details > Review
-- [x] Type selection: CONGE or RECUPERATION
-- [x] Date picker with automatic working-day calculation (category-aware, half-day support)
-- [x] Balance validation (cannot exceed available days)
-- [x] Overlap detection with existing requests
+- [x] **4-step wizard**: Demande > Segments > Details > Resume
+- [x] **Segment-based mixed requests** — user builds request as ordered blocks, each with type (CONGE or RECUPERATION) and date range
+- [x] Per-segment date pickers with automatic working-day calculation
+- [x] Per-segment half-day selectors (Journée complète / Matin / Après-midi)
+- [x] **5-day consecutive récupération limit** — max 5 working days per récup segment, mandatory congé break between récup blocks
+- [x] Smart defaults: first segment defaults to RECUPERATION (or CONGE if récup balance is 0), auto-alternates type on add
+- [x] Récup toggle hidden when balance is 0 (congé-only mode)
+- [x] Real-time totals bar with per-type breakdown and balance-after display
+- [x] Balance validation (cannot exceed available days for either type)
+- [x] Dérogation support when congé balance insufficient
+- [x] `leave_request_details` rows inserted per working day on submit
 - [x] Replacement person selector (multi-employee search)
-- [x] **On-behalf creation** — managers (RH, Chef de Service, Directeur, Admin) can create requests for any employee
-- [x] Notification sent to employee when request is created on their behalf
-- [x] 5-day consecutive récupération limit validation (client-side)
-- [x] **Balance breakdown display** — carry-over (solde antérieur), monthly accrual (acquis), annual entitlement (dotation annuelle) shown separately
-- [x] Mission tab hidden when missions disabled via DB permissions
+- [x] **On-behalf creation** — managers can create requests for any employee
+- [x] **Employee signature** — drawn on canvas before submit, stored as `signature_employee` on request
+- [x] Mission tab, Congé Exceptionnel tab, Maladie tab
 - [x] Self-service leave requests blocked on non-home company for all roles
 
 ### Requests List (`/dashboard/requests`)
@@ -70,17 +74,21 @@ Leave management platform built for the **Federation Royale Marocaine de Golf (F
 - [x] Full request information: dates, type, status, reason, replacement
 - [x] Approval timeline with approver names and timestamps per stage
 - [x] Rejection reason display
+- [x] **Segment breakdown display** — shows per-segment type, date range, and working days for mixed requests
+- [x] **Signatures on printed PDF** — employee, RH, and Direction signatures rendered from request data
 
 ### Kanban Validation Board (`/dashboard/validations`)
 - [x] 3-stage pipeline: RH Personnel > Chef de Service > Directeur Exécutif
 - [x] Drag-and-drop cards between columns
-- [x] Approve / Reject buttons with confirmation
-- [x] Reject dialog with mandatory reason input
+- [x] Approve / Reject buttons with **signature dialog** (draw, upload, or use saved)
+- [x] Reject dialog with mandatory reason input + signature
 - [x] Inline date editing on request cards
 - [x] Search and type filters
+- [x] **Segment badges** on mixed request cards (e.g., "5R + 1C + 5R")
 - [x] Separate rejected section with **undo reject** (restore to PENDING)
 - [x] **Undo approve** — revert a validated request to its previous stage
 - [x] Visual amber "Annuler la validation" and blue "Restaurer la demande" buttons
+- [x] **Per-request signatures** stored on `leave_requests` (signature_rp, signature_dc, signature_de, signature_rejected_by)
 
 ### Mission Orders (`/dashboard/missions`)
 - [x] Mission request creation (departure/arrival city, object, transport, scope)
@@ -134,12 +142,14 @@ Leave management platform built for the **Federation Royale Marocaine de Golf (F
 - [x] Balance display gated by `employees.viewBalances` permission
 
 ### Balance Initialization (`/dashboard/balance-init`)
-- [x] RH/manager-only access (page title: "Soldes globaux")
+- [x] RH/manager-only access (page title: "Reports & Soldes")
 - [x] Search employees with department info (multi-token: name, job, department, balance, entitlement)
 - [x] Display columns: Dotation annuelle, Solde antérieur (editable), /mois, Cumulé, Disponible
+- [x] **Embauche + Ancienneté dates** — shows hire date with `date_anciennete` below (in blue) when different
+- [x] **Employee annual_leave_days override** — per-employee override takes priority over department default
 - [x] Editable carry-over per employee with bulk save, gated by `balance-init.edit` permission
+- [x] **52-day cap enforced** on carry-over input (UI toast + API server-side clamp) with amber "(max)" indicator on Disponible column
 - [x] Per-employee seniority, department entitlement, and monthly accrual calculations
-- [x] 52-day cap enforcement
 - [x] Uses `set_initial_balance()` RPC with audit trail
 - [x] Mobile card view + desktop frozen-column table
 
@@ -199,10 +209,10 @@ Leave management platform built for the **Federation Royale Marocaine de Golf (F
 | 4 | Majoration après 5 ans d'ancienneté | ✅ Fait | +1.5 jour per 5yr period, max 30 total |
 | 5 | Calcul mensuel du solde de congé | ✅ Fait | **Balance Model V2**: `available = carry_over + (entitlement/12 × month) - used - pending`. Carry-over fully available from Jan 1, entitlement accrues monthly |
 | 6 | Report antérieur (carry-over) | ✅ Fait | `balance_conge` repurposed as carry-over. Editable in balance-init, shown across all pages |
-| 7 | Plafond maximal du solde (52 jours) | ✅ Fait | `MAX_LEAVE_BALANCE = 52` enforced on carry-over in balance-init |
+| 7 | Plafond maximal du solde (52 jours) | ✅ Fait | `MAX_CONGE_BALANCE = 52` enforced in `calculateMonthlyAccrual()` (caps availableNow), balance-init (UI + API clamp), `isMaxReached` flag |
 | 8 | Validation préalable des jours de récupération | ✅ Fait | `recovery_requests` table + full workflow (submit/validate/reject RPCs) + dedicated page |
-| 9 | Demande combinée Congé + Récupération | ⚠️ Partiel | DB schema ready (`leave_request_details`, `is_mixed`), client-side 5-day rule. Missing: per-day type form, split deduction in approve RPC, detail view breakdown |
-| 10 | Limite de validité des jours de récupération | ⚠️ Partiel | `recovery_balance_lots` + `expire_recovery_days()` RPC done. Missing: cron trigger, UI expiration display/warnings |
+| 9 | Demande combinée Congé + Récupération | ✅ Fait | **Segment-based wizard**: user adds date blocks with type toggle (CONGE/RECUPERATION), 5-day récup limit with mandatory congé break, `leave_request_details` per-day rows, split deduction in approve RPC using `balance_conge_used`/`balance_recuperation_used`, segment display on detail page + Kanban badges |
+| 10 | Limite de validité des jours de récupération | ✅ Fait | `recovery_balance_lots` with `expires_at = 30/06/N+1`, `expire_recovery_days()` RPC with user notifications, `warn_expiring_recovery_days()` for 30-day alerts, pg_cron scheduled daily, dashboard expiration warning banner, `/api/cron/expire-recovery` endpoint as fallback |
 | 11 | Filtres dynamiques du calendrier | ✅ Fait | Status checkboxes (PENDING, VALIDATED_DC, VALIDATED_RP, APPROVED, REJECTED) |
 | 12 | Gestion multi-sociétés et multi-profils | ✅ Fait | `user_company_roles` table with `is_home`/`department_id`, session-variable-based RLS (`set_active_company()` RPC), rewritten `get_my_role()`/`is_manager()`/`can_manage_user()` as company-aware, `CompanySwitcher` UI, company-scoped employee filtering, all pages use `effectiveRole` from company context |
 
@@ -216,7 +226,7 @@ Leave management platform built for the **Federation Royale Marocaine de Golf (F
 | `companies` | Organization entities (FRMG, ATH) |
 | `departments` | Department groupings per company, `annual_leave_days` (default 18) |
 | `utilisateurs` | User profiles, roles, balances (`balance_conge` = carry-over), contact info, admin fields |
-| `leave_requests` | Leave requests with full approval chain fields |
+| `leave_requests` | Leave requests with full approval chain fields + per-stage signatures (`signature_employee`, `signature_rp`, `signature_dc`, `signature_de`, `signature_rejected_by`) |
 | `mission_requests` | Mission orders with approval chain |
 | `leave_balance_history` | Audit trail for balance changes |
 | `notifications` | In-app notification system |
@@ -259,7 +269,8 @@ available = carry_over + (dept_entitlement + seniority_bonus) / 12 × current_mo
 - **Carry-over** (`balance_conge`): Fully available from January 1st. Entered manually by RH in balance-init page.
 - **Annual entitlement**: From `departments.annual_leave_days` (default 18) + seniority bonus (+1.5 per 5-year period, max 30 total). Accrues monthly (1/12 per month).
 - **Double-counting fix**: `approve_leave_request()` no longer deducts from `balance_conge` for CONGE type — usage is tracked via `leave_requests` queries only. `handle_auto_approved_leave()` trigger also patched.
-- **RECUPERATION tracking**: `balance_recuperation` still deducted on approve + FIFO lot deduction from `recovery_balance_lots` (earliest expiration first), restored on undo.
+- **RECUPERATION tracking**: `balance_recuperation` deducted on approve + FIFO lot deduction from `recovery_balance_lots` (earliest expiration first), restored on undo. **Available récup** is now computed as `balance_recuperation - pending_recup_requests` (matching congé behavior — both types drop on submit, return on rejection).
+- **Mixed request balance queries**: All pages use `COALESCE(balance_conge_used, days_count)` and `COALESCE(balance_recuperation_used, days_count)` to correctly split congé vs récup usage for mixed requests.
 - **Rounding**: All balance displays use `roundHalf()` — floors to nearest 0.5 (e.g., 1.9→1.5, 2.3→2.0).
 - **Frontend**: `calculateMonthlyAccrual(annualEntitlement, carryOver, daysUsed, daysPending, month?)` in `lib/leave-utils.ts`. `fetchWorkingDays()` now accepts optional `departmentId` with priority lookup (department → company default → hardcoded).
 
@@ -292,15 +303,17 @@ available = carry_over + (dept_entitlement + seniority_bonus) / 12 × current_mo
 | `04_grants_seed.sql` | Permissions and seed data |
 | `05_new_features.sql` | All Req #1–12 tables, RPCs, RLS, and indexes |
 | `06_multi_company_roles.sql` | Multi-company multi-role: enhanced `user_company_roles`, session-variable RLS, rewritten helper functions, updated triggers |
-| `07_balance_model_v2.sql` | **Balance Model V2**: `departments.annual_leave_days`, rewritten `calculate_annual_entitlement()`, `calculate_leave_balance()` (carry-over + monthly accrual), fixed double-counting in `approve_leave_request()` / `undo_approve_leave_request()` |
-| `08_working_days_per_department.sql` | `department_id` column on `working_days`, 7-arg `count_working_days()` with department priority lookup, updated `approve_leave_request()` |
-
-### Incremental Migrations (`database/migrations/`)
-| File | Purpose |
-|------|---------|
-| `20260312_fix_recovery_lots_remaining_days.sql` | FIFO lot deduction in `approve_leave_request()`, `handle_auto_approved_leave()`, and `undo_approve_leave_request()` for recovery balance lots |
-| `20260313_fix_count_working_days_ambiguity.sql` | Drop old 3-arg and 6-arg `count_working_days()` overloads, keep only 7-arg version (fixes PostgreSQL 42725 error) |
-| `20260317_fix_balance_double_deduction.sql` | Remove CONGE balance deduction from approve/auto-approve/undo RPCs — `balance_conge` is carry-over only, available balance computed dynamically. Includes data repair SQL |
+| `07_balance_model_v2.sql` | **Balance Model V2**: `departments.annual_leave_days`, rewritten `calculate_annual_entitlement()`, `calculate_leave_balance()` (carry-over + monthly accrual), fixed double-counting |
+| `08_working_days_per_department.sql` | `department_id` column on `working_days`, 7-arg `count_working_days()` with department priority lookup |
+| `10_combined_leave_requests.sql` | Combined approve/reject/undo RPCs with FIFO lot support, auto-approve trigger |
+| `12_role_permissions.sql` | DB-driven role permissions table and RLS |
+| `14_fix_holidays_rls_and_constraints.sql` | Company-scoped holiday RLS and unique constraints |
+| `15_notifications_system.sql` | Notification triggers for leave, mission, and recovery events |
+| `16_fix_approval_balance_calculations.sql` | Fix approve RPC: trust stored split, use actual half-day values, reset split on date edit |
+| `17_recovery_expiration_cron.sql` | `expire_recovery_days()` with notifications + `warn_expiring_recovery_days()` + pg_cron schedule |
+| `18_request_signatures.sql` | Per-request signature columns on `leave_requests` and `mission_requests` |
+| `19_fix_mixed_balance_queries.sql` | Fix `calculate_leave_balance` RPC to use `balance_conge_used`/`balance_recuperation_used` for mixed requests |
+| `20_fix_signature_rls.sql` | Allow managers to UPDATE `leave_requests` (for signature storage) |
 
 ---
 
@@ -329,6 +342,7 @@ app/
 ├── api/health/route.ts               Health check endpoint
 ├── api/role-permissions/route.ts     Role permissions CRUD (service role, bypasses RLS)
 ├── api/recovery-requests/route.ts   Recovery requests API (service role, bypasses RLS)
+├── api/cron/expire-recovery/route.ts Recovery expiration cron endpoint (secured by CRON_SECRET)
 └── dashboard/
     ├── layout.tsx                    Sidebar, auth guard, navigation
     ├── page.tsx                      Dashboard home (stats + calendar)
@@ -351,6 +365,8 @@ app/
 components/
 ├── ui/                               shadcn/ui components (dialog, select, badge, etc.)
 ├── add-employee-dialog.tsx           Employee creation dialog
+├── signature-dialog.tsx              Signature capture (draw canvas, upload, saved) — used on submit + approve + reject
+├── print-leave-document.tsx          Printable leave request (A4) with per-stage signatures
 ├── permissions-manager.tsx           DB-driven role permissions editor
 └── role-gate.tsx                     RoleGate + PageGuard permission components
 
@@ -396,7 +412,23 @@ Dockerfile                             Multi-stage Docker build
 - **Platform:** Dokploy (self-hosted)
 - **Port:** 3000
 - **Health check:** `GET /api/health` → `{ ok: true, service: "smartflow-conge" }`
-- **Env vars:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (for API routes bypassing RLS)
+- **Env vars:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (for API routes bypassing RLS), `CRON_SECRET` (optional, for `/api/cron/expire-recovery`)
+
+---
+
+## Recently Completed (March 2026 Session)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| ~~Req #9: Segment-based mixed requests~~ | ✅ Done | 4-step wizard with segment builder, per-day `leave_request_details`, split balance deduction |
+| ~~Req #10: Recovery expiration automation~~ | ✅ Done | pg_cron daily, notifications on expiry + 30-day warnings, dashboard banner |
+| ~~52-day congé cap enforcement~~ | ✅ Done | `MAX_CONGE_BALANCE = 52` enforced in accrual calc, balance-init UI/API, `isMaxReached` flag |
+| ~~Per-request signatures~~ | ✅ Done | `SignatureDialog` component (draw/upload/saved), stored on `leave_requests` per approval stage |
+| ~~Récup pending subtraction~~ | ✅ Done | Available récup now computed as `balance_recuperation - pending_recup`, matching congé behavior |
+| ~~Mixed balance query fix~~ | ✅ Done | All pages use `balance_conge_used`/`balance_recuperation_used` instead of `days_count` |
+| ~~Approve RPC fixes~~ | ✅ Done | Trust stored split, use actual half-days, reset split on date edit |
+| ~~Column renames~~ | ✅ Done | Droit/an → Dotation annuelle, Solde initial → Solde antérieur |
+| ~~Date ancienneté~~ | ✅ Done | Shown below hire date in balance-init when different from embauche |
 
 ---
 
@@ -404,13 +436,9 @@ Dockerfile                             Multi-stage Docker build
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Req #9: Per-day type selection in leave form | High | DB ready, needs form UI for mixed CONGE+RECUPERATION per day |
-| Req #9: Split balance deduction on approve | High | `approve_leave_request()` needs to query `leave_request_details` |
-| Req #9: Detail view per-day breakdown | Medium | Show which days are congé vs récupération |
-| Req #10: Automated cron for `expire_recovery_days()` | Medium | SQL function exists, needs pg_cron or Edge Function trigger |
-| Req #10: UI expiration warnings | Low | Show expiration date and approaching-expiry alerts |
+| Segment editor for approvers on Kanban | Medium | Display done (badges), but approvers can't yet edit individual segments during validation |
 | Req #12: Admin UI for assigning multi-company roles | Low | Currently requires DB insert; could add admin form in employee edit |
-| ~~Real-time notifications~~ | ~~Done~~ | ✅ Implemented via Postgres subscriptions (INSERT/UPDATE/DELETE), real-time unread count badge |
 | Export leave reports (PDF/CSV) | Low | HR reporting needs |
 | Email notifications on approval/rejection | Low | Currently in-app only |
 | Dark mode toggle | Low | Theme variables exist, no toggle UI |
+| Signature on mission requests | Low | `mission_requests` has signature columns but not yet integrated in UI |
