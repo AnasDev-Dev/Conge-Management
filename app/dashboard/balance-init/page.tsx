@@ -67,7 +67,7 @@ export default function BalanceInitPage() {
         empQuery,
         supabase
           .from('leave_requests')
-          .select('user_id, status, days_count, balance_conge_used')
+          .select('user_id, status, days_count, balance_conge_used, request_type')
           .gte('start_date', `${currentYear}-01-01`)
           .lte('start_date', `${currentYear}-12-31`),
       ])
@@ -83,7 +83,7 @@ export default function BalanceInitPage() {
       const usage = new Map<string, { used: number; pending: number }>()
       for (const req of requestData || []) {
         const current = usage.get(req.user_id) || { used: 0, pending: 0 }
-        const congeAmount = req.balance_conge_used ?? req.days_count ?? 0
+        const congeAmount = req.balance_conge_used ?? (req.request_type === 'CONGE' ? req.days_count : 0) ?? 0
         if (req.status === 'APPROVED') {
           current.used += congeAmount
         } else if (['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'].includes(req.status)) {

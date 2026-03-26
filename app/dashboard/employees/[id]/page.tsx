@@ -143,7 +143,7 @@ export default function EmployeeDetailsPage() {
   const deptDays = Array.isArray(employee.departments)
     ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
     : employee.departments?.annual_leave_days
-  const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+  const seniority = calculateSeniority(employee.hire_date ?? null, deptDays, employee.annual_leave_days, employee.date_anciennete)
   const currentYear = new Date().getFullYear()
   // Use balance_conge_used (actual congé portion) to handle mixed requests correctly
   const congeUsed = requests

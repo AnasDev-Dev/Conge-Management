@@ -111,7 +111,7 @@ export default function EmployeesPage() {
     try {
       let empQuery = supabase
         .from('utilisateurs')
-        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, hire_date, gender, company_id, departments(annual_leave_days)')
+        .select('id, full_name, email, job_title, role, is_active, balance_conge, balance_recuperation, hire_date, date_anciennete, annual_leave_days, gender, company_id, departments(annual_leave_days)')
         .order('full_name')
 
       // Filter by active company if set
@@ -130,7 +130,7 @@ export default function EmployeesPage() {
       if (empIds.length > 0) {
         const result = await supabase
           .from('leave_requests')
-          .select('id, user_id, status, days_count, created_at, request_type, start_date, balance_conge_used')
+          .select('id, user_id, status, days_count, created_at, request_type, start_date, balance_conge_used, balance_recuperation_used')
           .in('user_id', empIds)
         requestData = (result.data || []) as LeaveRow[]
         requestError = result.error
@@ -345,7 +345,7 @@ export default function EmployeesPage() {
                           const deptDays = Array.isArray(employee.departments)
                             ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
                             : employee.departments?.annual_leave_days
-                          const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+                          const seniority = calculateSeniority(employee.hire_date ?? null, deptDays, (employee as Record<string, unknown>).annual_leave_days as number | null, (employee as Record<string, unknown>).date_anciennete as string | null)
                           const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
                           const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
                           return (
@@ -391,7 +391,7 @@ export default function EmployeesPage() {
             const deptDays = Array.isArray(employee.departments)
               ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
               : employee.departments?.annual_leave_days
-            const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
+            const seniority = calculateSeniority(employee.hire_date ?? null, deptDays, (employee as Record<string, unknown>).annual_leave_days as number | null, (employee as Record<string, unknown>).date_anciennete as string | null)
             const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
             const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
             const recup = roundHalf(Math.max(employee.balance_recuperation - (recupPendingByUser.get(employee.id) || 0), 0))

@@ -217,7 +217,7 @@ export default function ProfilePage() {
                 </div>
               )}
               {user.hire_date && (() => {
-                const seniority = calculateSeniority(user.hire_date)
+                const seniority = calculateSeniority(user.hire_date, deptAnnualDays, user.annual_leave_days, user.date_anciennete)
                 return (
                   <div>
                     <p className="text-sm text-muted-foreground">Ancienneté</p>
@@ -380,7 +380,7 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent>
           {(() => {
-            const seniority = calculateSeniority(user.hire_date, deptAnnualDays)
+            const seniority = calculateSeniority(user.hire_date, deptAnnualDays, user.annual_leave_days, user.date_anciennete)
             const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, user.balance_conge, congeUsedDays, congePendingDays)
             const availableRecup = roundHalf(Math.max(user.balance_recuperation - recupPendingDays, 0))
             return (

@@ -35,7 +35,7 @@ import {
 } from '@/lib/leave-utils'
 import { SignatureDialog } from '@/components/signature-dialog'
 
-type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'department_id'> & {
+type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'department_id' | 'date_anciennete' | 'annual_leave_days'> & {
   dept_annual_leave_days?: number
 }
 type Colleague = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'department_id'>
@@ -171,6 +171,8 @@ export default function NewRequestPage() {
         balance_conge: user.balance_conge,
         balance_recuperation: user.balance_recuperation,
         hire_date: user.hire_date,
+        date_anciennete: user.date_anciennete,
+        annual_leave_days: user.annual_leave_days,
         department_id: user.department_id,
         dept_annual_leave_days: userDeptDays ?? undefined,
       }
@@ -285,7 +287,7 @@ export default function NewRequestPage() {
     try {
       let query = supabase
         .from('utilisateurs')
-        .select('id, full_name, job_title, balance_conge, balance_recuperation, department_id, hire_date, departments(annual_leave_days)')
+        .select('id, full_name, job_title, balance_conge, balance_recuperation, department_id, hire_date, date_anciennete, annual_leave_days, departments(annual_leave_days)')
         .eq('is_active', true)
         .order('full_name')
 
@@ -508,7 +510,7 @@ export default function NewRequestPage() {
   // Monthly accrual for CONGE: available = carry_over + (entitlement/12 * month) - used - pending
   const congeAccrual = useMemo(() => {
     const deptDays = targetEmployee?.dept_annual_leave_days
-    const seniority = calculateSeniority(targetEmployee?.hire_date ?? null, deptDays)
+    const seniority = calculateSeniority(targetEmployee?.hire_date ?? null, deptDays, targetEmployee?.annual_leave_days, targetEmployee?.date_anciennete)
     const annualEntitlement = seniority.totalEntitlement
     const carryOver = targetEmployee?.balance_conge || 0
     return calculateMonthlyAccrual(annualEntitlement, carryOver, congeUsedDays, congePendingDays)
