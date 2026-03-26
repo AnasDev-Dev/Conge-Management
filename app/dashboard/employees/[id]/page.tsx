@@ -39,7 +39,7 @@ type EmployeeDetails = Pick<
 
 type RequestDetails = Pick<
   LeaveRequest,
-  'id' | 'request_type' | 'start_date' | 'end_date' | 'days_count' | 'status' | 'reason' | 'created_at' | 'return_date'
+  'id' | 'request_type' | 'start_date' | 'end_date' | 'days_count' | 'status' | 'reason' | 'created_at' | 'return_date' | 'balance_conge_used'
 >
 
 const approvedStatuses = new Set(['APPROVED'])
@@ -69,7 +69,7 @@ export default function EmployeeDetailsPage() {
             .single(),
           supabase
             .from('leave_requests')
-            .select('id, request_type, start_date, end_date, days_count, status, reason, created_at, return_date')
+            .select('id, request_type, start_date, end_date, days_count, status, reason, created_at, return_date, balance_conge_used')
             .eq('user_id', employeeId)
             .order('created_at', { ascending: false }),
         ])
@@ -145,12 +145,13 @@ export default function EmployeeDetailsPage() {
     : employee.departments?.annual_leave_days
   const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
   const currentYear = new Date().getFullYear()
+  // Use balance_conge_used (actual congé portion) to handle mixed requests correctly
   const congeUsed = requests
-    .filter(r => r.request_type === 'CONGE' && r.status === 'APPROVED' && new Date(r.start_date).getFullYear() === currentYear)
-    .reduce((sum, r) => sum + (r.days_count || 0), 0)
+    .filter(r => r.status === 'APPROVED' && new Date(r.start_date).getFullYear() === currentYear)
+    .reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0)
   const congePending = requests
-    .filter(r => r.request_type === 'CONGE' && pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
-    .reduce((sum, r) => sum + (r.days_count || 0), 0)
+    .filter(r => pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
+    .reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0)
   const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, congeUsed, congePending)
 
   return (

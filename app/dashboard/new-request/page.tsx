@@ -249,17 +249,15 @@ export default function NewRequestPage() {
       const [{ data: usedData }, { data: pendingData }, { data: lotsData }] = await Promise.all([
         supabase
           .from('leave_requests')
-          .select('days_count')
+          .select('days_count, balance_conge_used')
           .eq('user_id', targetEmployee.id)
-          .eq('request_type', 'CONGE')
           .eq('status', 'APPROVED')
           .gte('start_date', `${currentYear}-01-01`)
           .lte('start_date', `${currentYear}-12-31`),
         supabase
           .from('leave_requests')
-          .select('days_count')
+          .select('days_count, balance_conge_used')
           .eq('user_id', targetEmployee.id)
-          .eq('request_type', 'CONGE')
           .in('status', ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'])
           .gte('start_date', `${currentYear}-01-01`)
           .lte('start_date', `${currentYear}-12-31`),
@@ -271,8 +269,9 @@ export default function NewRequestPage() {
           .gt('remaining_days', 0)
           .order('expires_at', { ascending: true }),
       ])
-      setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.days_count || 0), 0))
-      setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.days_count || 0), 0))
+      // Use balance_conge_used (the actual congé portion) instead of days_count (which includes récup in mixed requests)
+      setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? r.days_count ?? 0), 0))
+      setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? r.days_count ?? 0), 0))
       setRecoveryLots((lotsData || []) as RecoveryBalanceLot[])
     }
     fetchUsage()

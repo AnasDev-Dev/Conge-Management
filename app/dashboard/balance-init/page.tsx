@@ -67,8 +67,7 @@ export default function BalanceInitPage() {
         empQuery,
         supabase
           .from('leave_requests')
-          .select('user_id, status, days_count, request_type')
-          .eq('request_type', 'CONGE')
+          .select('user_id, status, days_count, balance_conge_used')
           .gte('start_date', `${currentYear}-01-01`)
           .lte('start_date', `${currentYear}-12-31`),
       ])
@@ -80,14 +79,15 @@ export default function BalanceInitPage() {
       })) as EmployeeWithDept[]
       setEmployees(normalized)
 
-      // Build usage map
+      // Build usage map — use balance_conge_used (actual congé portion) instead of days_count
       const usage = new Map<string, { used: number; pending: number }>()
       for (const req of requestData || []) {
         const current = usage.get(req.user_id) || { used: 0, pending: 0 }
+        const congeAmount = req.balance_conge_used ?? req.days_count ?? 0
         if (req.status === 'APPROVED') {
-          current.used += req.days_count || 0
+          current.used += congeAmount
         } else if (['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'].includes(req.status)) {
-          current.pending += req.days_count || 0
+          current.pending += congeAmount
         }
         usage.set(req.user_id, current)
       }

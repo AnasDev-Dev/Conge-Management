@@ -130,7 +130,7 @@ export default function EmployeesPage() {
       if (empIds.length > 0) {
         const result = await supabase
           .from('leave_requests')
-          .select('id, user_id, status, days_count, created_at, request_type, start_date')
+          .select('id, user_id, status, days_count, created_at, request_type, start_date, balance_conge_used')
           .in('user_id', empIds)
         requestData = (result.data || []) as LeaveRow[]
         requestError = result.error
@@ -171,20 +171,24 @@ export default function EmployeesPage() {
   }, [requests])
 
   // CONGE usage per user for current year (for accurate balance display)
+  // Uses balance_conge_used (actual congé portion) to handle mixed requests correctly
   const congeUsageByUser = useMemo(() => {
     const currentYear = new Date().getFullYear()
     const usage = new Map<string, { used: number; pending: number }>()
 
     for (const request of requests) {
-      if (request.request_type !== 'CONGE') continue
       if (new Date(request.start_date).getFullYear() !== currentYear) continue
+      // Use balance_conge_used if available (handles mixed requests), otherwise days_count for pure CONGE
+      const congeAmount = (request as Record<string, unknown>).balance_conge_used as number | null
+      const amount = congeAmount ?? (request.request_type === 'CONGE' ? request.days_count : 0)
+      if (amount <= 0) continue
 
       const current = usage.get(request.user_id) || { used: 0, pending: 0 }
       if (approvedStatuses.has(request.status)) {
-        current.used += request.days_count || 0
+        current.used += amount
       }
       if (pendingStatuses.has(request.status)) {
-        current.pending += request.days_count || 0
+        current.pending += amount
       }
       usage.set(request.user_id, current)
     }
