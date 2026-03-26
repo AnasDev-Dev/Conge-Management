@@ -344,9 +344,8 @@ export default function ValidationsPage() {
 
     setSignatureLoading(true)
     try {
-      // If the user wants to save their signature for future use
+      // Optionally save signature to user profile for reuse
       if (saveForFuture) {
-        // Convert data URL to blob for upload
         const res = await fetch(signatureDataUrl)
         const blob = await res.blob()
         const filePath = `signatures/${user.id}.png`
@@ -355,17 +354,11 @@ export default function ValidationsPage() {
           .from('signatures')
           .upload(filePath, blob, { upsert: true, contentType: 'image/png' })
 
-        if (uploadError) {
-          console.error('Error uploading signature:', uploadError)
-          toast.error("Erreur lors de la sauvegarde de la signature")
-        } else {
-          // Get the public URL
+        if (!uploadError) {
           const { data: publicUrlData } = supabase.storage
             .from('signatures')
             .getPublicUrl(filePath)
-
           if (publicUrlData?.publicUrl) {
-            // Update the user's signature_file in the database
             await supabase
               .from('utilisateurs')
               .update({ signature_file: publicUrlData.publicUrl })
@@ -377,8 +370,28 @@ export default function ValidationsPage() {
       // Proceed with the actual action (approve or reject)
       if (signatureAction === 'reject') {
         await handleReject()
+        // Save rejection signature on the request
+        await supabase
+          .from('leave_requests')
+          .update({ signature_rejected_by: signatureDataUrl })
+          .eq('id', pendingApproveRequest.id)
       } else {
+        // Determine which signature column based on current status
+        const sigField =
+          pendingApproveRequest.status === 'PENDING' ? 'signature_rp'
+          : pendingApproveRequest.status === 'VALIDATED_RP' ? 'signature_dc'
+          : pendingApproveRequest.status === 'VALIDATED_DC' ? 'signature_de'
+          : null
+
         await handleApprove(pendingApproveRequest)
+
+        // Save approval signature on the request
+        if (sigField) {
+          await supabase
+            .from('leave_requests')
+            .update({ [sigField]: signatureDataUrl })
+            .eq('id', pendingApproveRequest.id)
+        }
       }
     } finally {
       setSignatureLoading(false)

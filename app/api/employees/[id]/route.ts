@@ -71,7 +71,9 @@ export async function PUT(
         if (['company_id', 'department_id', 'category_id'].includes(field)) {
           payload[field] = body[field] ? parseInt(body[field]) : null
         } else if (['balance_conge', 'balance_recuperation'].includes(field)) {
-          payload[field] = parseFloat(body[field]) || 0
+          const val = parseFloat(body[field]) || 0
+          // Enforce 52-day cap on carry-over (balance_conge)
+          payload[field] = field === 'balance_conge' ? Math.min(val, 52) : val
         } else {
           payload[field] = body[field]
         }

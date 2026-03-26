@@ -61,6 +61,11 @@ interface RequestDetail {
   rejected_at: string | null
   rejection_reason: string | null
   is_derogation: boolean
+  signature_employee: string | null
+  signature_rp: string | null
+  signature_dc: string | null
+  signature_de: string | null
+  signature_rejected_by: string | null
   created_at: string
   updated_at: string
   user?: { id: string; full_name: string; job_title: string | null; email: string | null } | null
@@ -71,7 +76,6 @@ interface UserInfo {
   id: string
   full_name: string
   role?: string
-  signature_file?: string | null
 }
 
 export default function RequestDetailPage() {
@@ -80,7 +84,6 @@ export default function RequestDetailPage() {
   const [request, setRequest] = useState<RequestDetail | null>(null)
   const [approvers, setApprovers] = useState<Record<string, UserInfo>>({})
   const [segments, setSegments] = useState<SegmentSummary[]>([])
-  const [employeeSignatureUrl, setEmployeeSignatureUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const { activeCompany } = useCompanyContext()
   const supabase = createClient()
@@ -106,16 +109,6 @@ export default function RequestDetailPage() {
       if (error) throw error
       setRequest(data)
 
-      // Fetch employee signature
-      if (data.user_id) {
-        const { data: empData } = await supabase
-          .from('utilisateurs')
-          .select('signature_file')
-          .eq('id', data.user_id)
-          .single()
-        if (empData?.signature_file) setEmployeeSignatureUrl(empData.signature_file)
-      }
-
       // Fetch per-day details for segment display
       const { data: details } = await supabase
         .from('leave_request_details')
@@ -139,7 +132,7 @@ export default function RequestDetailPage() {
         const uniqueIds = [...new Set(approverIds)]
         const { data: users } = await supabase
           .from('utilisateurs')
-          .select('id, full_name, role, signature_file')
+          .select('id, full_name, role')
           .in('id', uniqueIds)
 
         if (users) {
@@ -591,7 +584,7 @@ export default function RequestDetailPage() {
 
       {/* Print document — rendered in body via portal, hidden on screen */}
       {request.status === 'APPROVED' && createPortal(
-        <PrintLeaveDocument request={request} approvers={approvers} employeeSignatureUrl={employeeSignatureUrl} companyName={activeCompany?.name} />,
+        <PrintLeaveDocument request={request} approvers={approvers} companyName={activeCompany?.name} />,
         document.body
       )}
     </div>

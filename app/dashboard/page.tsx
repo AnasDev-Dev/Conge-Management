@@ -105,6 +105,11 @@ export default function DashboardPage() {
     monthly_rate: number;
     available_now: number;
   } | null>(null);
+  const [expiringRecoveryLots, setExpiringRecoveryLots] = useState<{
+    remaining_days: number;
+    year_acquired: number;
+    expires_at: string;
+  }[]>([]);
   const supabase = createClient();
 
   useEffect(() => {
@@ -114,6 +119,18 @@ export default function DashboardPage() {
         .rpc("calculate_leave_balance", { p_user_id: user.id })
         .then(({ data: balanceData }) => {
           if (balanceData) setBalanceInfo(balanceData);
+        });
+      // Fetch recovery lots expiring within 60 days
+      supabase
+        .from("recovery_balance_lots")
+        .select("remaining_days, year_acquired, expires_at")
+        .eq("user_id", user.id)
+        .eq("expired", false)
+        .gt("remaining_days", 0)
+        .lte("expires_at", format(addDays(new Date(), 60), "yyyy-MM-dd"))
+        .order("expires_at", { ascending: true })
+        .then(({ data }) => {
+          if (data) setExpiringRecoveryLots(data);
         });
     }
   }, [user, activeCompany]);
@@ -297,6 +314,28 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ─── Recovery expiration warning ─── */}
+      {expiringRecoveryLots.length > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
+          <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Jours de récupération bientôt expirés
+            </p>
+            <div className="mt-1 space-y-0.5">
+              {expiringRecoveryLots.map((lot, i) => (
+                <p key={i} className="text-xs text-amber-700 dark:text-amber-300">
+                  {roundHalf(lot.remaining_days)}j (acquis {lot.year_acquired}) — expire le {format(new Date(lot.expires_at + "T00:00:00"), "dd/MM/yyyy")}
+                </p>
+              ))}
+            </div>
+            <Link href="/dashboard/new-request" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 dark:text-amber-200 dark:hover:text-amber-100">
+              Utiliser mes jours de récupération <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ─── Calendar ─── */}
       <Card className="border-border/70 overflow-hidden">

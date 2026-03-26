@@ -175,11 +175,30 @@ BEGIN
 
   -- RH can edit dates at PENDING stage
   IF v_field = 'rp' AND p_new_start_date IS NOT NULL AND p_new_end_date IS NOT NULL THEN
-    UPDATE leave_requests SET
-      start_date = p_new_start_date,
-      end_date = p_new_end_date,
-      days_count = COALESCE(p_new_days_count, v_request.days_count)
-    WHERE id = p_request_id;
+    SELECT * INTO v_request_user FROM utilisateurs WHERE id = v_request.user_id;
+    v_company_id := COALESCE(v_request_user.company_id, (SELECT id FROM companies LIMIT 1));
+
+    -- Recalculate days with actual half-day values
+    DECLARE
+      v_new_days FLOAT;
+    BEGIN
+      v_new_days := COALESCE(p_new_days_count, count_working_days(
+        p_new_start_date, p_new_end_date,
+        v_company_id, NULL,
+        COALESCE(v_request.start_half_day, 'FULL'),
+        COALESCE(v_request.end_half_day, 'FULL'),
+        v_request_user.department_id
+      ));
+
+      UPDATE leave_requests SET
+        start_date = p_new_start_date,
+        end_date = p_new_end_date,
+        days_count = v_new_days,
+        -- Reset split when dates change (will be recalculated on final approval)
+        balance_conge_used = CASE WHEN v_request.is_mixed THEN NULL ELSE v_new_days END,
+        balance_recuperation_used = CASE WHEN v_request.request_type = 'RECUPERATION' AND NOT COALESCE(v_request.is_mixed, false) THEN v_new_days ELSE NULL END
+      WHERE id = p_request_id;
+    END;
     SELECT * INTO v_request FROM leave_requests WHERE id = p_request_id;
   END IF;
 
@@ -191,25 +210,30 @@ BEGIN
     v_field, v_field
   ) USING v_next_status, p_approver_id, p_request_id;
 
-  -- On final approval: recalculate days, deduct RECUPERATION only, record audit trail
+  -- On final approval: deduct RECUPERATION only, record audit trail
   IF v_next_status = 'APPROVED' THEN
     SELECT * INTO v_request_user FROM utilisateurs WHERE id = v_request.user_id;
     v_company_id := COALESCE(v_request_user.company_id, (SELECT id FROM companies LIMIT 1));
 
-    -- Recalculate days server-side (holiday-aware, department-aware)
-    v_days := count_working_days(
-      v_request.start_date, v_request.end_date,
-      v_company_id, NULL, 'FULL', 'FULL',
-      v_request_user.department_id
-    );
-    UPDATE leave_requests SET days_count = v_days WHERE id = p_request_id;
-
-    -- Use the stored split amounts
+    -- Use the stored split amounts if available
     v_conge_used := COALESCE(v_request.balance_conge_used, 0);
     v_recup_used := COALESCE(v_request.balance_recuperation_used, 0);
 
-    -- If no split info stored (legacy requests), fall back to request_type
-    IF v_conge_used = 0 AND v_recup_used = 0 THEN
+    IF v_conge_used > 0 OR v_recup_used > 0 THEN
+      -- Trust the stored split (from segments or frontend)
+      v_days := v_conge_used + v_recup_used;
+      UPDATE leave_requests SET days_count = v_days WHERE id = p_request_id;
+    ELSE
+      -- Legacy: no split stored, recalculate with actual half-day values
+      v_days := count_working_days(
+        v_request.start_date, v_request.end_date,
+        v_company_id, NULL,
+        COALESCE(v_request.start_half_day, 'FULL'),
+        COALESCE(v_request.end_half_day, 'FULL'),
+        v_request_user.department_id
+      );
+      UPDATE leave_requests SET days_count = v_days WHERE id = p_request_id;
+
       IF v_request.request_type = 'CONGE' THEN
         v_conge_used := v_days;
       ELSE

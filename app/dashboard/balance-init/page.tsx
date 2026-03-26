@@ -17,13 +17,13 @@ import { Utilisateur } from '@/lib/types/database'
 import { PageGuard } from '@/components/role-gate'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
-import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
+import { calculateSeniority, calculateMonthlyAccrual, roundHalf, MAX_CONGE_BALANCE } from '@/lib/leave-utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
 type EmployeeWithDept = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'job_title' | 'hire_date' | 'date_anciennete' | 'balance_conge' | 'department_id'
+  'id' | 'full_name' | 'job_title' | 'hire_date' | 'date_anciennete' | 'balance_conge' | 'department_id' | 'annual_leave_days'
 > & {
   departments: { name: string; annual_leave_days: number } | null
 }
@@ -59,7 +59,7 @@ export default function BalanceInitPage() {
       const currentYear = new Date().getFullYear()
       let empQuery = supabase
         .from('utilisateurs')
-        .select('id, full_name, job_title, hire_date, date_anciennete, balance_conge, department_id, departments(name, annual_leave_days)')
+        .select('id, full_name, job_title, hire_date, date_anciennete, balance_conge, department_id, annual_leave_days, departments(name, annual_leave_days)')
         .eq('is_active', true)
         .order('full_name')
       if (companyId) empQuery = empQuery.eq('company_id', companyId)
@@ -113,7 +113,12 @@ export default function BalanceInitPage() {
       if (value === '' || isNaN(num)) {
         next.delete(empId)
       } else {
-        next.set(empId, num)
+        // Cap carry-over at MAX_CONGE_BALANCE (52 days)
+        const capped = Math.min(num, MAX_CONGE_BALANCE)
+        if (num > MAX_CONGE_BALANCE) {
+          toast.error(`Le solde antérieur ne peut pas dépasser ${MAX_CONGE_BALANCE} jours (plafond légal)`)
+        }
+        next.set(empId, capped)
       }
       return next
     })
@@ -162,7 +167,7 @@ export default function BalanceInitPage() {
     const map = new Map<string, ReturnType<typeof calculateSeniority>>()
     for (const emp of employees) {
       const deptDays = emp.departments?.annual_leave_days
-      map.set(emp.id, calculateSeniority(emp.hire_date, deptDays, null, emp.date_anciennete))
+      map.set(emp.id, calculateSeniority(emp.hire_date, deptDays, emp.annual_leave_days, emp.date_anciennete))
     }
     return map
   }, [employees])
@@ -434,8 +439,12 @@ export default function BalanceInitPage() {
                                 </span>
                               </td>
                               <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className="inline-flex items-center rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20">
-                                  {accrual.availableNow} j
+                                <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
+                                  accrual.isMaxReached
+                                    ? 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20'
+                                    : 'bg-cyan-50 text-cyan-700 ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20'
+                                }`}>
+                                  {accrual.availableNow} j{accrual.isMaxReached ? ' (max)' : ''}
                                 </span>
                               </td>
                             </>

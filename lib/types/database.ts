@@ -112,6 +112,11 @@ export interface LeaveRequest {
   rejection_reason: string | null
   created_by: string | null
   initial_status: string | null
+  signature_employee: string | null
+  signature_rp: string | null
+  signature_dc: string | null
+  signature_de: string | null
+  signature_rejected_by: string | null
   created_at: string
   updated_at: string
 }

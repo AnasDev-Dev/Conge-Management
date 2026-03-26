@@ -77,6 +77,7 @@ export default function NewRequestPage() {
   // Signature dialog state
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false)
   const [signatureLoading, setSignatureLoading] = useState(false)
+  const [pendingSignatureDataUrl, setPendingSignatureDataUrl] = useState<string | null>(null)
 
   // On-behalf-of state
   const [onBehalfOfId, setOnBehalfOfId] = useState<string>('')
@@ -575,7 +576,7 @@ export default function NewRequestPage() {
     }
   }
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, employeeSignature?: string) => {
     if (e) e.preventDefault()
 
     if (!user || !targetEmployee) return
@@ -622,6 +623,7 @@ export default function NewRequestPage() {
           balance_conge_used: totalCongeDays,
           balance_recuperation_used: totalRecupDays,
           is_derogation: isDerogation,
+          signature_employee: employeeSignature || pendingSignatureDataUrl || null,
         })
         .select()
         .single()
@@ -710,9 +712,10 @@ export default function NewRequestPage() {
         }
       }
 
-      // Close dialog and proceed with actual form submission
+      // Store signature and proceed with actual form submission
+      setPendingSignatureDataUrl(signatureDataUrl)
       setSignatureDialogOpen(false)
-      await handleSubmit()
+      await handleSubmit(undefined, signatureDataUrl)
     } catch (err) {
       console.error('Signature confirm error:', err)
       toast.error('Erreur lors du traitement de la signature')

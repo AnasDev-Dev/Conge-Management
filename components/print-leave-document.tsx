@@ -21,23 +21,25 @@ interface PrintRequest {
   approved_by_rp: string | null
   approved_by_dc: string | null
   approved_by_de: string | null
+  signature_employee: string | null
+  signature_rp: string | null
+  signature_dc: string | null
+  signature_de: string | null
   user?: { full_name: string; job_title: string | null; email: string | null } | null
   replacement_user?: { full_name: string; job_title: string | null } | null
 }
 
 interface ApproverInfo {
   full_name: string
-  signature_file?: string | null
 }
 
 interface PrintLeaveDocumentProps {
   request: PrintRequest
   approvers: Record<string, ApproverInfo>
-  employeeSignatureUrl?: string | null
   companyName?: string | null
 }
 
-export function PrintLeaveDocument({ request, approvers, employeeSignatureUrl, companyName }: PrintLeaveDocumentProps) {
+export function PrintLeaveDocument({ request, approvers, companyName }: PrintLeaveDocumentProps) {
   const balanceAfter = (request.balance_before ?? 0) - request.days_count
   const typeLabel = request.request_type === 'CONGE' ? 'Congé annuel' : 'Récupération'
   const companyKey = (companyName || 'FRMG').trim().toUpperCase()
@@ -248,11 +250,11 @@ export function PrintLeaveDocument({ request, approvers, employeeSignatureUrl, c
       <div className="print-signatures">
         <div className="print-signature-block">
           <div className="print-signature-title">Visa RH</div>
-          {request.approved_by_rp && approvers[request.approved_by_rp]?.signature_file ? (
+          {request.signature_rp ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={approvers[request.approved_by_rp].signature_file!} alt="Signature RH" className="print-signature-img" />
-              <div className="print-signature-sub">{approvers[request.approved_by_rp].full_name}</div>
+              <img src={request.signature_rp} alt="Signature RH" className="print-signature-img" />
+              <div className="print-signature-sub">{request.approved_by_rp ? approvers[request.approved_by_rp]?.full_name : ''}</div>
             </>
           ) : (
             <>
@@ -263,11 +265,11 @@ export function PrintLeaveDocument({ request, approvers, employeeSignatureUrl, c
         </div>
         <div className="print-signature-block">
           <div className="print-signature-title">Visa Direction</div>
-          {request.approved_by_de && approvers[request.approved_by_de]?.signature_file ? (
+          {request.signature_de ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={approvers[request.approved_by_de].signature_file!} alt="Signature Direction" className="print-signature-img" />
-              <div className="print-signature-sub">{approvers[request.approved_by_de].full_name}</div>
+              <img src={request.signature_de} alt="Signature Direction" className="print-signature-img" />
+              <div className="print-signature-sub">{request.approved_by_de ? approvers[request.approved_by_de]?.full_name : ''}</div>
             </>
           ) : (
             <>
@@ -278,10 +280,10 @@ export function PrintLeaveDocument({ request, approvers, employeeSignatureUrl, c
         </div>
         <div className="print-signature-block">
           <div className="print-signature-title">L&apos;intéressé(e)</div>
-          {employeeSignatureUrl ? (
+          {request.signature_employee ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={employeeSignatureUrl} alt="Signature employé" className="print-signature-img" />
+              <img src={request.signature_employee} alt="Signature employé" className="print-signature-img" />
               <div className="print-signature-sub">{request.user?.full_name}</div>
             </>
           ) : (

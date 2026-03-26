@@ -396,6 +396,9 @@ export function roundHalf(n: number): number {
 
 // ─── Monthly Balance Accrual (Req #5) ────────────────────
 
+/** Maximum cumulative congé balance (carry-over + accrual) over 2 years — Moroccan labor law */
+export const MAX_CONGE_BALANCE = 52
+
 export interface MonthlyAccrualInfo {
   annualEntitlement: number  // from department + seniority (e.g. 21)
   carryOver: number          // carry-over from previous year (solde antérieur)
@@ -404,14 +407,15 @@ export interface MonthlyAccrualInfo {
   cumulativeEarned: number   // monthlyRate * currentMonth
   daysUsed: number           // approved CONGE days this year
   daysPending: number        // pending CONGE days this year
-  availableNow: number       // carryOver + cumulativeEarned - daysUsed - daysPending
+  availableNow: number       // carryOver + cumulativeEarned - daysUsed - daysPending (capped at 52)
+  isMaxReached: boolean      // true if raw balance >= 52
 }
 
 /**
  * Calculates the monthly accrual balance for an employee.
  * Annual entitlement comes from department config + seniority bonus.
  * Carry-over from previous year is fully available immediately.
- * Available = carryOver + (annualEntitlement / 12 * currentMonth) - daysUsed - daysPending
+ * Available = min(carryOver + (annualEntitlement / 12 * currentMonth) - daysUsed - daysPending, 52)
  */
 export function calculateMonthlyAccrual(
   annualEntitlement: number,
@@ -423,7 +427,9 @@ export function calculateMonthlyAccrual(
   const currentMonth = month ?? (new Date().getMonth() + 1) // 1-based
   const monthlyRate = annualEntitlement / 12
   const cumulativeEarned = roundHalf(monthlyRate * currentMonth)
-  const availableNow = roundHalf(Math.max(carryOver + cumulativeEarned - daysUsed - daysPending, 0))
+  const rawAvailable = carryOver + cumulativeEarned - daysUsed - daysPending
+  const isMaxReached = rawAvailable >= MAX_CONGE_BALANCE
+  const availableNow = roundHalf(Math.min(Math.max(rawAvailable, 0), MAX_CONGE_BALANCE))
 
   return {
     annualEntitlement: roundHalf(annualEntitlement),
@@ -434,6 +440,7 @@ export function calculateMonthlyAccrual(
     daysUsed: roundHalf(daysUsed),
     daysPending: roundHalf(daysPending),
     availableNow,
+    isMaxReached,
   }
 }
 
