@@ -39,7 +39,7 @@ type EmployeeDetails = Pick<
 
 type RequestDetails = Pick<
   LeaveRequest,
-  'id' | 'request_type' | 'start_date' | 'end_date' | 'days_count' | 'status' | 'reason' | 'created_at' | 'return_date' | 'balance_conge_used'
+  'id' | 'request_type' | 'start_date' | 'end_date' | 'days_count' | 'status' | 'reason' | 'created_at' | 'return_date' | 'balance_conge_used' | 'balance_recuperation_used'
 >
 
 const approvedStatuses = new Set(['APPROVED'])
@@ -69,7 +69,7 @@ export default function EmployeeDetailsPage() {
             .single(),
           supabase
             .from('leave_requests')
-            .select('id, request_type, start_date, end_date, days_count, status, reason, created_at, return_date, balance_conge_used')
+            .select('id, request_type, start_date, end_date, days_count, status, reason, created_at, return_date, balance_conge_used, balance_recuperation_used')
             .eq('user_id', employeeId)
             .order('created_at', { ascending: false }),
         ])
@@ -153,6 +153,10 @@ export default function EmployeeDetailsPage() {
     .filter(r => pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
     .reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0)
   const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, congeUsed, congePending)
+  const recupPending = requests
+    .filter(r => pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
+    .reduce((sum, r) => sum + (r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0), 0)
+  const availableRecup = roundHalf(Math.max(employee.balance_recuperation - recupPending, 0))
 
   return (
     <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employee-detail">
@@ -246,7 +250,7 @@ export default function EmployeeDetailsPage() {
                 </div>
                 <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
                   <p className="text-xs text-muted-foreground">Récupération</p>
-                  <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{roundHalf(employee.balance_recuperation)}j</p>
+                  <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{availableRecup}j</p>
                 </div>
               </div>
             )}

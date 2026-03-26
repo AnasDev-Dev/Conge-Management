@@ -104,6 +104,8 @@ export default function DashboardPage() {
     monthly_accrued: number;
     monthly_rate: number;
     available_now: number;
+    recup_used: number;
+    recup_pending: number;
   } | null>(null);
   const [expiringRecoveryLots, setExpiringRecoveryLots] = useState<{
     remaining_days: number;
@@ -283,7 +285,7 @@ export default function DashboardPage() {
             </div>
             <div className="min-w-0">
               <p className="text-lg font-bold leading-tight sm:text-xl">
-                {roundHalf(user.balance_recuperation)}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
+                {roundHalf(balanceInfo ? Math.max(user.balance_recuperation - (balanceInfo.recup_pending || 0), 0) : user.balance_recuperation)}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
               </p>
               <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">Récupération</p>
             </div>

@@ -133,9 +133,11 @@ export default function NewRequestPage() {
     sunday_morning: false, sunday_afternoon: false,
   })
 
-  // Monthly accrual: track used/pending CONGE days for the target employee
+  // Monthly accrual: track used/pending days for the target employee
   const [congeUsedDays, setCongeUsedDays] = useState(0)
   const [congePendingDays, setCongePendingDays] = useState(0)
+  const [recupUsedDays, setRecupUsedDays] = useState(0)
+  const [recupPendingDays, setRecupPendingDays] = useState(0)
 
   // Recovery/Congé split (legacy — now derived from segments)
   const [recupDaysToUse, setRecupDaysToUse] = useState(0)
@@ -249,14 +251,14 @@ export default function NewRequestPage() {
       const [{ data: usedData }, { data: pendingData }, { data: lotsData }] = await Promise.all([
         supabase
           .from('leave_requests')
-          .select('days_count, balance_conge_used')
+          .select('days_count, balance_conge_used, balance_recuperation_used, request_type')
           .eq('user_id', targetEmployee.id)
           .eq('status', 'APPROVED')
           .gte('start_date', `${currentYear}-01-01`)
           .lte('start_date', `${currentYear}-12-31`),
         supabase
           .from('leave_requests')
-          .select('days_count, balance_conge_used')
+          .select('days_count, balance_conge_used, balance_recuperation_used, request_type')
           .eq('user_id', targetEmployee.id)
           .in('status', ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'])
           .gte('start_date', `${currentYear}-01-01`)
@@ -269,9 +271,11 @@ export default function NewRequestPage() {
           .gt('remaining_days', 0)
           .order('expires_at', { ascending: true }),
       ])
-      // Use balance_conge_used (the actual congé portion) instead of days_count (which includes récup in mixed requests)
-      setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? r.days_count ?? 0), 0))
-      setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? r.days_count ?? 0), 0))
+      // Use balance_conge_used / balance_recuperation_used (the actual split) for mixed requests
+      setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0))
+      setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0))
+      setRecupUsedDays((usedData || []).reduce((sum, r) => sum + (r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0), 0))
+      setRecupPendingDays((pendingData || []).reduce((sum, r) => sum + (r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0), 0))
       setRecoveryLots((lotsData || []) as RecoveryBalanceLot[])
     }
     fetchUsage()
@@ -510,7 +514,8 @@ export default function NewRequestPage() {
     return calculateMonthlyAccrual(annualEntitlement, carryOver, congeUsedDays, congePendingDays)
   }, [targetEmployee?.balance_conge, targetEmployee?.hire_date, targetEmployee?.dept_annual_leave_days, congeUsedDays, congePendingDays])
 
-  const availableRecup = roundHalf(targetEmployee?.balance_recuperation || 0)
+  // Available récup = stored balance - pending récup requests (mirrors congé behavior)
+  const availableRecup = roundHalf(Math.max((targetEmployee?.balance_recuperation || 0) - recupPendingDays, 0))
   const availableConge = congeAccrual.availableNow
 
   // Max recovery days in a single request: 5 or available, whichever is less

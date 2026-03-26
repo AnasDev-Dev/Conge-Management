@@ -196,6 +196,22 @@ export default function EmployeesPage() {
     return usage
   }, [requests])
 
+  // RECUPERATION pending usage per user (to subtract from displayed balance)
+  const recupPendingByUser = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const pending = new Map<string, number>()
+
+    for (const request of requests) {
+      if (new Date(request.start_date).getFullYear() !== currentYear) continue
+      if (!pendingStatuses.has(request.status)) continue
+      const recupAmount = (request as Record<string, unknown>).balance_recuperation_used as number | null
+      const amount = recupAmount ?? (request.request_type === 'RECUPERATION' ? request.days_count : 0)
+      if (amount <= 0) continue
+      pending.set(request.user_id, (pending.get(request.user_id) || 0) + amount)
+    }
+    return pending
+  }, [requests])
+
   const filteredEmployees = useMemo(() => {
     const tokens = normalizeText(searchTerm).split(/\s+/).filter(Boolean)
     if (tokens.length === 0) return employees
@@ -335,7 +351,7 @@ export default function EmployeesPage() {
                           return (
                             <p className="text-sm">
                               <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
-                              <span className="text-muted-foreground"> congé · {roundHalf(employee.balance_recuperation)}j récup</span>
+                              <span className="text-muted-foreground"> congé · {roundHalf(Math.max(employee.balance_recuperation - (recupPendingByUser.get(employee.id) || 0), 0))}j récup</span>
                             </p>
                           )
                         })()}
@@ -378,7 +394,7 @@ export default function EmployeesPage() {
             const seniority = calculateSeniority(employee.hire_date ?? null, deptDays)
             const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
             const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
-            const recup = roundHalf(employee.balance_recuperation)
+            const recup = roundHalf(Math.max(employee.balance_recuperation - (recupPendingByUser.get(employee.id) || 0), 0))
 
             // Progress bar percentages
             const congeTotal = accrual.carryOver + accrual.cumulativeEarned
