@@ -68,8 +68,10 @@ export function SignatureDialog({
     }
 
     const pad = new SignaturePad(canvas, {
-      backgroundColor: 'rgb(255, 255, 255)',
+      backgroundColor: 'rgba(255, 255, 255, 0)',
       penColor: 'rgb(0, 0, 0)',
+      minWidth: 1.5,
+      maxWidth: 3,
     })
 
     pad.addEventListener('endStroke', () => {
