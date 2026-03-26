@@ -15,8 +15,7 @@ import { Utilisateur } from '@/lib/types/database'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import Image from 'next/image'
-import { calculateSeniority, roundHalf } from '@/lib/leave-utils'
-import { MAX_LEAVE_BALANCE } from '@/lib/constants'
+import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { getCompanyLogo } from '@/lib/company-logos'
 
@@ -28,23 +27,45 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
-  const [balanceInfo, setBalanceInfo] = useState<{
-    available_now: number
-    carry_over: number
-    monthly_accrued: number
-    days_used_this_year: number
-    days_pending: number
-  } | null>(null)
+  const [congeUsedDays, setCongeUsedDays] = useState(0)
+  const [congePendingDays, setCongePendingDays] = useState(0)
+  const [recupPendingDays, setRecupPendingDays] = useState(0)
+  const [deptAnnualDays, setDeptAnnualDays] = useState<number | undefined>(undefined)
   const supabase = createClient()
 
   useEffect(() => {
-    if (user) {
-      supabase
-        .rpc('calculate_leave_balance', { p_user_id: user.id })
-        .then(({ data }) => {
-          if (data) setBalanceInfo(data)
-        })
+    if (!user) return
+    const currentYear = new Date().getFullYear()
+
+    // Fetch department annual_leave_days
+    if (user.department_id) {
+      supabase.from('departments').select('annual_leave_days').eq('id', user.department_id).single()
+        .then(({ data }) => { if (data) setDeptAnnualDays(data.annual_leave_days) })
     }
+
+    // Fetch used/pending days for current year
+    supabase
+      .from('leave_requests')
+      .select('days_count, balance_conge_used, balance_recuperation_used, request_type, status')
+      .eq('user_id', user.id)
+      .gte('start_date', `${currentYear}-01-01`)
+      .lte('start_date', `${currentYear}-12-31`)
+      .then(({ data }) => {
+        if (!data) return
+        let cUsed = 0, cPending = 0, rPending = 0
+        for (const r of data) {
+          const congeAmt = r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0
+          const recupAmt = r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0
+          if (r.status === 'APPROVED') cUsed += congeAmt
+          if (['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'].includes(r.status)) {
+            cPending += congeAmt
+            rPending += recupAmt
+          }
+        }
+        setCongeUsedDays(cUsed)
+        setCongePendingDays(cPending)
+        setRecupPendingDays(rPending)
+      })
   }, [user])
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -358,35 +379,42 @@ export default function ProfilePage() {
           <CardTitle>Solde de congés</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-2xl border border-primary/25 bg-primary/9 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-foreground">Solde congé</p>
-                  <p className={`mt-2 text-3xl font-bold ${(balanceInfo ? balanceInfo.available_now : user.balance_conge) < 0 ? 'text-red-500' : 'text-primary'}`}>
-                    {balanceInfo ? roundHalf(balanceInfo.available_now) : roundHalf(user.balance_conge)}
-                  </p>
-                  {balanceInfo && (balanceInfo.days_used_this_year > 0 || balanceInfo.days_pending > 0) && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Consommé: {roundHalf(balanceInfo.days_used_this_year + balanceInfo.days_pending)}j
-                    </p>
-                  )}
+          {(() => {
+            const seniority = calculateSeniority(user.hire_date, deptAnnualDays)
+            const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, user.balance_conge, congeUsedDays, congePendingDays)
+            const availableRecup = roundHalf(Math.max(user.balance_recuperation - recupPendingDays, 0))
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="rounded-2xl border border-primary/25 bg-primary/9 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-foreground">Solde congé</p>
+                      <p className={`mt-2 text-3xl font-bold ${accrual.availableNow < 0 ? 'text-red-500' : 'text-primary'}`}>
+                        {accrual.availableNow}j
+                      </p>
+                      {(congeUsedDays > 0 || congePendingDays > 0) && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Consommé: {roundHalf(congeUsedDays + congePendingDays)}j
+                        </p>
+                      )}
+                    </div>
+                    <Calendar className="h-12 w-12 text-primary/30" />
+                  </div>
                 </div>
-                <Calendar className="h-12 w-12 text-primary/30" />
-              </div>
-            </div>
 
-            <div className="rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-foreground">RÉCUPÉRATION</p>
-                  <p className="mt-2 text-3xl font-bold text-[var(--status-success-text)]">{roundHalf(user.balance_recuperation)}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">jours disponibles</p>
+                <div className="rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-foreground">RÉCUPÉRATION</p>
+                      <p className="mt-2 text-3xl font-bold text-[var(--status-success-text)]">{availableRecup}j</p>
+                      <p className="mt-1 text-sm text-muted-foreground">jours disponibles</p>
+                    </div>
+                    <Calendar className="h-12 w-12 text-[var(--status-success-text)]/35" />
+                  </div>
                 </div>
-                <Calendar className="h-12 w-12 text-[var(--status-success-text)]/35" />
               </div>
-            </div>
-          </div>
+            )
+          })()}
         </CardContent>
       </Card>
     </div>
