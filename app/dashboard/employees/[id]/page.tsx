@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { LeaveRequest, Utilisateur } from '@/lib/types/database'
-import { ArrowLeft, Calendar, Clock, FileText, Mail, Pencil, Phone, Trash2, User } from 'lucide-react'
+import { LeaveRequest, Utilisateur, MissionPersonnelCategory } from '@/lib/types/database'
+import { ArrowLeft, Calendar, Clock, FileText, Mail, Pencil, Phone, Trash2, User, Briefcase } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { PageGuard } from '@/components/role-gate'
 import { usePermissions } from '@/lib/hooks/use-permissions'
@@ -25,7 +25,7 @@ import { getCompanyLogo } from '@/lib/company-logos'
 
 type EmployeeDetails = Pick<
   Utilisateur,
-  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'birth_date' | 'gender' | 'matricule' | 'company_id' | 'department_id' | 'category_id'
+  'id' | 'full_name' | 'email' | 'job_title' | 'role' | 'is_active' | 'phone' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'birth_date' | 'gender' | 'matricule' | 'company_id' | 'department_id' | 'category_id' | 'mission_category_id'
 > & {
   cin?: string | null
   cnss?: string | null
@@ -56,6 +56,8 @@ export default function EmployeeDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [missionCategories, setMissionCategories] = useState<MissionPersonnelCategory[]>([])
+  const [missionCatSaving, setMissionCatSaving] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   const loadData = useCallback(async (employeeId: string) => {
@@ -64,7 +66,7 @@ export default function EmployeeDetailsPage() {
         await Promise.all([
           supabase
             .from('utilisateurs')
-            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, birth_date, gender, matricule, company_id, department_id, category_id, cin, cnss, rib, address, city, date_anciennete, annual_leave_days, departments(annual_leave_days)')
+            .select('id, full_name, email, job_title, role, is_active, phone, balance_conge, balance_recuperation, hire_date, birth_date, gender, matricule, company_id, department_id, category_id, mission_category_id, cin, cnss, rib, address, city, date_anciennete, annual_leave_days, departments(annual_leave_days)')
             .eq('id', employeeId)
             .single(),
           supabase
@@ -105,6 +107,31 @@ export default function EmployeeDetailsPage() {
       loadData(params.id)
     }
   }, [params.id, loadData])
+
+  // Load mission categories for the selector
+  useEffect(() => {
+    const cId = activeCompany?.id || employee?.company_id
+    if (!cId) return
+    supabase.from('mission_personnel_categories').select('*').eq('company_id', cId).eq('is_active', true).order('sort_order')
+      .then(({ data }) => setMissionCategories(data || []))
+  }, [activeCompany?.id, employee?.company_id])
+
+  const handleMissionCategoryChange = async (catId: string) => {
+    if (!employee) return
+    setMissionCatSaving(true)
+    try {
+      const { error } = await supabase.from('utilisateurs')
+        .update({ mission_category_id: catId ? parseInt(catId) : null })
+        .eq('id', employee.id)
+        .select()
+      if (error) throw error
+      setEmployee(prev => prev ? { ...prev, mission_category_id: catId ? parseInt(catId) : null } : prev)
+    } catch (err) {
+      console.error('Error updating mission category:', err)
+    } finally {
+      setMissionCatSaving(false)
+    }
+  }
 
   const summary = useMemo(() => {
     const totalRequests = requests.length
@@ -342,6 +369,32 @@ export default function EmployeeDetailsPage() {
                   )}
                 </div>
               )}
+              {/* Mission Personnel Category */}
+              <div>
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Briefcase className="h-3.5 w-3.5" />
+                  Catégorie mission
+                </p>
+                {can('employees.edit') && missionCategories.length > 0 ? (
+                  <select
+                    value={employee.mission_category_id ?? ''}
+                    onChange={e => handleMissionCategoryChange(e.target.value)}
+                    disabled={missionCatSaving}
+                    className="mt-1 h-9 w-full rounded-xl border border-input bg-background px-3 text-sm font-medium text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/60 disabled:opacity-50"
+                  >
+                    <option value="">Non assignée</option>
+                    {missionCategories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="font-medium mt-1">
+                    {employee.mission_category_id
+                      ? missionCategories.find(c => c.id === employee.mission_category_id)?.name || 'Catégorie inconnue'
+                      : 'Non assignée'}
+                  </p>
+                )}
+              </div>
             </div>
 
             {(employee.cin || employee.cnss || employee.rib) && (

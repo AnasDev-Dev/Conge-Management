@@ -46,6 +46,7 @@ export type Action =
   | 'settings.recovery'
   | 'settings.departments'
   | 'settings.categories'
+  | 'settings.missions'
   | 'settings.permissions'
   // Balance init
   | 'balance-init.edit'
@@ -193,6 +194,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'settings.recovery',
       'settings.departments',
       'settings.categories',
+      'settings.missions',
       'balance-init.edit',
       'approval.leaveStage1',
       'approval.missionStage2',
@@ -246,6 +248,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'recovery.validate',
       'settings.departments',
       'settings.categories',
+      'settings.missions',
       'balance-init.edit',
       'approval.leaveStage3',
       'approval.missionStage3',
@@ -304,6 +307,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'settings.recovery',
       'settings.departments',
       'settings.categories',
+      'settings.missions',
       'settings.permissions',
       'balance-init.edit',
       'approval.leaveStage1',

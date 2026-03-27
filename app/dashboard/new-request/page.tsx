@@ -15,8 +15,8 @@ import { toast } from 'sonner'
 import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus, Heart, Gift } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot, LeaveSegment } from '@/lib/types/database'
-import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS } from '@/lib/constants'
+import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot, LeaveSegment, MissionPersonnelCategory, MissionZone, MissionTariffGridEntry } from '@/lib/types/database'
+import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS, CURRENCY_OPTIONS } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -98,6 +98,32 @@ export default function NewRequestPage() {
   const [missionComments, setMissionComments] = useState('')
   const [colleagues, setColleagues] = useState<Colleague[]>([])
   const [isSubmittingMission, setIsSubmittingMission] = useState(false)
+  const [missionStep, setMissionStep] = useState(1)
+
+  // --- Mission expansion state ---
+  const [missionCategoryId, setMissionCategoryId] = useState('')
+  const [missionZoneId, setMissionZoneId] = useState('')
+  const [missionCountry, setMissionCountry] = useState('')
+  const [missionVenue, setMissionVenue] = useState('')
+  const [missionCurrency, setMissionCurrency] = useState('MAD')
+  const [missionPec, setMissionPec] = useState(false)
+  const [missionPetitDejIncl, setMissionPetitDejIncl] = useState(false)
+  const [nbrPetitDej, setNbrPetitDej] = useState(0)
+  const [nbrDej, setNbrDej] = useState(0)
+  const [nbrDiner, setNbrDiner] = useState(0)
+  const [hotelAmount, setHotelAmount] = useState('')
+  const [extraExpenses, setExtraExpenses] = useState<{ label: string; amount: string }[]>([])
+  const [missionCategories, setMissionCategories] = useState<MissionPersonnelCategory[]>([])
+  const [missionZones, setMissionZones] = useState<MissionZone[]>([])
+  const [tariffGrid, setTariffGrid] = useState<MissionTariffGridEntry[]>([])
+  // Vehicle details (voiture_personnelle only)
+  const [vehicleBrand, setVehicleBrand] = useState('')
+  const [vehicleFiscalPower, setVehicleFiscalPower] = useState('')
+  const [vehiclePlateRequested, setVehiclePlateRequested] = useState('')
+  const [vehicleDateFrom, setVehicleDateFrom] = useState('')
+  const [vehicleDateTo, setVehicleDateTo] = useState('')
+  const [personsTransported, setPersonsTransported] = useState('')
+  const [personsOther, setPersonsOther] = useState('')
 
   // --- Conge Exceptionnel form state ---
   const [exceptionalTypes, setExceptionalTypes] = useState<ExceptionalLeaveType[]>([])
@@ -198,6 +224,72 @@ export default function NewRequestPage() {
       }
     }
   }, [user, activeCompany?.id])
+
+  // Load mission config (categories, zones, tariff grid) and auto-resolve user's category
+  useEffect(() => {
+    if (!user) return
+    const cId = activeCompany?.id || user.company_id
+    if (!cId) return
+    supabase.from('mission_personnel_categories').select('*').eq('company_id', cId).eq('is_active', true).order('sort_order')
+      .then(({ data }) => setMissionCategories(data || []))
+    supabase.from('mission_zones').select('*').eq('company_id', cId).eq('is_active', true).order('sort_order')
+      .then(({ data }) => setMissionZones(data || []))
+    supabase.from('mission_tariff_grid').select('*')
+      .then(({ data }) => setTariffGrid(data || []))
+    // Auto-set category from user's profile
+    if (user.mission_category_id) {
+      setMissionCategoryId(String(user.mission_category_id))
+    }
+  }, [user, activeCompany?.id])
+
+  // When creating on-behalf, resolve the target employee's category
+  useEffect(() => {
+    if (!isAssigning || !selectedEmployeeId) return
+    supabase.from('utilisateurs').select('mission_category_id').eq('id', selectedEmployeeId).single()
+      .then(({ data }) => {
+        if (data?.mission_category_id) setMissionCategoryId(String(data.mission_category_id))
+        else setMissionCategoryId('')
+      })
+  }, [isAssigning, selectedEmployeeId])
+
+  // Mission working days + allowance calculation
+  const missionWorkingDays = countWorkingDaysUtil(missionStartDate, missionEndDate, workingDaysConfig, holidays)
+  // Client formula: duration + 0.5 (travel day half-day bonus)
+  // Tariff lookup: try exact match (category+zone), fallback to zone-only (first match for that zone)
+  const missionTariff = useMemo(() => {
+    if (!missionZoneId) return null
+    const zid = parseInt(missionZoneId)
+    if (missionCategoryId) {
+      const exact = tariffGrid.find(g => g.category_id === parseInt(missionCategoryId) && g.zone_id === zid)
+      if (exact) return exact
+    }
+    // Fallback: first tariff entry for this zone
+    return tariffGrid.find(g => g.zone_id === zid) || null
+  }, [missionCategoryId, missionZoneId, tariffGrid])
+
+  const { computedDailyAllowance, computedTotalAllowance } = useMemo(() => {
+    const dwt = missionWorkingDays > 0 ? missionWorkingDays + 0.5 : 0
+    const hn = parseFloat(hotelAmount) || 0
+    if (missionScope === 'LOCAL') return { computedDailyAllowance: 0, computedTotalAllowance: 0 }
+    // Use tariff rates if available, otherwise 0
+    const t = missionTariff || { petit_dej: 0, dej: 0, diner: 0, indem_avec_pec: 0, indem_sans_pec: 0 }
+    if (!missionPec) {
+      // Sans PEC: daily = indem_sans_pec + hotel/night, total = daily × (days + 0.5)
+      const daily = t.indem_sans_pec + hn
+      const total = daily * dwt
+      return { computedDailyAllowance: Math.round(daily * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
+    } else {
+      // Avec PEC: total = meals + (hotel + indem_avec_pec) × (days + 0.5)
+      const mealsTotal = (t.petit_dej * nbrPetitDej) + (t.dej * nbrDej) + (t.diner * nbrDiner)
+      const lodgingTotal = (hn + t.indem_avec_pec) * dwt
+      const total = mealsTotal + lodgingTotal
+      const daily = dwt > 0 ? total / dwt : 0
+      return { computedDailyAllowance: Math.round(daily * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
+    }
+  }, [missionTariff, missionPec, missionScope, hotelAmount, nbrPetitDej, nbrDej, nbrDiner, missionWorkingDays])
+
+  const hotelPerNight = parseFloat(hotelAmount) || 0
+  const missionDurationWithTravel = missionWorkingDays > 0 ? missionWorkingDays + 0.5 : 0
 
   // Block self-service when on a non-home company (balances live at home company only)
   useEffect(() => {
@@ -452,8 +544,6 @@ export default function NewRequestPage() {
     }
   }
 
-  const missionWorkingDays = countWorkingDaysUtil(missionStartDate, missionEndDate, workingDaysConfig, holidays)
-
   const handleMissionSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
@@ -482,6 +572,30 @@ export default function NewRequestPage() {
           transport_details: transportDetails.trim() || null,
           replacement_user_id: missionReplacementId || null,
           comments: missionComments.trim() || null,
+          // Mission expansion fields
+          mission_category_id: missionCategoryId ? parseInt(missionCategoryId) : null,
+          mission_zone_id: missionZoneId ? parseInt(missionZoneId) : null,
+          country: missionCountry.trim() || null,
+          venue: missionVenue.trim() || null,
+          currency: missionCurrency || 'MAD',
+          pec: missionPec,
+          petit_dej_included: missionPetitDejIncl,
+          nbr_petit_dej: nbrPetitDej,
+          nbr_dej: nbrDej,
+          nbr_diner: nbrDiner,
+          daily_allowance: computedDailyAllowance,
+          total_allowance: computedTotalAllowance,
+          hotel_amount: parseFloat(hotelAmount) || 0,
+          extra_expenses: extraExpenses.filter(e => e.label.trim() && e.amount).map(e => ({
+            label: e.label.trim(), amount: parseFloat(e.amount) || 0,
+          })),
+          vehicle_brand: transportType === 'voiture_personnelle' ? vehicleBrand.trim() || null : null,
+          vehicle_fiscal_power: transportType === 'voiture_personnelle' ? vehicleFiscalPower.trim() || null : null,
+          vehicle_plate_requested: transportType === 'voiture_personnelle' ? vehiclePlateRequested.trim() || null : null,
+          vehicle_date_from: transportType === 'voiture_personnelle' && vehicleDateFrom ? vehicleDateFrom : null,
+          vehicle_date_to: transportType === 'voiture_personnelle' && vehicleDateTo ? vehicleDateTo : null,
+          persons_transported: transportType === 'voiture_personnelle' ? personsTransported.trim() || null : null,
+          persons_other: personsOther.trim() || null,
           // Status is computed by the DB trigger based on creator's role.
           // Do NOT send status — the trigger overrides it.
         })
@@ -2004,421 +2118,410 @@ export default function NewRequestPage() {
         </form>
       )}
 
-      {/* ========== MISSION TAB ========== */}
+      {/* ========== MISSION TAB — 3-Step Wizard ========== */}
       {activeTab === 'mission' && (
         <form onSubmit={handleMissionSubmit} className="space-y-6">
-          {/* Mode: Self or Assign (managers only) */}
-          {isManager && (
-            <Card className="border-border/70">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  Type de demande
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <button
-                    type="button"
-                    onClick={() => { setIsAssigning(false); setSelectedEmployeeId('') }}
-                    className={cn(
-                      'rounded-2xl border-2 p-4 text-left transition-all',
-                      !isAssigning ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:border-border hover:bg-accent/30'
-                    )}
-                  >
-                    <div className="text-left">
-                      <div className="text-lg font-semibold">Pour moi-même</div>
-                      <div className="mt-1 text-sm text-muted-foreground">Je demande à partir en mission</div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAssigning(true)}
-                    className={cn(
-                      'rounded-2xl border-2 p-4 text-left transition-all',
-                      isAssigning ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:border-border hover:bg-accent/30'
-                    )}
-                  >
-                    <div className="text-left">
-                      <div className="text-lg font-semibold">Assigner un employé</div>
-                      <div className="mt-1 text-sm text-muted-foreground">Envoyer un employé en mission</div>
-                    </div>
-                  </button>
-                </div>
-                {isAssigning && (
-                  <div className="mt-4 space-y-2">
-                    <Label htmlFor="missionEmployee">Sélectionner l&apos;employé *</Label>
-                    <select
-                      id="missionEmployee"
-                      value={selectedEmployeeId}
-                      onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                      required={isAssigning}
-                      className="h-11 w-full rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60"
-                    >
-                      <option value="">-- Choisir un employé --</option>
-                      {employees
-                        .filter((emp) => emp.id !== user.id)
-                        .map((emp) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.full_name}{emp.job_title ? ` — ${emp.job_title}` : ''}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Mission Scope */}
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5 text-primary" />
-                Portée de la mission *
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2">
+            {[
+              { n: 1, label: 'Mission' },
+              { n: 2, label: 'Détails' },
+              { n: 3, label: 'Résumé' },
+            ].map((s, i) => (
+              <div key={s.n} className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setMissionScope('LOCAL')}
+                  onClick={() => s.n < missionStep && setMissionStep(s.n)}
                   className={cn(
-                    'rounded-2xl border-2 p-5 text-left transition-all',
-                    missionScope === 'LOCAL'
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'border-border/70 hover:border-border hover:bg-accent/30'
+                    'flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-all',
+                    missionStep === s.n
+                      ? 'bg-primary text-primary-foreground shadow-md'
+                      : missionStep > s.n
+                        ? 'bg-primary/20 text-primary cursor-pointer'
+                        : 'bg-muted text-muted-foreground'
                   )}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-xl transition-colors',
-                      missionScope === 'LOCAL' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                    )}>
-                      <Home className="h-4.5 w-4.5" />
-                    </div>
-                    <div>
-                      <div className="text-lg font-semibold">Locale</div>
-                      <div className="mt-1 text-sm text-muted-foreground">Mission au Maroc</div>
-                    </div>
-                  </div>
+                  {missionStep > s.n ? <Check className="h-4 w-4" /> : s.n}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMissionScope('INTERNATIONAL')}
-                  className={cn(
-                    'rounded-2xl border-2 p-5 text-left transition-all',
-                    missionScope === 'INTERNATIONAL'
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'border-border/70 hover:border-border hover:bg-accent/30'
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-xl transition-colors',
-                      missionScope === 'INTERNATIONAL' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                    )}>
-                      <Globe className="h-4.5 w-4.5" />
-                    </div>
-                    <div>
-                      <div className="text-lg font-semibold">Internationale</div>
-                      <div className="mt-1 text-sm text-muted-foreground">Mission à l&apos;étranger</div>
-                    </div>
-                  </div>
-                </button>
+                <span className={cn('hidden text-sm sm:inline', missionStep === s.n ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                  {s.label}
+                </span>
+                {i < 2 && <div className={cn('h-px w-8 sm:w-12', missionStep > s.n ? 'bg-primary/40' : 'bg-border')} />}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Cities */}
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-primary" />
-                Itinéraire *
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="departureCity">Ville de départ</Label>
-                  <div className="relative">
-                    <Input
-                      id="departureCity"
-                      placeholder={missionScope === 'LOCAL' ? 'Ex: Rabat' : 'Ex: Casablanca'}
-                      value={departureCity}
-                      onChange={(e) => setDepartureCity(e.target.value)}
-                      required
-                      className="pl-10"
-                    />
-                    <MapPin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="arrivalCity">
-                    Ville d&apos;arrivée {missionScope === 'INTERNATIONAL' && '(Pays + Ville)'}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="arrivalCity"
-                      placeholder={missionScope === 'LOCAL' ? 'Ex: Marrakech, Tanger...' : 'Ex: Paris - France, Dubai - EAU...'}
-                      value={arrivalCity}
-                      onChange={(e) => setArrivalCity(e.target.value)}
-                      required
-                      className="pl-10"
-                    />
-                    <MapPin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Mission Object */}
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="h-5 w-5 text-primary" />
-                Objet de la mission *
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder="Décrivez l'objectif de la mission..."
-                value={missionObject}
-                onChange={(e) => setMissionObject(e.target.value)}
-                required
-                rows={3}
-                maxLength={500}
-              />
-              <p className="mt-2 text-xs text-muted-foreground">{missionObject.length}/500 caractères</p>
-            </CardContent>
-          </Card>
-
-          {/* Mission Dates */}
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-primary" />
-                Période de la mission *
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="missionStartDate">Date de début</Label>
-                  <DatePicker
-                    id="missionStartDate"
-                    value={missionStartDate}
-                    onChange={setMissionStartDate}
-                    min={format(new Date(), 'yyyy-MM-dd')}
-                    placeholder="Date de début"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="missionEndDate">Date de fin</Label>
-                  <DatePicker
-                    id="missionEndDate"
-                    value={missionEndDate}
-                    onChange={setMissionEndDate}
-                    min={missionStartDate || format(new Date(), 'yyyy-MM-dd')}
-                    placeholder="Date de fin"
-                  />
-                </div>
-              </div>
-              {missionStartDate && missionEndDate && missionWorkingDays > 0 && (
-                <div className="status-progress rounded-2xl border p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="mt-0.5 h-5 w-5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">
-                        Durée: {missionWorkingDays} jour{missionWorkingDays > 1 ? 's' : ''} ouvrable{missionWorkingDays > 1 ? 's' : ''}
-                      </p>
-                      <p className="mt-1 text-sm">
-                        Du {format(new Date(missionStartDate), 'EEEE dd MMMM yyyy', { locale: fr })} au{' '}
-                        {format(new Date(missionEndDate), 'EEEE dd MMMM yyyy', { locale: fr })}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Transport */}
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Car className="h-5 w-5 text-primary" />
-                Moyen de transport
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="transportType">Type de transport</Label>
-                <select
-                  id="transportType"
-                  value={transportType}
-                  onChange={(e) => setTransportType(e.target.value)}
-                  className="h-11 w-full rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60"
-                >
-                  <option value="">-- Sélectionner --</option>
-                  {TRANSPORT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-              {transportType && (
-                <div className="space-y-2">
-                  <Label htmlFor="transportDetails">
-                    Détails du transport
-                    {transportType === 'voiture_personnelle' && ' (Immatriculation)'}
-                    {transportType === 'voiture_service' && ' (Immatriculation)'}
-                    {transportType === 'avion' && ' (N° de vol)'}
-                    {transportType === 'train' && ' (N° de train)'}
-                  </Label>
-                  <Input
-                    id="transportDetails"
-                    placeholder={transportType.includes('voiture') ? 'Ex: AB-123-CD' : transportType === 'avion' ? 'Ex: AT-530' : 'Précisez...'}
-                    value={transportDetails}
-                    onChange={(e) => setTransportDetails(e.target.value)}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Replacement */}
-          {colleagues.length > 0 && (
-            <Card className="border-border/70">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserCheck className="h-5 w-5 text-primary" />
-                  Intérimaire (Optionnel)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <Label htmlFor="missionReplacement">Sélectionnez un collègue intérimaire</Label>
-                  <select
-                    id="missionReplacement"
-                    value={missionReplacementId}
-                    onChange={(e) => setMissionReplacementId(e.target.value)}
-                    className="h-11 w-full rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60"
-                  >
-                    <option value="">Aucun intérimaire</option>
-                    {colleagues
-                      .filter((c) => c.id !== user.id && c.id !== selectedEmployeeId)
-                      .map((colleague) => (
-                        <option key={colleague.id} value={colleague.id}>
-                          {colleague.full_name}{colleague.job_title ? ` — ${colleague.job_title}` : ''}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Comments */}
-          <Card className="border-border/70">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquareText className="h-5 w-5 text-primary" />
-                Commentaires (Optionnel)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder="Commentaires supplémentaires..."
-                value={missionComments}
-                onChange={(e) => setMissionComments(e.target.value)}
-                rows={3}
-                maxLength={500}
-              />
-              <p className="mt-2 text-xs text-muted-foreground">{missionComments.length}/500 caractères</p>
-            </CardContent>
-          </Card>
-
-          {/* Mission Summary */}
-          <Card className="border-border/70 bg-secondary/35">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardCheck className="h-5 w-5 text-primary" />
-                Récapitulatif
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-0">
-              <div className="divide-y divide-border/50">
-                <div className="flex items-center justify-between py-3.5">
-                  <span className="text-sm text-muted-foreground">Type</span>
-                  <span className="text-sm font-medium text-foreground">Ordre de Mission</span>
-                </div>
-                <div className="flex items-center justify-between py-3.5">
-                  <span className="text-sm text-muted-foreground">Portée</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {missionScope === 'LOCAL' ? 'Locale (Maroc)' : 'Internationale'}
-                  </span>
-                </div>
-                {isAssigning && selectedEmployeeId && (
-                  <div className="flex items-center justify-between py-3.5">
-                    <span className="text-sm text-muted-foreground">Missionnaire</span>
-                    <span className="text-sm font-medium text-foreground">
-                      {employees.find((e) => e.id === selectedEmployeeId)?.full_name || '—'}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between py-3.5">
-                  <span className="text-sm text-muted-foreground">Trajet</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {departureCity && arrivalCity ? `${departureCity} → ${arrivalCity}` : '—'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-3.5">
-                  <span className="text-sm text-muted-foreground">Objet</span>
-                  <span className="max-w-[60%] truncate text-right text-sm font-medium text-foreground">{missionObject || '—'}</span>
-                </div>
-                <div className="flex items-center justify-between py-3.5">
-                  <span className="text-sm text-muted-foreground">Durée</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {missionWorkingDays > 0 ? `${missionWorkingDays} jour${missionWorkingDays > 1 ? 's' : ''} ouvrable${missionWorkingDays > 1 ? 's' : ''}` : '—'}
-                  </span>
-                </div>
-                {transportType && (
-                  <div className="flex items-center justify-between py-3.5">
-                    <span className="text-sm text-muted-foreground">Transport</span>
-                    <span className="text-sm font-medium text-foreground">
-                      {TRANSPORT_OPTIONS.find((t) => t.value === transportType)?.label}
-                      {transportDetails ? ` (${transportDetails})` : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <Button type="button" variant="outline" className="h-11 w-full" onClick={() => router.back()} disabled={isSubmittingMission}>
-              Annuler
-            </Button>
-            <Button
-              type="submit"
-              className="h-11 w-full"
-              disabled={isSubmittingMission || missionWorkingDays <= 0 || !departureCity || !arrivalCity || !missionObject}
-            >
-              {isSubmittingMission ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  <span className="text-sm">Soumission...</span>
-                </>
-              ) : isAssigning ? (
-                <span className="text-sm">Assigner la mission</span>
-              ) : (
-                <span className="text-sm">Soumettre la demande</span>
-              )}
-            </Button>
+            ))}
           </div>
+
+          {/* ═══ STEP 1: Mission info ═══ */}
+          {missionStep === 1 && (
+            <div className="space-y-5">
+              {/* Self or Assign */}
+              {isManager && (
+                <Card className="border-border/70">
+                  <CardContent className="pt-5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <button type="button" onClick={() => { setIsAssigning(false); setSelectedEmployeeId('') }}
+                        className={cn('rounded-2xl border-2 p-3 text-left transition-all', !isAssigning ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:border-border hover:bg-accent/30')}>
+                        <div className="font-semibold">Pour moi-même</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">Je pars en mission</div>
+                      </button>
+                      <button type="button" onClick={() => setIsAssigning(true)}
+                        className={cn('rounded-2xl border-2 p-3 text-left transition-all', isAssigning ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:border-border hover:bg-accent/30')}>
+                        <div className="font-semibold">Assigner un employé</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">Envoyer un employé en mission</div>
+                      </button>
+                    </div>
+                    {isAssigning && (
+                      <div className="mt-3">
+                        <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} required={isAssigning}
+                          className="h-11 w-full rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60">
+                          <option value="">-- Choisir un employé --</option>
+                          {employees.filter((emp) => emp.id !== user.id).map((emp) => (
+                            <option key={emp.id} value={emp.id}>{emp.full_name}{emp.job_title ? ` — ${emp.job_title}` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Scope + Cities + Object + Dates + Transport — compact layout */}
+              <Card className="border-border/70">
+                <CardContent className="space-y-5 pt-5">
+                  {/* Scope */}
+                  <div>
+                    <Label className="mb-2 block text-sm font-medium">Portée de la mission *</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setMissionScope('LOCAL')}
+                        className={cn('flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition-all', missionScope === 'LOCAL' ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:border-border')}>
+                        <Home className={cn('h-4 w-4', missionScope === 'LOCAL' ? 'text-primary' : 'text-muted-foreground')} />
+                        <div><div className="font-semibold text-sm">Locale</div><div className="text-[10px] text-muted-foreground">Mission au Maroc</div></div>
+                      </button>
+                      <button type="button" onClick={() => setMissionScope('INTERNATIONAL')}
+                        className={cn('flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition-all', missionScope === 'INTERNATIONAL' ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:border-border')}>
+                        <Globe className={cn('h-4 w-4', missionScope === 'INTERNATIONAL' ? 'text-primary' : 'text-muted-foreground')} />
+                        <div><div className="font-semibold text-sm">Internationale</div><div className="text-[10px] text-muted-foreground">Mission à l&apos;étranger</div></div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Cities */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Ville de départ *</Label>
+                      <div className="relative">
+                        <Input placeholder={missionScope === 'LOCAL' ? 'Ex: Rabat' : 'Ex: Casablanca'} value={departureCity} onChange={(e) => setDepartureCity(e.target.value)} required className="pl-9" />
+                        <MapPin className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Ville d&apos;arrivée *</Label>
+                      <div className="relative">
+                        <Input placeholder={missionScope === 'LOCAL' ? 'Ex: Marrakech' : 'Ex: Paris'} value={arrivalCity} onChange={(e) => setArrivalCity(e.target.value)} required className="pl-9" />
+                        <MapPin className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-primary" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Object */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Objet de la mission *</Label>
+                    <Textarea placeholder="Décrivez l'objectif de la mission..." value={missionObject} onChange={(e) => setMissionObject(e.target.value)} required rows={2} maxLength={500} />
+                    <p className="text-[10px] text-muted-foreground text-right">{missionObject.length}/500</p>
+                  </div>
+
+                  {/* Dates */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Date de début *</Label>
+                      <DatePicker id="missionStartDate" value={missionStartDate} onChange={setMissionStartDate} min={format(new Date(), 'yyyy-MM-dd')} placeholder="Début" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Date de fin *</Label>
+                      <DatePicker id="missionEndDate" value={missionEndDate} onChange={setMissionEndDate} min={missionStartDate || format(new Date(), 'yyyy-MM-dd')} placeholder="Fin" />
+                    </div>
+                  </div>
+                  {missionStartDate && missionEndDate && missionWorkingDays > 0 && (
+                    <div className="status-progress rounded-xl border px-3 py-2 text-sm">
+                      <strong>{missionWorkingDays}</strong> jour{missionWorkingDays > 1 ? 's' : ''} ouvrable{missionWorkingDays > 1 ? 's' : ''} — du {format(new Date(missionStartDate), 'dd MMM', { locale: fr })} au {format(new Date(missionEndDate), 'dd MMM yyyy', { locale: fr })}
+                    </div>
+                  )}
+
+                  {/* Transport */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Transport</Label>
+                    <select value={transportType} onChange={(e) => setTransportType(e.target.value)}
+                      className="h-10 w-full rounded-xl border border-input bg-background/70 px-4 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/60">
+                      <option value="">-- Sélectionner --</option>
+                      {TRANSPORT_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                    </select>
+                    {transportType && (
+                      <Input placeholder={transportType.includes('voiture') ? 'Immatriculation' : transportType === 'avion' ? 'N° de vol' : 'Précisez...'} value={transportDetails} onChange={(e) => setTransportDetails(e.target.value)} />
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next */}
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" onClick={() => router.back()}>Annuler</Button>
+                <Button type="button" onClick={() => setMissionStep(2)}
+                  disabled={!departureCity || !arrivalCity || !missionObject || missionWorkingDays <= 0 || (isAssigning && !selectedEmployeeId)}>
+                  Suivant <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ STEP 2: Details (zone, financial, vehicle, expenses, replacement, comments) ═══ */}
+          {missionStep === 2 && (
+            <div className="space-y-5">
+              {/* Zone & Destination (INTERNATIONAL only) */}
+              {missionScope === 'INTERNATIONAL' && (
+                <Card className="border-border/70">
+                  <CardContent className="space-y-4 pt-5">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Zone géographique</Label>
+                      <select value={missionZoneId} onChange={e => setMissionZoneId(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-input bg-background/70 px-4 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/60">
+                        <option value="">-- Sélectionner --</option>
+                        {missionZones.map(z => (<option key={z.id} value={z.id}>{z.name}</option>))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5"><Label className="text-sm">Pays</Label><Input placeholder="Ex: France" value={missionCountry} onChange={e => setMissionCountry(e.target.value)} /></div>
+                      <div className="space-y-1.5"><Label className="text-sm">Lieu</Label><Input placeholder="Ex: Golf National" value={missionVenue} onChange={e => setMissionVenue(e.target.value)} /></div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Devise</Label>
+                      <select value={missionCurrency} onChange={e => setMissionCurrency(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-input bg-background/70 px-4 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/60">
+                        {CURRENCY_OPTIONS.map(c => (<option key={c.value} value={c.value}>{c.label}</option>))}
+                      </select>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Financial — LOCAL: hotel only | INTERNATIONAL: PEC choice + conditional meals */}
+              <Card className="border-border/70">
+                <CardContent className="space-y-4 pt-5">
+                  {missionScope === 'LOCAL' ? (
+                    <>
+                      <Label className="text-sm font-medium">Hébergement</Label>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Montant hôtel / nuit</Label>
+                        <Input type="number" min="0" step="0.01" placeholder="0.00" value={hotelAmount} onChange={e => setHotelAmount(e.target.value)} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Label className="text-sm font-medium">Prise en charge</Label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setMissionPec(true)}
+                          className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${missionPec ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20' : 'border-border/70 bg-card text-muted-foreground hover:border-border'}`}>
+                          Avec PEC<p className="mt-0.5 text-[10px] font-normal opacity-70">Repas séparés</p>
+                        </button>
+                        <button type="button" onClick={() => setMissionPec(false)}
+                          className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${!missionPec ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20' : 'border-border/70 bg-card text-muted-foreground hover:border-border'}`}>
+                          Sans PEC<p className="mt-0.5 text-[10px] font-normal opacity-70">Hôtel tout inclus</p>
+                        </button>
+                      </div>
+
+                      {/* Avec PEC: meal counts */}
+                      {missionPec && (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1"><Label className="text-[10px]">Nb. P.déj</Label><Input type="number" min="0" value={nbrPetitDej} onChange={e => setNbrPetitDej(parseInt(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                          <div className="space-y-1"><Label className="text-[10px]">Nb. Déj</Label><Input type="number" min="0" value={nbrDej} onChange={e => setNbrDej(parseInt(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                          <div className="space-y-1"><Label className="text-[10px]">Nb. Dîners</Label><Input type="number" min="0" value={nbrDiner} onChange={e => setNbrDiner(parseInt(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                        </div>
+                      )}
+
+                      {/* Hotel */}
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Montant hôtel / nuit {!missionPec && <span className="text-xs text-muted-foreground">(repas inclus)</span>}</Label>
+                        <Input type="number" min="0" step="0.01" placeholder="0.00" value={hotelAmount} onChange={e => setHotelAmount(e.target.value)} />
+                      </div>
+
+                      {/* Calculation breakdown — always visible */}
+                      {(() => {
+                        const t = missionTariff || { petit_dej: 0, dej: 0, diner: 0, indem_avec_pec: 0, indem_sans_pec: 0 }
+                        return (
+                          <div className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-1.5">
+                            {missionPec ? (
+                              <div className="space-y-1 text-xs text-muted-foreground">
+                                <div className="flex justify-between"><span>P.déj: {t.petit_dej} × {nbrPetitDej}</span><span>{(t.petit_dej * nbrPetitDej).toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>Déj: {t.dej} × {nbrDej}</span><span>{(t.dej * nbrDej).toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>Dîner: {t.diner} × {nbrDiner}</span><span>{(t.diner * nbrDiner).toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>(Hôtel {hotelPerNight} + Indemnité {t.indem_avec_pec}) × {missionWorkingDays}j</span><span>{((hotelPerNight + t.indem_avec_pec) * missionDurationWithTravel).toFixed(2)}</span></div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1 text-xs text-muted-foreground">
+                                <div className="flex justify-between"><span>(Indemnité {t.indem_sans_pec} + Hôtel {hotelPerNight}) × {missionWorkingDays}j</span><span>{computedTotalAllowance.toFixed(2)}</span></div>
+                              </div>
+                            )}
+                            <div className="border-t border-border/50 pt-1.5 mt-1.5">
+                              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dotation journalière</span><span className="font-medium">{computedDailyAllowance} {missionCurrency}</span></div>
+                              <div className="flex justify-between text-sm mt-0.5"><span className="font-medium text-foreground">Dotation totale</span><span className="font-bold text-primary">{computedTotalAllowance} {missionCurrency}</span></div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Vehicle (voiture_personnelle) */}
+              {transportType === 'voiture_personnelle' && (
+                <Card className="border-border/70">
+                  <CardContent className="space-y-3 pt-5">
+                    <Label className="text-sm font-medium">Détails du véhicule</Label>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="space-y-1"><Label className="text-xs">Marque</Label><Input placeholder="Dacia Duster" value={vehicleBrand} onChange={e => setVehicleBrand(e.target.value)} className="h-9" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Puissance fiscale</Label><Input placeholder="6 CV" value={vehicleFiscalPower} onChange={e => setVehicleFiscalPower(e.target.value)} className="h-9" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Immatriculation</Label><Input placeholder="12345-A-6" value={vehiclePlateRequested} onChange={e => setVehiclePlateRequested(e.target.value)} className="h-9" /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1"><Label className="text-xs">Véhicule du</Label><Input type="date" value={vehicleDateFrom} onChange={e => setVehicleDateFrom(e.target.value)} className="h-9" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Véhicule au</Label><Input type="date" value={vehicleDateTo} onChange={e => setVehicleDateTo(e.target.value)} className="h-9" /></div>
+                    </div>
+                    <div className="space-y-1"><Label className="text-xs">Personnes transportées</Label><Input placeholder="Noms" value={personsTransported} onChange={e => setPersonsTransported(e.target.value)} className="h-9" /></div>
+                    <div className="space-y-1"><Label className="text-xs">Autres personnes</Label><Input placeholder="Accompagnants" value={personsOther} onChange={e => setPersonsOther(e.target.value)} className="h-9" /></div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Expenses + Replacement + Comments — compact */}
+              <Card className="border-border/70">
+                <CardContent className="space-y-4 pt-5">
+                  {/* Extra expenses */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium">Frais supplémentaires</Label>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setExtraExpenses(prev => [...prev, { label: '', amount: '' }])}>
+                        <Plus className="mr-1 h-3 w-3" /> Ajouter
+                      </Button>
+                    </div>
+                    {extraExpenses.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Aucun frais ajouté</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {extraExpenses.map((exp, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5">
+                            <Input placeholder="Libellé" value={exp.label} onChange={e => { const c = [...extraExpenses]; c[idx] = { ...c[idx], label: e.target.value }; setExtraExpenses(c) }} className="flex-1 h-8 text-sm" />
+                            <Input type="number" min="0" step="0.01" placeholder="Montant" value={exp.amount} onChange={e => { const c = [...extraExpenses]; c[idx] = { ...c[idx], amount: e.target.value }; setExtraExpenses(c) }} className="w-28 h-8 text-sm" />
+                            <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive" onClick={() => setExtraExpenses(prev => prev.filter((_, i) => i !== idx))}><Minus className="h-3.5 w-3.5" /></Button>
+                          </div>
+                        ))}
+                        {extraExpenses.some(e => e.amount) && (
+                          <p className="text-right text-xs font-medium">Total: {extraExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0).toFixed(2)} {missionCurrency}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Replacement */}
+                  {colleagues.length > 0 && (
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Intérimaire (optionnel)</Label>
+                      <select value={missionReplacementId} onChange={(e) => setMissionReplacementId(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-input bg-background/70 px-4 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/60">
+                        <option value="">Aucun</option>
+                        {colleagues.filter((c) => c.id !== user.id && c.id !== selectedEmployeeId).map((c) => (
+                          <option key={c.id} value={c.id}>{c.full_name}{c.job_title ? ` — ${c.job_title}` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Comments */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Commentaires (optionnel)</Label>
+                    <Textarea placeholder="Commentaires supplémentaires..." value={missionComments} onChange={(e) => setMissionComments(e.target.value)} rows={2} maxLength={500} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Nav */}
+              <div className="flex justify-between gap-3">
+                <Button type="button" variant="outline" onClick={() => setMissionStep(1)}>
+                  <ArrowLeft className="mr-1.5 h-4 w-4" /> Précédent
+                </Button>
+                <Button type="button" onClick={() => setMissionStep(3)}>
+                  Suivant <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ STEP 3: Summary + Signature + Submit ═══ */}
+          {missionStep === 3 && (
+            <div className="space-y-5">
+              <Card className="border-border/70 bg-secondary/35">
+                <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-primary" />Récapitulatif</CardTitle></CardHeader>
+                <CardContent className="space-y-0">
+                  <div className="divide-y divide-border/50">
+                    <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Portée</span><span className="text-sm font-medium">{missionScope === 'LOCAL' ? 'Locale' : 'Internationale'}</span></div>
+                    {isAssigning && selectedEmployeeId && (
+                      <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Missionnaire</span><span className="text-sm font-medium">{employees.find((e) => e.id === selectedEmployeeId)?.full_name || '—'}</span></div>
+                    )}
+                    <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Trajet</span><span className="text-sm font-medium">{departureCity} → {arrivalCity}</span></div>
+                    <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Objet</span><span className="max-w-[55%] truncate text-right text-sm font-medium">{missionObject}</span></div>
+                    <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Durée</span><span className="text-sm font-medium">{missionWorkingDays} jour{missionWorkingDays > 1 ? 's' : ''}</span></div>
+                    {transportType && (
+                      <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Transport</span><span className="text-sm font-medium">{TRANSPORT_OPTIONS.find((t) => t.value === transportType)?.label}{transportDetails ? ` (${transportDetails})` : ''}</span></div>
+                    )}
+                    {missionScope === 'INTERNATIONAL' && (
+                      <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">PEC</span><span className="text-sm font-medium">{missionPec ? 'Avec PEC' : 'Sans PEC (tout inclus)'}</span></div>
+                    )}
+                    {computedTotalAllowance > 0 && (
+                      <>
+                        <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Indemnité/jour</span><span className="text-sm font-medium">{computedDailyAllowance} {missionCurrency}</span></div>
+                        <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Durée</span><span className="text-sm font-medium">{missionWorkingDays} jour{missionWorkingDays > 1 ? 's' : ''}</span></div>
+                        <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground font-medium">Dotation totale</span><span className="text-sm font-bold text-primary">{computedTotalAllowance} {missionCurrency}</span></div>
+                      </>
+                    )}
+                    {parseFloat(hotelAmount) > 0 && (
+                      <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Hébergement</span><span className="text-sm font-medium">{hotelAmount} {missionCurrency}</span></div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Signature area */}
+              <Card className="border-border/70">
+                <CardContent className="pt-5">
+                  <Label className="mb-2 block text-sm font-medium">Signature du missionnaire</Label>
+                  <div className="rounded-xl border-2 border-dashed border-border/70 bg-muted/20 p-4 text-center">
+                    <p className="text-xs text-muted-foreground mb-2">Dessinez votre signature ci-dessous</p>
+                    <canvas
+                      id="missionSignatureCanvas"
+                      className="mx-auto w-full rounded-lg border border-border bg-white"
+                      style={{ height: '120px', touchAction: 'none' }}
+                    />
+                    <Button type="button" variant="ghost" size="sm" className="mt-2 text-xs text-muted-foreground"
+                      onClick={() => {
+                        const canvas = document.getElementById('missionSignatureCanvas') as HTMLCanvasElement
+                        if (canvas) { const ctx = canvas.getContext('2d'); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height) }
+                      }}>
+                      Effacer
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Nav + Submit */}
+              <div className="flex justify-between gap-3">
+                <Button type="button" variant="outline" onClick={() => setMissionStep(2)}>
+                  <ArrowLeft className="mr-1.5 h-4 w-4" /> Précédent
+                </Button>
+                <Button type="submit" disabled={isSubmittingMission || missionWorkingDays <= 0 || !departureCity || !arrivalCity || !missionObject}>
+                  {isSubmittingMission ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Soumission...</>) : isAssigning ? 'Assigner la mission' : 'Soumettre la demande'}
+                </Button>
+              </div>
+            </div>
+          )}
         </form>
       )}
     </div>

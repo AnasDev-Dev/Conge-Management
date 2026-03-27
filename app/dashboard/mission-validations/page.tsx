@@ -671,6 +671,35 @@ export default function MissionValidationsPage() {
                               <p className="mt-0.5 text-foreground">{mission.assigner.full_name}</p>
                             </div>
                           )}
+                          {(mission.daily_allowance > 0 || mission.total_allowance > 0) && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Indemnité</p>
+                              <p className="mt-0.5 text-foreground font-medium">
+                                {mission.daily_allowance}/j — Total: {mission.total_allowance} {mission.currency || 'MAD'}
+                                {mission.pec && <Badge variant="secondary" className="ml-1.5 text-[9px]">PEC</Badge>}
+                              </p>
+                            </div>
+                          )}
+                          {mission.hotel_amount > 0 && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Hébergement</p>
+                              <p className="mt-0.5 text-foreground">{mission.hotel_amount} {mission.currency || 'MAD'}</p>
+                            </div>
+                          )}
+                          {mission.extra_expenses && mission.extra_expenses.length > 0 && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Frais supp.</p>
+                              <p className="mt-0.5 text-foreground font-medium">
+                                {mission.extra_expenses.reduce((s: number, e: { amount: number }) => s + e.amount, 0)} {mission.currency || 'MAD'}
+                              </p>
+                            </div>
+                          )}
+                          {mission.vehicle_brand && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Véhicule</p>
+                              <p className="mt-0.5 text-foreground">{mission.vehicle_brand} {mission.vehicle_plate_requested && `(${mission.vehicle_plate_requested})`}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

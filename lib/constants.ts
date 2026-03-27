@@ -40,6 +40,7 @@ export function getStatusClass(status: string): string {
 export const TRANSPORT_LABELS: Record<string, string> = {
   voiture_personnelle: 'Voiture personnelle',
   voiture_service: 'Voiture de service',
+  covoiturage: 'Covoiturage',
   avion: 'Avion',
   train: 'Train',
   bus: 'Bus',
@@ -50,6 +51,15 @@ export const TRANSPORT_OPTIONS = Object.entries(TRANSPORT_LABELS).map(([value, l
   value,
   label,
 }))
+
+// Currency options for mission orders
+export const CURRENCY_OPTIONS = [
+  { value: 'MAD', label: 'MAD (Dirham)' },
+  { value: 'EUR', label: 'EUR (Euro)' },
+  { value: 'USD', label: 'USD (Dollar)' },
+  { value: 'GBP', label: 'GBP (Livre)' },
+  { value: 'CHF', label: 'CHF (Franc Suisse)' },
+] as const
 
 // Maximum leave balance (Req #7)
 export const MAX_LEAVE_BALANCE = 52

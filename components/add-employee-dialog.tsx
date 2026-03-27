@@ -60,8 +60,10 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
+  const [missionCategoryId, setMissionCategoryId] = useState<string>('')
   const [dateAnciennete, setDateAnciennete] = useState('')
   const [annualLeaveDays, setAnnualLeaveDays] = useState('')
+  const [missionCategories, setMissionCategories] = useState<{ id: number; name: string }[]>([])
 
   const filteredDepartments = useMemo(
     () => (companyId ? departments.filter((d) => String(d.company_id) === companyId) : departments),
@@ -69,14 +71,16 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
   )
 
   const loadReferenceData = useCallback(async () => {
-    const [{ data: companyData }, { data: deptData }, { data: catData }] = await Promise.all([
+    const [{ data: companyData }, { data: deptData }, { data: catData }, { data: missionCatData }] = await Promise.all([
       supabase.from('companies').select('*').order('name'),
       supabase.from('departments').select('*').order('name'),
       supabase.from('personnel_categories').select('id, name').order('name'),
+      supabase.from('mission_personnel_categories').select('id, name').eq('is_active', true).order('sort_order'),
     ])
     setCompanies((companyData || []) as Company[])
     setDepartments((deptData || []) as Department[])
     setCategories((catData || []) as { id: number; name: string }[])
+    setMissionCategories((missionCatData || []) as { id: number; name: string }[])
   }, [supabase])
 
   useEffect(() => {
@@ -102,6 +106,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
     setAddress('')
     setCity('')
     setCategoryId('')
+    setMissionCategoryId('')
     setDateAnciennete('')
     setAnnualLeaveDays('')
   }
@@ -144,6 +149,7 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
         hire_date: hireDate,
       }
       if (categoryId) payload.category_id = categoryId
+      if (missionCategoryId) payload.mission_category_id = parseInt(missionCategoryId)
       if (phone.trim()) payload.phone = phone.trim()
       if (jobTitle.trim()) payload.job_title = jobTitle.trim()
       if (birthDate) payload.birth_date = birthDate
@@ -325,6 +331,25 @@ export function AddEmployeeDialog({ open, onOpenChange, onCreated }: AddEmployee
               <Input id="hireDate" type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
             </div>
           </div>
+
+          {/* Mission Category */}
+          {missionCategories.length > 0 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="missionCategory">Catégorie mission (indemnités)</Label>
+              <Select value={missionCategoryId} onValueChange={setMissionCategoryId}>
+                <SelectTrigger id="missionCategory" className="w-full">
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {missionCategories.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Date d'ancienneté */}
           <div className="space-y-1.5">

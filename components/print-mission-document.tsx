@@ -179,6 +179,138 @@ export default function PrintMissionDocument({ mission, user }: PrintMissionDocu
         </table>
       </div>
 
+      {/* Section: Informations financières */}
+      {(mission.mission_category_id || mission.daily_allowance > 0 || mission.hotel_amount > 0) && (
+        <div style={{ marginBottom: '6mm' }}>
+          <div
+            style={{
+              background: '#f0f4f8',
+              padding: '2.5mm 4mm',
+              borderLeft: '3px solid #a3754a',
+              fontWeight: 600,
+              fontSize: '10pt',
+              marginBottom: '3mm',
+              color: '#333',
+            }}
+          >
+            Informations financières
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10pt' }}>
+            <tbody>
+              {mission.mission_category && (
+                <tr>
+                  <td style={{ ...cellStyle, width: '35%' }}>Catégorie</td>
+                  <td style={valueCellStyle}>{mission.mission_category.name}</td>
+                </tr>
+              )}
+              {mission.mission_zone && (
+                <tr>
+                  <td style={cellStyle}>Zone géographique</td>
+                  <td style={valueCellStyle}>{mission.mission_zone.name}</td>
+                </tr>
+              )}
+              {mission.country && (
+                <tr>
+                  <td style={cellStyle}>Pays</td>
+                  <td style={valueCellStyle}>{mission.country}{mission.venue ? ` — ${mission.venue}` : ''}</td>
+                </tr>
+              )}
+              <tr>
+                <td style={cellStyle}>Prise en charge (PEC)</td>
+                <td style={valueCellStyle}>{mission.pec ? 'Oui' : 'Non'}</td>
+              </tr>
+              <tr>
+                <td style={cellStyle}>Petit-déjeuner inclus</td>
+                <td style={valueCellStyle}>{mission.petit_dej_included ? 'Oui' : 'Non'}</td>
+              </tr>
+              {(mission.nbr_petit_dej > 0 || mission.nbr_dej > 0 || mission.nbr_diner > 0) && (
+                <tr>
+                  <td style={cellStyle}>Repas</td>
+                  <td style={valueCellStyle}>
+                    {mission.nbr_petit_dej > 0 && `${mission.nbr_petit_dej} petit(s)-déj`}
+                    {mission.nbr_dej > 0 && `${mission.nbr_petit_dej > 0 ? ', ' : ''}${mission.nbr_dej} déjeuner(s)`}
+                    {mission.nbr_diner > 0 && `${(mission.nbr_petit_dej > 0 || mission.nbr_dej > 0) ? ', ' : ''}${mission.nbr_diner} dîner(s)`}
+                  </td>
+                </tr>
+              )}
+              <tr>
+                <td style={cellStyle}>Indemnité journalière</td>
+                <td style={valueCellStyle}>{mission.daily_allowance} {mission.currency || 'MAD'}</td>
+              </tr>
+              <tr>
+                <td style={cellStyle}>Hébergement</td>
+                <td style={valueCellStyle}>{mission.hotel_amount} {mission.currency || 'MAD'}</td>
+              </tr>
+              <tr>
+                <td style={{ ...cellStyle, fontWeight: 600 }}>Total indemnité</td>
+                <td style={{ ...valueCellStyle, fontWeight: 700 }}>{mission.total_allowance} {mission.currency || 'MAD'}</td>
+              </tr>
+              {mission.extra_expenses && mission.extra_expenses.length > 0 && mission.extra_expenses.map((exp, i) => (
+                <tr key={i}>
+                  <td style={cellStyle}>{i === 0 ? 'Frais supplémentaires' : ''}</td>
+                  <td style={valueCellStyle}>{exp.label}: {exp.amount} {mission.currency || 'MAD'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Section: Détails du véhicule */}
+      {mission.vehicle_brand && (
+        <div style={{ marginBottom: '6mm' }}>
+          <div
+            style={{
+              background: '#f0f4f8',
+              padding: '2.5mm 4mm',
+              borderLeft: '3px solid #a3754a',
+              fontWeight: 600,
+              fontSize: '10pt',
+              marginBottom: '3mm',
+              color: '#333',
+            }}
+          >
+            Détails du véhicule personnel
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10pt' }}>
+            <tbody>
+              <tr>
+                <td style={{ ...cellStyle, width: '35%' }}>Marque</td>
+                <td style={valueCellStyle}>{mission.vehicle_brand}</td>
+              </tr>
+              {mission.vehicle_fiscal_power && (
+                <tr>
+                  <td style={cellStyle}>Puissance fiscale</td>
+                  <td style={valueCellStyle}>{mission.vehicle_fiscal_power}</td>
+                </tr>
+              )}
+              {mission.vehicle_plate_requested && (
+                <tr>
+                  <td style={cellStyle}>Immatriculation</td>
+                  <td style={valueCellStyle}>{mission.vehicle_plate_requested}</td>
+                </tr>
+              )}
+              {(mission.vehicle_date_from || mission.vehicle_date_to) && (
+                <tr>
+                  <td style={cellStyle}>Période véhicule</td>
+                  <td style={valueCellStyle}>
+                    {mission.vehicle_date_from && format(new Date(mission.vehicle_date_from), 'dd/MM/yyyy')}
+                    {mission.vehicle_date_from && mission.vehicle_date_to && ' au '}
+                    {mission.vehicle_date_to && format(new Date(mission.vehicle_date_to), 'dd/MM/yyyy')}
+                  </td>
+                </tr>
+              )}
+              {mission.persons_transported && (
+                <tr>
+                  <td style={cellStyle}>Personnes transportées</td>
+                  <td style={valueCellStyle}>{mission.persons_transported}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Date line */}
       <div
         style={{

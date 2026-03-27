@@ -86,7 +86,9 @@ export default function MissionDetailPage() {
           approver_rp:utilisateurs!mission_requests_approved_by_rp_fkey(id, full_name, role),
           approver_tg:utilisateurs!mission_requests_approved_by_tg_fkey(id, full_name, role),
           approver_de:utilisateurs!mission_requests_approved_by_de_fkey(id, full_name, role),
-          rejector:utilisateurs!mission_requests_rejected_by_fkey(id, full_name, role)
+          rejector:utilisateurs!mission_requests_rejected_by_fkey(id, full_name, role),
+          mission_category:mission_personnel_categories(id, name),
+          mission_zone:mission_zones(id, name)
         `)
         .eq('id', id)
         .single()
@@ -498,6 +500,166 @@ export default function MissionDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Financial Information */}
+            {(mission.mission_category_id || mission.daily_allowance > 0 || mission.hotel_amount > 0) && (
+              <Card className="border-border/70">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Briefcase className="h-5 w-5" />
+                    Informations financières
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {mission.mission_category && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Catégorie</p>
+                        <p className="mt-1 font-medium">{mission.mission_category.name}</p>
+                      </div>
+                    )}
+                    {mission.mission_zone && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Zone géographique</p>
+                        <p className="mt-1 font-medium">{mission.mission_zone.name}</p>
+                      </div>
+                    )}
+                    {mission.country && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Pays</p>
+                        <p className="mt-1 font-medium">{mission.country}</p>
+                      </div>
+                    )}
+                    {mission.venue && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Lieu</p>
+                        <p className="mt-1 font-medium">{mission.venue}</p>
+                      </div>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">PEC</p>
+                      <Badge variant={mission.pec ? 'default' : 'secondary'} className="mt-1">
+                        {mission.pec ? 'Oui' : 'Non'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Petit-déj inclus</p>
+                      <Badge variant={mission.petit_dej_included ? 'default' : 'secondary'} className="mt-1">
+                        {mission.petit_dej_included ? 'Oui' : 'Non'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Devise</p>
+                      <p className="mt-1 font-medium">{mission.currency || 'MAD'}</p>
+                    </div>
+                  </div>
+                  {(mission.nbr_petit_dej > 0 || mission.nbr_dej > 0 || mission.nbr_diner > 0) && (
+                    <>
+                      <Separator />
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Petits-déj</p>
+                          <p className="mt-1 font-medium">{mission.nbr_petit_dej}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Déjeuners</p>
+                          <p className="mt-1 font-medium">{mission.nbr_dej}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Dîners</p>
+                          <p className="mt-1 font-medium">{mission.nbr_diner}</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <Separator />
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Indemnité journalière</p>
+                      <p className="mt-1 text-lg font-medium">{mission.daily_allowance} {mission.currency || 'MAD'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Hébergement</p>
+                      <p className="mt-1 text-lg font-medium">{mission.hotel_amount} {mission.currency || 'MAD'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total indemnité</p>
+                      <p className="mt-1 text-lg font-bold text-primary">{mission.total_allowance} {mission.currency || 'MAD'}</p>
+                    </div>
+                  </div>
+                  {mission.extra_expenses && mission.extra_expenses.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="mb-2 text-sm font-medium text-muted-foreground">Frais supplémentaires</p>
+                        {mission.extra_expenses.map((exp, i) => (
+                          <div key={i} className="flex justify-between text-sm py-1">
+                            <span>{exp.label}</span>
+                            <span className="font-medium">{exp.amount} {mission.currency || 'MAD'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Vehicle Details */}
+            {mission.vehicle_brand && (
+              <Card className="border-border/70">
+                <CardHeader>
+                  <CardTitle>Détails du véhicule</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Marque</p>
+                      <p className="mt-1 font-medium">{mission.vehicle_brand}</p>
+                    </div>
+                    {mission.vehicle_fiscal_power && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Puissance fiscale</p>
+                        <p className="mt-1 font-medium">{mission.vehicle_fiscal_power}</p>
+                      </div>
+                    )}
+                    {mission.vehicle_plate_requested && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Immatriculation demandée</p>
+                        <p className="mt-1 font-medium">{mission.vehicle_plate_requested}</p>
+                      </div>
+                    )}
+                    {mission.vehicle_plate_granted && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Immatriculation accordée</p>
+                        <p className="mt-1 font-medium">{mission.vehicle_plate_granted}</p>
+                      </div>
+                    )}
+                    {mission.vehicle_date_from && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Véhicule du</p>
+                        <p className="mt-1 font-medium">{format(new Date(mission.vehicle_date_from), 'dd/MM/yyyy', { locale: fr })}</p>
+                      </div>
+                    )}
+                    {mission.vehicle_date_to && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Véhicule au</p>
+                        <p className="mt-1 font-medium">{format(new Date(mission.vehicle_date_to), 'dd/MM/yyyy', { locale: fr })}</p>
+                      </div>
+                    )}
+                    {mission.persons_transported && (
+                      <div className="md:col-span-2">
+                        <p className="text-sm text-muted-foreground">Personnes transportées</p>
+                        <p className="mt-1 font-medium">{mission.persons_transported}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Supervisor Opinion */}
             {mission.supervisor_opinion && (

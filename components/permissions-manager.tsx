@@ -96,6 +96,7 @@ const ACTION_GROUPS: { label: string; actions: { key: Action; label: string }[] 
       { key: 'settings.recovery', label: 'Recuperation' },
       { key: 'settings.departments', label: 'Gerer les departements' },
       { key: 'settings.categories', label: 'Gerer les categories' },
+      { key: 'settings.missions', label: 'Config missions (zones/tarifs)' },
       { key: 'settings.permissions', label: 'Gerer les permissions' },
     ],
   },

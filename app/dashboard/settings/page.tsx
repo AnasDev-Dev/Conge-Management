@@ -44,15 +44,17 @@ import {
   ChevronDown,
   ChevronRight,
   Users,
+  Briefcase,
 } from 'lucide-react'
 import { Holiday, WorkingDays } from '@/lib/types/database'
+import MissionSettings from '@/components/settings/mission-settings'
 import { PermissionsManager } from '@/components/permissions-manager'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { clearCaches } from '@/lib/leave-utils'
 
-type Tab = 'departments' | 'working-days' | 'holidays' | 'permissions'
+type Tab = 'departments' | 'working-days' | 'holidays' | 'missions' | 'permissions'
 
 interface DepartmentWithDays {
   id: number
@@ -580,6 +582,7 @@ export default function SettingsPage() {
     { key: 'departments', label: 'Départements', icon: Building2 },
     { key: 'working-days', label: 'Jours ouvrables', icon: Clock },
     { key: 'holidays', label: 'Jours fériés', icon: Calendar },
+    ...(can('settings.missions') ? [{ key: 'missions' as Tab, label: 'Missions', icon: Briefcase }] : []),
     ...(can('settings.permissions') ? [{ key: 'permissions' as Tab, label: 'Permissions', icon: Shield }] : []),
   ]
 
@@ -1335,6 +1338,11 @@ export default function SettingsPage() {
             </DialogContent>
           </Dialog>
         </div>
+      )}
+
+      {/* ─── Missions Tab ────────────────────────── */}
+      {activeTab === 'missions' && (
+        <MissionSettings companyId={companyId ?? null} />
       )}
 
       {/* ─── Permissions Tab ────────────────────────── */}

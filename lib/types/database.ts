@@ -50,6 +50,7 @@ export interface Utilisateur {
   company_id: number | null
   department_id: number | null
   category_id: number | null
+  mission_category_id: number | null
   job_title: string | null
   role: UserRole
   is_active: boolean
@@ -270,6 +271,46 @@ export interface UserCompanyRole {
   created_at: string
 }
 
+// Mission configuration types
+export interface MissionPersonnelCategory {
+  id: number
+  company_id: number | null
+  name: string
+  description: string | null
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface MissionZone {
+  id: number
+  company_id: number | null
+  name: string
+  description: string | null
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface MissionTariffGridEntry {
+  category_id: number
+  zone_id: number
+  petit_dej: number
+  dej: number
+  diner: number
+  indem_avec_pec: number
+  indem_sans_pec: number
+  created_at: string
+  updated_at: string
+}
+
+export interface MissionExtraExpense {
+  label: string
+  amount: number
+}
+
 export interface MissionRequest {
   id: number
   user_id: string
@@ -307,6 +348,29 @@ export interface MissionRequest {
   rejection_reason: string | null
   created_at: string
   updated_at: string
+  // Mission expansion fields
+  mission_category_id: number | null
+  mission_zone_id: number | null
+  country: string | null
+  venue: string | null
+  currency: string | null
+  pec: boolean
+  petit_dej_included: boolean
+  nbr_petit_dej: number
+  nbr_dej: number
+  nbr_diner: number
+  daily_allowance: number
+  total_allowance: number
+  hotel_amount: number
+  extra_expenses: MissionExtraExpense[]
+  vehicle_brand: string | null
+  vehicle_fiscal_power: string | null
+  vehicle_plate_requested: string | null
+  vehicle_plate_granted: string | null
+  vehicle_date_from: string | null
+  vehicle_date_to: string | null
+  persons_transported: string | null
+  persons_other: string | null
 }
 
 export interface MissionRequestWithRelations extends MissionRequest {
@@ -319,6 +383,8 @@ export interface MissionRequestWithRelations extends MissionRequest {
   approver_tg?: Utilisateur
   approver_de?: Utilisateur
   rejector?: Utilisateur
+  mission_category?: MissionPersonnelCategory
+  mission_zone?: MissionZone
 }
 
 // Extended types with relations
