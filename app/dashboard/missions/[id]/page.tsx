@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
@@ -37,6 +38,7 @@ import Link from 'next/link'
 import { MissionRequestWithRelations, Utilisateur } from '@/lib/types/database'
 import { TRANSPORT_LABELS, getStatusClass, getStatusLabel } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
+import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
@@ -58,6 +60,7 @@ export default function MissionDetailPage() {
   const [missionUser, setMissionUser] = useState<Utilisateur | null>(null)
   const { user: currentUser } = useCurrentUser()
   const { isManager } = usePermissions(currentUser?.role || 'EMPLOYEE')
+  const { activeCompany } = useCompanyContext()
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [showPrint, setShowPrint] = useState(false)
@@ -113,11 +116,7 @@ export default function MissionDetailPage() {
   }
 
   const handlePrint = () => {
-    setShowPrint(true)
-    setTimeout(() => {
-      window.print()
-      setTimeout(() => setShowPrint(false), 500)
-    }, 300)
+    window.print()
   }
 
   // ── Actions ──
@@ -955,11 +954,10 @@ export default function MissionDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Print View */}
-      {showPrint && mission && missionUser && (
-        <div ref={printRef} className="hidden print:block">
-          <PrintMissionDocument mission={mission} user={missionUser} />
-        </div>
+      {/* Print View — portal to body so @media print CSS works */}
+      {mission && missionUser && mission.status === 'APPROVED' && createPortal(
+        <PrintMissionDocument mission={mission} user={missionUser} companyName={activeCompany?.name} />,
+        document.body
       )}
     </>
   )

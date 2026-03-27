@@ -16,7 +16,7 @@ export type LeaveStatus =
 
 export type LeaveRequestType = 'CONGE' | 'RECUPERATION'
 
-export type MissionRequestOrigin = 'SELF' | 'ASSIGNED'
+export type MissionRequestOrigin = 'SELF' | 'ASSIGNED' | 'EXTERNAL'
 export type MissionScope = 'LOCAL' | 'INTERNATIONAL'
 export type SupervisorOpinion = 'FAVORABLE' | 'DEFAVORABLE'
 export type DirectorDecision = 'ACCORDEE' | 'REFUSEE'
@@ -371,6 +371,13 @@ export interface MissionRequest {
   vehicle_date_to: string | null
   persons_transported: string | null
   persons_other: string | null
+  external_person_name: string | null
+  // Per-stage signatures (data URLs or storage URLs)
+  signature_employee: string | null
+  signature_rp: string | null
+  signature_dc: string | null
+  signature_de: string | null
+  signature_rejected_by: string | null
 }
 
 export interface MissionRequestWithRelations extends MissionRequest {

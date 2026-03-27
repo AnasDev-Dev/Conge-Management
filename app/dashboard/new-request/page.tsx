@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import SignaturePadLib from 'signature_pad'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
@@ -86,6 +87,7 @@ export default function NewRequestPage() {
   // --- Mission form state ---
   const [isAssigning, setIsAssigning] = useState(false)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
+  const [externalPersonName, setExternalPersonName] = useState('')
   const [missionScope, setMissionScope] = useState<MissionScope>('LOCAL')
   const [departureCity, setDepartureCity] = useState('')
   const [arrivalCity, setArrivalCity] = useState('')
@@ -124,6 +126,10 @@ export default function NewRequestPage() {
   const [vehicleDateTo, setVehicleDateTo] = useState('')
   const [personsTransported, setPersonsTransported] = useState('')
   const [personsOther, setPersonsOther] = useState('')
+  // Mission signature
+  const missionCanvasRef = useRef<HTMLCanvasElement>(null)
+  const missionPadRef = useRef<SignaturePadLib | null>(null)
+  const [missionSignatureEmpty, setMissionSignatureEmpty] = useState(true)
 
   // --- Conge Exceptionnel form state ---
   const [exceptionalTypes, setExceptionalTypes] = useState<ExceptionalLeaveType[]>([])
@@ -270,7 +276,11 @@ export default function NewRequestPage() {
   const { computedDailyAllowance, computedTotalAllowance } = useMemo(() => {
     const dwt = missionWorkingDays > 0 ? missionWorkingDays + 0.5 : 0
     const hn = parseFloat(hotelAmount) || 0
-    if (missionScope === 'LOCAL') return { computedDailyAllowance: 0, computedTotalAllowance: 0 }
+    if (missionScope === 'LOCAL') {
+      // LOCAL: dotation = hotel × days (no tariff grid, no PEC)
+      const total = hn * dwt
+      return { computedDailyAllowance: Math.round(hn * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
+    }
     // Use tariff rates if available, otherwise 0
     const t = missionTariff || { petit_dej: 0, dej: 0, diner: 0, indem_avec_pec: 0, indem_sans_pec: 0 }
     if (!missionPec) {
@@ -290,6 +300,50 @@ export default function NewRequestPage() {
 
   const hotelPerNight = parseFloat(hotelAmount) || 0
   const missionDurationWithTravel = missionWorkingDays > 0 ? missionWorkingDays + 0.5 : 0
+
+  // Initialize mission signature pad when step 3 renders
+  const initMissionSignaturePad = useCallback(() => {
+    if (!missionCanvasRef.current) return
+    const canvas = missionCanvasRef.current
+    const container = canvas.parentElement
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    canvas.width = rect.width
+    canvas.height = 150
+    if (missionPadRef.current) {
+      missionPadRef.current.off()
+      missionPadRef.current.clear()
+    }
+    const pad = new SignaturePadLib(canvas, {
+      backgroundColor: 'rgba(255, 255, 255, 0)',
+      penColor: 'rgb(0, 0, 0)',
+      minWidth: 1.5,
+      maxWidth: 3,
+    })
+    pad.addEventListener('endStroke', () => setMissionSignatureEmpty(pad.isEmpty()))
+    missionPadRef.current = pad
+    setMissionSignatureEmpty(true)
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'mission' && missionStep === 3) {
+      // Small delay to let the canvas render in the DOM
+      const t = setTimeout(initMissionSignaturePad, 100)
+      return () => clearTimeout(t)
+    }
+  }, [activeTab, missionStep, initMissionSignaturePad])
+
+  const clearMissionSignature = () => {
+    if (missionPadRef.current) {
+      missionPadRef.current.clear()
+      setMissionSignatureEmpty(true)
+    }
+  }
+
+  const getMissionSignatureDataUrl = (): string | null => {
+    if (!missionPadRef.current || missionPadRef.current.isEmpty()) return null
+    return missionPadRef.current.toDataURL('image/png')
+  }
 
   // Block self-service when on a non-home company (balances live at home company only)
   useEffect(() => {
@@ -552,15 +606,18 @@ export default function NewRequestPage() {
     if (!missionObject.trim()) { toast.error("Veuillez indiquer l'objet de la mission"); return }
     if (missionWorkingDays <= 0) { toast.error('La date de fin doit être après la date de début'); return }
     if (isAssigning && !selectedEmployeeId) { toast.error("Veuillez sélectionner l'employé"); return }
+    if (isAssigning && selectedEmployeeId === '_external' && !externalPersonName.trim()) { toast.error("Veuillez saisir le nom de la personne"); return }
     setIsSubmittingMission(true)
     try {
-      const missionUserId = isAssigning ? selectedEmployeeId : user.id
+      const isExternal = isAssigning && selectedEmployeeId === '_external'
+      const missionUserId = isExternal ? user.id : (isAssigning ? selectedEmployeeId : user.id)
       const { error } = await supabase
         .from('mission_requests')
         .insert({
           user_id: missionUserId,
           assigned_by: isAssigning ? user.id : null,
-          request_origin: isAssigning ? 'ASSIGNED' : 'SELF',
+          request_origin: isExternal ? 'EXTERNAL' : (isAssigning ? 'ASSIGNED' : 'SELF'),
+          external_person_name: isExternal ? externalPersonName.trim() : null,
           mission_scope: missionScope,
           departure_city: departureCity.trim(),
           arrival_city: arrivalCity.trim(),
@@ -596,6 +653,7 @@ export default function NewRequestPage() {
           vehicle_date_to: transportType === 'voiture_personnelle' && vehicleDateTo ? vehicleDateTo : null,
           persons_transported: transportType === 'voiture_personnelle' ? personsTransported.trim() || null : null,
           persons_other: personsOther.trim() || null,
+          signature_employee: getMissionSignatureDataUrl(),
           // Status is computed by the DB trigger based on creator's role.
           // Do NOT send status — the trigger overrides it.
         })
@@ -2171,14 +2229,18 @@ export default function NewRequestPage() {
                       </button>
                     </div>
                     {isAssigning && (
-                      <div className="mt-3">
-                        <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} required={isAssigning}
+                      <div className="mt-3 space-y-2">
+                        <select value={selectedEmployeeId} onChange={(e) => { setSelectedEmployeeId(e.target.value); if (e.target.value !== '_external') setExternalPersonName('') }} required={isAssigning}
                           className="h-11 w-full rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60">
-                          <option value="">-- Choisir un employé --</option>
+                          <option value="">-- Choisir --</option>
                           {employees.filter((emp) => emp.id !== user.id).map((emp) => (
                             <option key={emp.id} value={emp.id}>{emp.full_name}{emp.job_title ? ` — ${emp.job_title}` : ''}</option>
                           ))}
+                          <option value="_external">Autre (personne externe)</option>
                         </select>
+                        {selectedEmployeeId === '_external' && (
+                          <Input placeholder="Nom complet de la personne" value={externalPersonName} onChange={e => setExternalPersonName(e.target.value)} required />
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -2313,6 +2375,12 @@ export default function NewRequestPage() {
                         <Label className="text-sm">Montant hôtel / nuit</Label>
                         <Input type="number" min="0" step="0.01" placeholder="0.00" value={hotelAmount} onChange={e => setHotelAmount(e.target.value)} />
                       </div>
+                      {computedTotalAllowance > 0 && (
+                        <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+                          <div className="flex justify-between text-xs text-muted-foreground"><span>Hôtel {hotelPerNight} × {missionWorkingDays}j</span><span>{computedTotalAllowance} MAD</span></div>
+                          <div className="flex justify-between text-sm mt-1"><span className="font-medium text-foreground">Dotation totale</span><span className="font-bold text-primary">{computedTotalAllowance} MAD</span></div>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
@@ -2464,7 +2532,7 @@ export default function NewRequestPage() {
                   <div className="divide-y divide-border/50">
                     <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Portée</span><span className="text-sm font-medium">{missionScope === 'LOCAL' ? 'Locale' : 'Internationale'}</span></div>
                     {isAssigning && selectedEmployeeId && (
-                      <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Missionnaire</span><span className="text-sm font-medium">{employees.find((e) => e.id === selectedEmployeeId)?.full_name || '—'}</span></div>
+                      <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Missionnaire</span><span className="text-sm font-medium">{selectedEmployeeId === '_external' ? externalPersonName : (employees.find((e) => e.id === selectedEmployeeId)?.full_name || '—')}</span></div>
                     )}
                     <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Trajet</span><span className="text-sm font-medium">{departureCity} → {arrivalCity}</span></div>
                     <div className="flex items-center justify-between py-3"><span className="text-sm text-muted-foreground">Objet</span><span className="max-w-[55%] truncate text-right text-sm font-medium">{missionObject}</span></div>
@@ -2492,19 +2560,19 @@ export default function NewRequestPage() {
               {/* Signature area */}
               <Card className="border-border/70">
                 <CardContent className="pt-5">
-                  <Label className="mb-2 block text-sm font-medium">Signature du missionnaire</Label>
-                  <div className="rounded-xl border-2 border-dashed border-border/70 bg-muted/20 p-4 text-center">
-                    <p className="text-xs text-muted-foreground mb-2">Dessinez votre signature ci-dessous</p>
+                  <Label className="mb-3 block text-sm font-medium">Signature du missionnaire</Label>
+                  <div className="rounded-xl border-2 border-dashed border-border/70 bg-white p-1">
                     <canvas
-                      id="missionSignatureCanvas"
-                      className="mx-auto w-full rounded-lg border border-border bg-white"
-                      style={{ height: '120px', touchAction: 'none' }}
+                      ref={missionCanvasRef}
+                      className="w-full rounded-lg cursor-crosshair"
+                      style={{ height: '150px', touchAction: 'none' }}
                     />
-                    <Button type="button" variant="ghost" size="sm" className="mt-2 text-xs text-muted-foreground"
-                      onClick={() => {
-                        const canvas = document.getElementById('missionSignatureCanvas') as HTMLCanvasElement
-                        if (canvas) { const ctx = canvas.getContext('2d'); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height) }
-                      }}>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {missionSignatureEmpty ? 'Dessinez votre signature ci-dessus' : 'Signature enregistrée'}
+                    </p>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={clearMissionSignature}>
                       Effacer
                     </Button>
                   </div>
