@@ -379,8 +379,8 @@ DROP FUNCTION IF EXISTS public.undo_approve_mission_request(BIGINT, UUID) CASCAD
 DROP FUNCTION IF EXISTS public.undo_reject_mission_request(BIGINT, UUID) CASCADE;
 
 -- ── APPROVE MISSION REQUEST ──
--- Mission chain: PENDING->Chef(dc) -> VALIDATED_DC->RH(rp) -> VALIDATED_RP->Dir(de) -> APPROVED
--- Auto-skips RH step when creator is RH (on-behalf case)
+-- Mission chain: PENDING->RH(rp) -> VALIDATED_RP->Chef(dc) -> VALIDATED_DC->Dir(de) -> APPROVED
+-- Aligned with leave pipeline order (no auto-skip)
 CREATE OR REPLACE FUNCTION public.approve_mission_request(
   p_request_id  BIGINT,
   p_approver_id UUID
@@ -397,7 +397,6 @@ DECLARE
   v_next_status        TEXT;
   v_field              TEXT;
   v_requester_dept_id  BIGINT;
-  v_creator_role       TEXT;
 BEGIN
   SELECT * INTO v_request FROM mission_requests WHERE id = p_request_id;
   IF NOT FOUND THEN
@@ -413,16 +412,17 @@ BEGIN
     RAISE EXCEPTION 'Vous ne pouvez pas approuver votre propre demande';
   END IF;
 
+  -- New order: RH → Chef → Director (matches leave pipeline)
   CASE v_request.status
     WHEN 'PENDING'::public.leave_status THEN
-      v_expected_role := 'CHEF_SERVICE';
-      v_next_status := 'VALIDATED_DC';
-      v_field := 'dc';
-    WHEN 'VALIDATED_DC'::public.leave_status THEN
       v_expected_role := 'RH';
       v_next_status := 'VALIDATED_RP';
       v_field := 'rp';
     WHEN 'VALIDATED_RP'::public.leave_status THEN
+      v_expected_role := 'CHEF_SERVICE';
+      v_next_status := 'VALIDATED_DC';
+      v_field := 'dc';
+    WHEN 'VALIDATED_DC'::public.leave_status THEN
       v_expected_role := 'DIRECTEUR_EXECUTIF';
       v_next_status := 'APPROVED';
       v_field := 'de';
@@ -455,21 +455,6 @@ BEGIN
 
   IF v_next_status = 'APPROVED' THEN
     UPDATE mission_requests SET director_decision = 'ACCORDEE' WHERE id = p_request_id;
-  END IF;
-
-  -- Auto-skip RH step if creator is RH (on-behalf case)
-  IF v_next_status = 'VALIDATED_DC' AND v_request.created_by IS NOT NULL THEN
-    SELECT role::TEXT INTO v_creator_role
-    FROM utilisateurs WHERE id = v_request.created_by;
-
-    IF v_creator_role = 'RH' THEN
-      UPDATE mission_requests SET
-        status = 'VALIDATED_RP'::public.leave_status,
-        approved_by_rp = v_request.created_by,
-        approved_at_rp = NOW(),
-        updated_at = NOW()
-      WHERE id = p_request_id;
-    END IF;
   END IF;
 
   RETURN (SELECT to_jsonb(mr.*) FROM mission_requests mr WHERE mr.id = p_request_id);
@@ -507,9 +492,14 @@ BEGIN
     RAISE EXCEPTION 'La raison du rejet est obligatoire';
   END IF;
 
+  -- Stage-role matching: RH → Chef → Director (matches leave pipeline)
   IF v_rejector.role::TEXT != 'ADMIN' THEN
     CASE v_request.status
       WHEN 'PENDING'::public.leave_status THEN
+        IF v_rejector.role::TEXT != 'RH' THEN
+          RAISE EXCEPTION 'Seul le RH peut rejeter a cette etape';
+        END IF;
+      WHEN 'VALIDATED_RP'::public.leave_status THEN
         IF v_rejector.role::TEXT != 'CHEF_SERVICE' THEN
           RAISE EXCEPTION 'Seul le Chef de Service peut rejeter a cette etape';
         END IF;
@@ -521,10 +511,6 @@ BEGIN
           RAISE EXCEPTION 'Le chef de service ne peut rejeter que les demandes de son departement';
         END IF;
       WHEN 'VALIDATED_DC'::public.leave_status THEN
-        IF v_rejector.role::TEXT != 'RH' THEN
-          RAISE EXCEPTION 'Seul le RH peut rejeter a cette etape';
-        END IF;
-      WHEN 'VALIDATED_RP'::public.leave_status THEN
         IF v_rejector.role::TEXT != 'DIRECTEUR_EXECUTIF' THEN
           RAISE EXCEPTION 'Seul le Directeur Executif peut rejeter a cette etape';
         END IF;
@@ -533,7 +519,7 @@ BEGIN
           p_request_id, v_request.status;
     END CASE;
   ELSE
-    IF v_request.status NOT IN ('PENDING'::public.leave_status, 'VALIDATED_DC'::public.leave_status, 'VALIDATED_RP'::public.leave_status) THEN
+    IF v_request.status NOT IN ('PENDING'::public.leave_status, 'VALIDATED_RP'::public.leave_status, 'VALIDATED_DC'::public.leave_status) THEN
       RAISE EXCEPTION 'La demande de mission #% est au statut %, elle ne peut pas etre rejetee',
         p_request_id, v_request.status;
     END IF;
@@ -586,9 +572,16 @@ BEGIN
     RAISE EXCEPTION 'Impossible d''annuler: la demande est a son statut initial';
   END IF;
 
+  -- Undo targets match new order: RH(rp) → Chef(dc) → Dir(de)
   CASE v_request.status
-    WHEN 'VALIDATED_DC'::public.leave_status THEN
+    WHEN 'VALIDATED_RP'::public.leave_status THEN
       v_prev_status := 'PENDING';
+      v_field := 'rp';
+      IF v_user.role::TEXT != 'ADMIN' AND v_request.approved_by_rp != p_user_id THEN
+        RAISE EXCEPTION 'Seul l''approbateur ou un admin peut annuler cette validation';
+      END IF;
+    WHEN 'VALIDATED_DC'::public.leave_status THEN
+      v_prev_status := 'VALIDATED_RP';
       v_field := 'dc';
       IF v_user.role::TEXT != 'ADMIN' AND v_request.approved_by_dc != p_user_id THEN
         RAISE EXCEPTION 'Seul l''approbateur ou un admin peut annuler cette validation';
@@ -596,17 +589,8 @@ BEGIN
       IF v_request.initial_status = 'VALIDATED_DC'::public.leave_status THEN
         RAISE EXCEPTION 'Impossible d''annuler: la demande est a son statut initial';
       END IF;
-    WHEN 'VALIDATED_RP'::public.leave_status THEN
-      v_prev_status := 'VALIDATED_DC';
-      v_field := 'rp';
-      IF v_user.role::TEXT != 'ADMIN' AND v_request.approved_by_rp != p_user_id THEN
-        RAISE EXCEPTION 'Seul l''approbateur ou un admin peut annuler cette validation';
-      END IF;
-      IF v_request.initial_status = 'VALIDATED_RP'::public.leave_status THEN
-        RAISE EXCEPTION 'Impossible d''annuler: la demande est a son statut initial';
-      END IF;
     WHEN 'APPROVED'::public.leave_status THEN
-      v_prev_status := 'VALIDATED_RP';
+      v_prev_status := 'VALIDATED_DC';
       v_field := 'de';
       IF v_user.role::TEXT != 'ADMIN' AND v_request.approved_by_de != p_user_id THEN
         RAISE EXCEPTION 'Seul l''approbateur ou un admin peut annuler cette validation';
@@ -660,18 +644,20 @@ BEGIN
     RAISE EXCEPTION 'Seul la personne qui a rejete ou un admin peut restaurer cette demande';
   END IF;
 
-  IF v_request.approved_by_rp IS NOT NULL THEN
-    v_restore_status := 'VALIDATED_RP';
-  ELSIF v_request.approved_by_dc IS NOT NULL THEN
+  -- Restore to highest completed stage (new order: rp before dc)
+  IF v_request.approved_by_dc IS NOT NULL THEN
     v_restore_status := 'VALIDATED_DC';
+  ELSIF v_request.approved_by_rp IS NOT NULL THEN
+    v_restore_status := 'VALIDATED_RP';
   ELSE
     v_restore_status := 'PENDING';
   END IF;
 
+  -- Safety: don't restore below initial_status
   IF v_restore_status = 'PENDING' AND v_request.initial_status != 'PENDING'::public.leave_status THEN
     v_restore_status := v_request.initial_status::TEXT;
-  ELSIF v_restore_status = 'VALIDATED_DC'
-        AND v_request.initial_status IN ('VALIDATED_RP'::public.leave_status, 'APPROVED'::public.leave_status) THEN
+  ELSIF v_restore_status = 'VALIDATED_RP'
+        AND v_request.initial_status IN ('VALIDATED_DC'::public.leave_status, 'APPROVED'::public.leave_status) THEN
     v_restore_status := v_request.initial_status::TEXT;
   END IF;
 

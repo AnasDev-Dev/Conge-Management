@@ -63,12 +63,13 @@ export async function PUT(
     const allowedFields = [
       'full_name', 'phone', 'job_title', 'role', 'department_id', 'company_id',
       'hire_date', 'birth_date', 'gender', 'matricule', 'cin', 'cnss', 'rib',
-      'address', 'city', 'is_active', 'category_id', 'balance_conge', 'balance_recuperation',
+      'address', 'city', 'is_active', 'category_id', 'mission_category_id', 'date_anciennete',
+      'balance_conge', 'balance_recuperation',
     ]
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        if (['company_id', 'department_id', 'category_id'].includes(field)) {
+        if (['company_id', 'department_id', 'category_id', 'mission_category_id'].includes(field)) {
           payload[field] = body[field] ? parseInt(body[field]) : null
         } else if (['balance_conge', 'balance_recuperation'].includes(field)) {
           const val = parseFloat(body[field]) || 0

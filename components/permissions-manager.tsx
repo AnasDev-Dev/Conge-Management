@@ -69,6 +69,20 @@ const ACTION_GROUPS: { label: string; actions: { key: Action; label: string }[] 
     ],
   },
   {
+    label: 'Conge exceptionnel',
+    actions: [
+      { key: 'exceptional.createOnBehalf', label: 'Creer pour autrui' },
+      { key: 'exceptional.viewAll', label: 'Voir toutes les demandes' },
+    ],
+  },
+  {
+    label: 'Conge maladie',
+    actions: [
+      { key: 'maladie.createOnBehalf', label: 'Creer pour autrui' },
+      { key: 'maladie.viewAll', label: 'Voir toutes les demandes' },
+    ],
+  },
+  {
     label: 'Missions',
     actions: [
       { key: 'missions.createOnBehalf', label: 'Creer pour autrui' },

@@ -148,7 +148,7 @@ export default function RequestsPage() {
         `)
         .order('created_at', { ascending: false })
 
-      if (!isManagerView) {
+      if (!canViewAllExceptional) {
         query = query.eq('user_id', userData.id)
       }
 
@@ -172,7 +172,7 @@ export default function RequestsPage() {
         `)
         .order('created_at', { ascending: false })
 
-      if (!isManagerView) {
+      if (!canViewAllMaladie) {
         query = query.eq('user_id', userData.id)
       }
 
@@ -187,6 +187,8 @@ export default function RequestsPage() {
   }
 
   const isManagerView = can('requests.viewAll')
+  const canViewAllExceptional = can('exceptional.viewAll')
+  const canViewAllMaladie = can('maladie.viewAll')
 
   // --- Congé filters ---
   const filteredRequests = useMemo(() => {
@@ -458,13 +460,13 @@ export default function RequestsPage() {
               {filteredExceptional.map((claim) => (
                 <div key={claim.id} onClick={() => setSelectedExceptional(claim)} className="cursor-pointer rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
                   <div>
-                    {isManagerView && claim.user && (
+                    {canViewAllExceptional && claim.user && (
                       <p className="font-medium text-foreground">{claim.user.full_name}</p>
                     )}
-                    {isManagerView && claim.user?.job_title && (
+                    {canViewAllExceptional && claim.user?.job_title && (
                       <p className="text-xs text-muted-foreground">{claim.user.job_title}</p>
                     )}
-                    <p className={cn('text-sm text-muted-foreground', isManagerView && 'mt-1')}>
+                    <p className={cn('text-sm text-muted-foreground', canViewAllExceptional && 'mt-1')}>
                       {claim.start_date && claim.end_date
                         ? `${format(new Date(claim.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – ${format(new Date(claim.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}`
                         : format(new Date(claim.claim_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
@@ -516,13 +518,13 @@ export default function RequestsPage() {
               {filteredSickLeaves.map((sl) => (
                 <div key={sl.id} onClick={() => setSelectedSickLeave(sl)} className="cursor-pointer rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
                   <div>
-                    {isManagerView && sl.user && (
+                    {canViewAllMaladie && sl.user && (
                       <p className="font-medium text-foreground">{sl.user.full_name}</p>
                     )}
-                    {isManagerView && sl.user?.job_title && (
+                    {canViewAllMaladie && sl.user?.job_title && (
                       <p className="text-xs text-muted-foreground">{sl.user.job_title}</p>
                     )}
-                    <p className={cn('text-sm text-muted-foreground', isManagerView && 'mt-1')}>
+                    <p className={cn('text-sm text-muted-foreground', canViewAllMaladie && 'mt-1')}>
                       {format(new Date(sl.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – {format(new Date(sl.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
                     </p>
                   </div>

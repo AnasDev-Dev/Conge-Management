@@ -16,6 +16,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
+  Users,
+  AlertTriangle,
+  Timer,
 } from "lucide-react";
 import Link from "next/link";
 import { Utilisateur } from "@/lib/types/database";
@@ -41,6 +44,7 @@ import {
   isSameDay,
   isWithinInterval,
   parseISO,
+  differenceInDays,
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -58,6 +62,20 @@ interface DashboardRequest {
   reason: string | null;
   created_at: string;
   user?: { id: string; full_name: string; job_title: string | null } | null;
+}
+
+interface TeamRecoveryLot {
+  remaining_days: number;
+  year_acquired: number;
+  expires_at: string;
+  days: number;
+  user: { id: string; full_name: string; balance_recuperation: number; job_title: string | null; company_id: number | null } | null;
+}
+
+interface GroupedEmployeeLots {
+  user: { id: string; full_name: string; balance_recuperation: number; job_title: string | null };
+  lots: TeamRecoveryLot[];
+  earliestExpiry: Date;
 }
 
 type Tab = "all" | "pending" | "approved" | "rejected";
@@ -104,6 +122,11 @@ export default function DashboardPage() {
     year_acquired: number;
     expires_at: string;
   }[]>([]);
+
+  // New state — manager features
+  const [teamRecoveryLots, setTeamRecoveryLots] = useState<TeamRecoveryLot[]>([]);
+  const [pendingValidations, setPendingValidations] = useState({ leaves: 0, missions: 0 });
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -141,7 +164,7 @@ export default function DashboardPage() {
         setRecupPendingDays(rPending);
       });
 
-    // Fetch recovery lots expiring within 60 days
+    // Fetch recovery lots expiring within 60 days (personal)
     supabase
       .from("recovery_balance_lots")
       .select("remaining_days, year_acquired, expires_at")
@@ -153,6 +176,42 @@ export default function DashboardPage() {
       .then(({ data }) => {
         if (data) setExpiringRecoveryLots(data);
       });
+
+    // Manager-only fetches
+    if (isManagerView) {
+      // Team recovery lots (all active, non-expired)
+      supabase
+        .from("recovery_balance_lots")
+        .select("remaining_days, year_acquired, expires_at, days, user:utilisateurs(id, full_name, balance_recuperation, job_title, company_id)")
+        .eq("expired", false)
+        .gt("remaining_days", 0)
+        .order("expires_at", { ascending: true })
+        .then(({ data, error }) => {
+          if (error) { console.error("recovery lots fetch error:", error); return; }
+          let lots = (data || []) as unknown as TeamRecoveryLot[];
+          if (activeCompany) {
+            lots = lots.filter(l => l.user?.company_id === activeCompany.id);
+          }
+          setTeamRecoveryLots(lots);
+        });
+
+      // Pending validations count
+      supabase
+        .from("leave_requests")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["PENDING", "VALIDATED_RP", "VALIDATED_DC"])
+        .then(({ count }) => {
+          setPendingValidations(prev => ({ ...prev, leaves: count || 0 }));
+        });
+
+      supabase
+        .from("mission_requests")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["PENDING", "VALIDATED_RP", "VALIDATED_DC"])
+        .then(({ count }) => {
+          setPendingValidations(prev => ({ ...prev, missions: count || 0 }));
+        });
+    }
   }, [user, activeCompany, deptAnnualDays]);
 
   const loadRequests = async (userData: Utilisateur) => {
@@ -186,6 +245,31 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
+
+  // Group team recovery lots by employee
+  const groupedTeamLots = useMemo((): GroupedEmployeeLots[] => {
+    const map = new Map<string, GroupedEmployeeLots>();
+    for (const lot of teamRecoveryLots) {
+      if (!lot.user) continue;
+      const key = lot.user.id;
+      if (!map.has(key)) {
+        map.set(key, {
+          user: lot.user,
+          lots: [],
+          earliestExpiry: new Date(lot.expires_at + "T00:00:00"),
+        });
+      }
+      const group = map.get(key)!;
+      group.lots.push(lot);
+      const lotDate = new Date(lot.expires_at + "T00:00:00");
+      if (lotDate < group.earliestExpiry) {
+        group.earliestExpiry = lotDate;
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => a.earliestExpiry.getTime() - b.earliestExpiry.getTime()
+    );
+  }, [teamRecoveryLots]);
 
   // Calendar grid
   const calendarDays = useMemo(() => {
@@ -229,6 +313,7 @@ export default function DashboardPage() {
   ).length;
   const approvedCount = requests.filter((r) => r.status === "APPROVED").length;
   const rejectedCount = requests.filter((r) => r.status === "REJECTED").length;
+  const totalValidations = pendingValidations.leaves + pendingValidations.missions;
 
   const filteredRequests = requests.filter((r) => {
     if (activeTab === "all") return true;
@@ -257,13 +342,15 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Stats */}
+      {/* Company context alert */}
       {!isHome && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
           <Home className="h-3.5 w-3.5 shrink-0" />
           Les soldes affiches sont ceux de votre societe d&apos;origine.
         </div>
       )}
+
+      {/* ─── 4 Stat Cards ─── */}
       <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
         <Card className="border-border/70">
           <CardContent className="flex items-center gap-3 p-2.5 sm:p-3">
@@ -334,7 +421,45 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* ─── Recovery expiration warning ─── */}
+      {/* ─── Action Alerts ─── */}
+
+      {/* Validation queue alert (managers only) */}
+      {isManagerView && totalValidations > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-950/30">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              Demandes en attente de votre validation
+            </p>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+              {pendingValidations.leaves > 0 && (
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  {pendingValidations.leaves} demande{pendingValidations.leaves > 1 ? 's' : ''} de congé
+                </p>
+              )}
+              {pendingValidations.missions > 0 && (
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  {pendingValidations.missions} ordre{pendingValidations.missions > 1 ? 's' : ''} de mission
+                </p>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {pendingValidations.leaves > 0 && (
+                <Link href="/dashboard/validations" className="inline-flex items-center gap-1 text-xs font-medium text-blue-800 hover:text-blue-900 dark:text-blue-200 dark:hover:text-blue-100">
+                  Valider les congés <ArrowRight className="h-3 w-3" />
+                </Link>
+              )}
+              {pendingValidations.missions > 0 && (
+                <Link href="/dashboard/mission-validations" className="inline-flex items-center gap-1 text-xs font-medium text-blue-800 hover:text-blue-900 dark:text-blue-200 dark:hover:text-blue-100">
+                  Valider les missions <ArrowRight className="h-3 w-3" />
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recovery expiration warning (personal) */}
       {expiringRecoveryLots.length > 0 && (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
           <Clock className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
@@ -354,6 +479,139 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+      )}
+
+      {/* ─── Team Recovery Expiration Table (managers only) ─── */}
+      {isManagerView && (
+        <Card className="border-border/70 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border/60 px-3 py-2.5 sm:px-5 sm:py-3.5">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground sm:text-base">
+                Récupérations de l&apos;équipe
+              </h2>
+              <Badge className="text-[10px] bg-muted text-muted-foreground">
+                {groupedTeamLots.length} employé{groupedTeamLots.length > 1 ? 's' : ''}
+              </Badge>
+            </div>
+            <Link
+              href="/dashboard/recovery-requests"
+              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            >
+              Tout voir
+            </Link>
+          </div>
+
+          <CardContent className="p-0">
+            {groupedTeamLots.length === 0 ? (
+              <div className="py-10 text-center">
+                <Timer className="mx-auto mb-2.5 h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  Aucun lot de récupération actif
+                </p>
+              </div>
+            ) : (
+            <>
+            {/* Table header */}
+            <div className="hidden sm:grid sm:grid-cols-[1fr_80px_1fr] gap-2 border-b border-border/40 bg-muted/20 px-5 py-2">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Employé</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground text-center">Solde</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Lots &amp; expirations</span>
+            </div>
+
+            <div className="divide-y divide-border/50">
+              {groupedTeamLots.slice(0, 10).map((group) => {
+                const totalRemaining = roundHalf(group.lots.reduce((s, l) => s + l.remaining_days, 0));
+
+                return (
+                  <div key={group.user.id} className="px-3 py-3 sm:px-5 sm:py-3.5 hover:bg-accent/40 transition-colors">
+                    <div className="sm:grid sm:grid-cols-[1fr_80px_1fr] sm:gap-2 sm:items-start">
+                      {/* Employee info */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
+                          {group.user.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{group.user.full_name}</p>
+                          {group.user.job_title && (
+                            <p className="text-[11px] text-muted-foreground truncate">{group.user.job_title}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Total balance */}
+                      <div className="mt-1.5 sm:mt-0 sm:text-center">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-muted/60 px-2 py-0.5 text-sm font-bold text-foreground sm:justify-center">
+                          {totalRemaining}<span className="text-[10px] font-normal text-muted-foreground">j</span>
+                        </span>
+                        <p className="text-[10px] text-muted-foreground sm:hidden">Solde récup.</p>
+                      </div>
+
+                      {/* Lots */}
+                      <div className="mt-2 sm:mt-0 space-y-1">
+                        {group.lots.map((lot, i) => {
+                          const expiryDate = new Date(lot.expires_at + "T00:00:00");
+                          const daysUntil = differenceInDays(expiryDate, new Date());
+                          const urgencyColor =
+                            daysUntil <= 15
+                              ? "text-red-600 dark:text-red-400"
+                              : daysUntil <= 30
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground";
+                          const urgencyBg =
+                            daysUntil <= 15
+                              ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"
+                              : daysUntil <= 30
+                              ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+                              : "bg-muted/30 border-border/50";
+
+                          return (
+                            <div
+                              key={i}
+                              className={cn(
+                                "flex items-center gap-2 rounded-lg border px-2 py-1",
+                                urgencyBg,
+                              )}
+                            >
+                              <Timer className={cn("h-3 w-3 shrink-0", urgencyColor)} />
+                              <span className="text-xs font-medium text-foreground">
+                                {roundHalf(lot.remaining_days)}j
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                acquis {lot.year_acquired}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">·</span>
+                              <span className={cn("text-[10px] font-medium", urgencyColor)}>
+                                {daysUntil <= 0
+                                  ? "Expiré"
+                                  : daysUntil <= 7
+                                  ? `${daysUntil}j restants`
+                                  : `expire le ${format(expiryDate, "dd/MM/yyyy")}`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {groupedTeamLots.length > 10 && (
+              <div className="border-t border-border/50 px-5 py-3 text-center">
+                <Link
+                  href="/dashboard/recovery-requests"
+                  className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                >
+                  Voir les {groupedTeamLots.length - 10} employés restants
+                </Link>
+              </div>
+            )}
+            </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* ─── Calendar ─── */}

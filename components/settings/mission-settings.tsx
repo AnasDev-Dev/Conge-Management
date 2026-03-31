@@ -108,7 +108,7 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
 
   useEffect(() => {
     if (categories.length > 0) loadGrid()
-  }, [categories])
+  }, [categories, zones])
 
   // ── Category CRUD ──
 
@@ -149,7 +149,8 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
         toast.success('Catégorie créée')
       }
       setCatDialogOpen(false)
-      loadCategories()
+      await loadCategories()
+      loadGrid()
     } catch { toast.error('Erreur inattendue') } finally { setCatSaving(false) }
   }
 
@@ -159,7 +160,8 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
       const res = await fetch(`/api/mission-categories?id=${cat.id}`, { method: 'DELETE' })
       if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Erreur'); return }
       toast.success('Catégorie supprimée')
-      loadCategories()
+      await loadCategories()
+      loadGrid()
     } catch { toast.error('Erreur inattendue') }
   }
 
@@ -202,7 +204,8 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
         toast.success('Zone créée')
       }
       setZoneDialogOpen(false)
-      loadZones()
+      await loadZones()
+      loadGrid()
     } catch { toast.error('Erreur inattendue') } finally { setZoneSaving(false) }
   }
 
@@ -212,7 +215,8 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
       const res = await fetch(`/api/mission-zones?id=${zone.id}`, { method: 'DELETE' })
       if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Erreur'); return }
       toast.success('Zone supprimée')
-      loadZones()
+      await loadZones()
+      loadGrid()
     } catch { toast.error('Erreur inattendue') }
   }
 
@@ -287,6 +291,15 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
     { key: 'grid' as const, label: 'Grille Tarifaire', icon: Grid3X3 },
   ]
 
+  const switchSection = (key: typeof activeSection) => {
+    setActiveSection(key)
+    if (key === 'grid') {
+      loadCategories()
+      loadZones()
+      loadGrid()
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Section tabs */}
@@ -297,7 +310,7 @@ export default function MissionSettings({ companyId }: MissionSettingsProps) {
           return (
             <button
               key={s.key}
-              onClick={() => setActiveSection(s.key)}
+              onClick={() => switchSection(s.key)}
               className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                 isActive
                   ? 'border border-border bg-background text-foreground shadow-sm'

@@ -32,6 +32,12 @@ export type Action =
   // Leave requests
   | 'requests.createOnBehalf'
   | 'requests.viewAll'
+  // Exceptional leave
+  | 'exceptional.createOnBehalf'
+  | 'exceptional.viewAll'
+  // Sick leave
+  | 'maladie.createOnBehalf'
+  | 'maladie.viewAll'
   // Missions
   | 'missions.createOnBehalf'
   | 'missions.viewAll'
@@ -134,6 +140,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     actions: [
       'requests.createOnBehalf',
       'requests.viewAll',
+      'exceptional.createOnBehalf',
+      'exceptional.viewAll',
+      'maladie.createOnBehalf',
+      'maladie.viewAll',
       'missions.createOnBehalf',
       'missions.viewAll',
       'calendar.viewTeam',
@@ -184,6 +194,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'employees.viewBalances',
       'requests.createOnBehalf',
       'requests.viewAll',
+      'exceptional.createOnBehalf',
+      'exceptional.viewAll',
+      'maladie.createOnBehalf',
+      'maladie.viewAll',
       'missions.createOnBehalf',
       'missions.viewAll',
       'calendar.viewTeam',
@@ -242,6 +256,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'employees.viewBalances',
       'requests.createOnBehalf',
       'requests.viewAll',
+      'exceptional.createOnBehalf',
+      'exceptional.viewAll',
+      'maladie.createOnBehalf',
+      'maladie.viewAll',
       'missions.createOnBehalf',
       'missions.viewAll',
       'calendar.viewTeam',
@@ -297,6 +315,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       'employees.viewBalances',
       'requests.createOnBehalf',
       'requests.viewAll',
+      'exceptional.createOnBehalf',
+      'exceptional.viewAll',
+      'maladie.createOnBehalf',
+      'maladie.viewAll',
       'missions.createOnBehalf',
       'missions.viewAll',
       'calendar.viewTeam',

@@ -189,6 +189,8 @@ export default function NewRequestPage() {
   const supabase = createClient()
 
   const isManager = can('requests.createOnBehalf')
+  const canCreateExceptionalOnBehalf = can('exceptional.createOnBehalf')
+  const canCreateMaladieOnBehalf = can('maladie.createOnBehalf')
 
   // The target employee for the request (self or selected employee)
   const targetEmployee = useMemo((): EmployeeOption | null => {
@@ -248,9 +250,9 @@ export default function NewRequestPage() {
     }
   }, [user, activeCompany?.id])
 
-  // When creating on-behalf, resolve the target employee's category
+  // When creating on-behalf, resolve the target employee's category (skip for external)
   useEffect(() => {
-    if (!isAssigning || !selectedEmployeeId) return
+    if (!isAssigning || !selectedEmployeeId || selectedEmployeeId === '_external') return
     supabase.from('utilisateurs').select('mission_category_id').eq('id', selectedEmployeeId).single()
       .then(({ data }) => {
         if (data?.mission_category_id) setMissionCategoryId(String(data.mission_category_id))
@@ -374,22 +376,22 @@ export default function NewRequestPage() {
     fetchExceptionalTypes()
   }, [activeCompany?.id])
 
-  // Fetch sick days used this year for current user
+  // Fetch sick days used this year for target employee
   useEffect(() => {
-    if (!user) return
+    if (!targetEmployee) return
     const currentYear = new Date().getFullYear()
     const fetchSickDays = async () => {
       const { data, error } = await supabase
         .from('sick_leaves')
         .select('days_count')
-        .eq('user_id', user.id)
+        .eq('user_id', targetEmployee.id)
         .eq('year', currentYear)
       if (!error && data) {
         setMaladieSickDaysUsed(data.reduce((sum, r) => sum + (r.days_count || 0), 0))
       }
     }
     fetchSickDays()
-  }, [user?.id])
+  }, [targetEmployee?.id])
 
   // Fetch used/pending CONGE days + recovery lots for the target employee
   useEffect(() => {
@@ -478,40 +480,44 @@ export default function NewRequestPage() {
   // Computed values for new tabs
   const selectedExceptionalType = exceptionalTypes.find(t => String(t.id) === selectedExceptionalTypeId)
   const exceptionalWorkingDays = countWorkingDaysUtil(exceptionalStartDate, exceptionalEndDate, workingDaysConfig, holidays)
-  const exceptionalGrantedDays = selectedExceptionalType?.days_granted ?? 3
+  const exceptionalGrantedDays = selectedExceptionalType?.days_granted ?? null
   const maladieWorkingDays = countWorkingDaysUtil(maladieStartDate, maladieEndDate, workingDaysConfig, holidays)
   const maladieSickDaysRemaining = 3 - maladieSickDaysUsed
   const maladieWouldExceed = maladieWorkingDays + maladieSickDaysUsed > 3
 
   const handleExceptionnelSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user) return
+    if (!user || !targetEmployee) return
     if (!isAutreType && (!selectedExceptionalTypeId || !selectedExceptionalType)) return
     if (isAutreType && !autreTypeName.trim()) { toast.error('Veuillez preciser le type de conge'); return }
     if (!exceptionalStartDate || !exceptionalEndDate) { toast.error('Veuillez selectionner les dates'); return }
     if (exceptionalWorkingDays <= 0) { toast.error('La periode selectionnee ne contient aucun jour ouvre'); return }
-    if (exceptionalWorkingDays > exceptionalGrantedDays) { toast.error(`Le conge exceptionnel est limite a ${exceptionalGrantedDays} jours maximum`); return }
     setIsSubmittingExceptionnel(true)
     try {
       const notesParts: string[] = []
+      if (isOnBehalf) notesParts.push(`Cree par ${user.full_name}`)
       if (exceptionalNotes.trim()) notesParts.push(exceptionalNotes.trim())
 
       const { error } = await supabase
         .from('exceptional_leave_claims')
         .insert({
-          user_id: user.id,
+          user_id: targetEmployee.id,
           exceptional_leave_type_id: isAutreType ? null : Number(selectedExceptionalTypeId),
           autre_type_name: isAutreType ? autreTypeName.trim() : null,
           start_date: exceptionalStartDate,
           end_date: exceptionalEndDate,
           days_count: exceptionalWorkingDays,
-          days_granted: Math.min(exceptionalWorkingDays, exceptionalGrantedDays),
+          days_granted: exceptionalWorkingDays,
           notes: notesParts.join(' | ') || null,
           claim_date: exceptionalStartDate,
         })
       if (error) throw error
 
-      toast.success('Demande de conge exceptionnel soumise avec succes !')
+      toast.success(
+        isOnBehalf
+          ? `Demande de conge exceptionnel creee pour ${targetEmployee.full_name} avec succes !`
+          : 'Demande de conge exceptionnel soumise avec succes !'
+      )
       setSelectedExceptionalTypeId('')
       setIsAutreType(false)
       setAutreTypeName('')
@@ -558,7 +564,7 @@ export default function NewRequestPage() {
 
   const handleMaladieSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user) return
+    if (!user || !targetEmployee) return
     if (maladieWorkingDays <= 0) { toast.error('La date de fin doit etre apres la date de debut'); return }
     if (maladieWouldExceed) { toast.error('Vous depasseriez le quota de 3 jours maladie par an'); return }
     setIsSubmittingMaladie(true)
@@ -574,16 +580,22 @@ export default function NewRequestPage() {
       const { error } = await supabase
         .from('sick_leaves')
         .insert({
-          user_id: user.id,
+          user_id: targetEmployee.id,
           start_date: maladieStartDate,
           end_date: maladieEndDate,
           days_count: maladieWorkingDays,
-          reason: maladieReason.trim() || null,
+          reason: isOnBehalf
+            ? `[Cree par ${user.full_name}] ${maladieReason.trim() || ''}`
+            : maladieReason.trim() || null,
           certificate_url: certificateUrl,
           year: currentYear,
         })
       if (error) throw error
-      toast.success('Demande de conge maladie soumise avec succes !')
+      toast.success(
+        isOnBehalf
+          ? `Demande de conge maladie creee pour ${targetEmployee.full_name} avec succes !`
+          : 'Demande de conge maladie soumise avec succes !'
+      )
       setMaladieStartDate('')
       setMaladieEndDate('')
       setMaladieReason('')
@@ -1846,6 +1858,136 @@ export default function NewRequestPage() {
       {/* ========== CONGE EXCEPTIONNEL TAB ========== */}
       {activeTab === 'exceptionnel' && (
         <form onSubmit={handleExceptionnelSubmit} className="space-y-6">
+
+          {/* On-behalf banner */}
+          {isOnBehalf && targetEmployee && (
+            <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {targetEmployee.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  Demande pour {targetEmployee.full_name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {targetEmployee.job_title || 'Employe'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 text-xs"
+                onClick={() => { setOnBehalfOfId('_selecting'); setEmployeeSearch('') }}
+              >
+                Changer
+              </Button>
+            </div>
+          )}
+
+          {/* Manager: create on behalf of employee */}
+          {canCreateExceptionalOnBehalf && !(isOnBehalf && targetEmployee) && (
+            <Card className="border-primary/20 bg-primary/[0.02]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Pour qui est cette demande ?
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setOnBehalfOfId(''); setEmployeeSearch('') }}
+                      disabled={!isHome}
+                      className={cn(
+                        'rounded-2xl border-2 p-3 sm:p-4 text-left transition-all',
+                        !onBehalfOfId
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-border/70 hover:border-border hover:bg-accent/30',
+                        !isHome && 'cursor-not-allowed opacity-50'
+                      )}
+                    >
+                      <p className="font-semibold text-xs sm:text-sm">Pour moi-meme</p>
+                      <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Ma propre demande</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOnBehalfOfId('_selecting')}
+                      className={cn(
+                        'rounded-2xl border-2 p-3 sm:p-4 text-left transition-all',
+                        onBehalfOfId
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-border/70 hover:border-border hover:bg-accent/30'
+                      )}
+                    >
+                      <p className="font-semibold text-xs sm:text-sm">Pour un employe</p>
+                      <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Creer au nom d&apos;un collaborateur</p>
+                    </button>
+                  </div>
+
+                  {onBehalfOfId && (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                        <Input
+                          placeholder="Rechercher un employe..."
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          className="pl-10 h-10"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 rounded-xl border border-border/60 p-2">
+                        {filteredEmployees.length === 0 ? (
+                          <p className="py-4 text-center text-xs text-muted-foreground">Aucun employe trouve</p>
+                        ) : (
+                          filteredEmployees.map(emp => (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => { setOnBehalfOfId(emp.id); setEmployeeSearch('') }}
+                              className={cn(
+                                'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
+                                onBehalfOfId === emp.id
+                                  ? 'bg-primary/10 border border-primary/25'
+                                  : 'hover:bg-muted/60'
+                              )}
+                            >
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                                {emp.full_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-foreground truncate">{emp.full_name}</p>
+                                {emp.job_title && (
+                                  <p className="text-[11px] text-muted-foreground truncate">{emp.job_title}</p>
+                                )}
+                              </div>
+                              {onBehalfOfId === emp.id && (
+                                <Check className="h-4 w-4 shrink-0 text-primary" />
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Non-home, non-manager: show blocking message */}
+          {!isHome && !canCreateExceptionalOnBehalf && (
+            <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-medium">Votre societe d&apos;origine est requise.</p>
+                <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">Basculez vers votre societe d&apos;origine pour creer une demande pour vous-meme.</p>
+              </div>
+            </div>
+          )}
+
           {/* Type selection */}
           <Card className="border-border/70">
             <CardHeader>
@@ -1928,22 +2070,17 @@ export default function NewRequestPage() {
               </div>
 
               {exceptionalWorkingDays > 0 && (
-                <div className="rounded-2xl border border-border/70 bg-secondary/30 p-4 space-y-3">
+                <div className="rounded-2xl border border-border/70 bg-secondary/30 p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Jours ouvres demandes</span>
-                    <span className={cn('text-sm font-semibold', exceptionalWorkingDays > exceptionalGrantedDays ? 'text-[var(--status-alert-text)]' : 'text-foreground')}>{exceptionalWorkingDays}j</span>
+                    <span className="text-sm font-semibold text-foreground">{exceptionalWorkingDays}j</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Maximum autorise</span>
-                    <Badge className="bg-primary/10 text-primary border border-primary/25">
-                      {exceptionalGrantedDays}j
-                    </Badge>
-                  </div>
-                  {exceptionalWorkingDays > exceptionalGrantedDays && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-                      <p className="text-xs text-red-700">
-                        La duree depasse le maximum de {exceptionalGrantedDays} jours. Reduisez la periode ou soumettez une demande de conge separee pour les jours supplementaires.
-                      </p>
+                  {exceptionalGrantedDays != null && (
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-sm text-muted-foreground">Jours accordes (type)</span>
+                      <Badge className="bg-primary/10 text-primary border border-primary/25">
+                        {exceptionalGrantedDays}j
+                      </Badge>
                     </div>
                   )}
                 </div>
@@ -1980,7 +2117,7 @@ export default function NewRequestPage() {
             <Button
               type="submit"
               className="h-11 w-full"
-              disabled={isSubmittingExceptionnel || (!isAutreType && !selectedExceptionalTypeId) || (isAutreType && !autreTypeName.trim()) || !exceptionalStartDate || !exceptionalEndDate || exceptionalWorkingDays <= 0 || exceptionalWorkingDays > exceptionalGrantedDays}
+              disabled={isSubmittingExceptionnel || (!isAutreType && !selectedExceptionalTypeId) || (isAutreType && !autreTypeName.trim()) || !exceptionalStartDate || !exceptionalEndDate || exceptionalWorkingDays <= 0}
             >
               {isSubmittingExceptionnel ? (
                 <>
@@ -1998,12 +2135,144 @@ export default function NewRequestPage() {
       {/* ========== MALADIE TAB ========== */}
       {activeTab === 'maladie' && (
         <form onSubmit={handleMaladieSubmit} className="space-y-6">
+
+          {/* On-behalf banner */}
+          {isOnBehalf && targetEmployee && (
+            <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {targetEmployee.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  Demande pour {targetEmployee.full_name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {targetEmployee.job_title || 'Employe'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 text-xs"
+                onClick={() => { setOnBehalfOfId('_selecting'); setEmployeeSearch('') }}
+              >
+                Changer
+              </Button>
+            </div>
+          )}
+
+          {/* Manager: create on behalf of employee */}
+          {canCreateMaladieOnBehalf && !(isOnBehalf && targetEmployee) && (
+            <Card className="border-primary/20 bg-primary/[0.02]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Pour qui est cette demande ?
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setOnBehalfOfId(''); setEmployeeSearch('') }}
+                      disabled={!isHome}
+                      className={cn(
+                        'rounded-2xl border-2 p-3 sm:p-4 text-left transition-all',
+                        !onBehalfOfId
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-border/70 hover:border-border hover:bg-accent/30',
+                        !isHome && 'cursor-not-allowed opacity-50'
+                      )}
+                    >
+                      <p className="font-semibold text-xs sm:text-sm">Pour moi-meme</p>
+                      <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Ma propre demande</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOnBehalfOfId('_selecting')}
+                      className={cn(
+                        'rounded-2xl border-2 p-3 sm:p-4 text-left transition-all',
+                        onBehalfOfId
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-border/70 hover:border-border hover:bg-accent/30'
+                      )}
+                    >
+                      <p className="font-semibold text-xs sm:text-sm">Pour un employe</p>
+                      <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">Creer au nom d&apos;un collaborateur</p>
+                    </button>
+                  </div>
+
+                  {onBehalfOfId && (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                        <Input
+                          placeholder="Rechercher un employe..."
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          className="pl-10 h-10"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 rounded-xl border border-border/60 p-2">
+                        {filteredEmployees.length === 0 ? (
+                          <p className="py-4 text-center text-xs text-muted-foreground">Aucun employe trouve</p>
+                        ) : (
+                          filteredEmployees.map(emp => (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => { setOnBehalfOfId(emp.id); setEmployeeSearch('') }}
+                              className={cn(
+                                'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all',
+                                onBehalfOfId === emp.id
+                                  ? 'bg-primary/10 border border-primary/25'
+                                  : 'hover:bg-muted/60'
+                              )}
+                            >
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                                {emp.full_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-foreground truncate">{emp.full_name}</p>
+                                {emp.job_title && (
+                                  <p className="text-[11px] text-muted-foreground truncate">{emp.job_title}</p>
+                                )}
+                              </div>
+                              {onBehalfOfId === emp.id && (
+                                <Check className="h-4 w-4 shrink-0 text-primary" />
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Non-home, non-manager: show blocking message */}
+          {!isHome && !canCreateMaladieOnBehalf && (
+            <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-medium">Votre societe d&apos;origine est requise.</p>
+                <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">Basculez vers votre societe d&apos;origine pour creer une demande pour vous-meme.</p>
+              </div>
+            </div>
+          )}
+
           {/* Sick days balance */}
           <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Heart className="h-4 w-4 text-primary" />
-                <p className="text-sm font-medium text-foreground">Solde maladie annuel</p>
+                <p className="text-sm font-medium text-foreground">
+                  Solde maladie annuel{isOnBehalf && targetEmployee ? ` de ${targetEmployee.full_name}` : ''}
+                </p>
               </div>
               <Badge variant={maladieSickDaysRemaining <= 0 ? 'destructive' : 'secondary'}>
                 {maladieSickDaysUsed}/3 jours utilises
@@ -2239,7 +2508,21 @@ export default function NewRequestPage() {
                           <option value="_external">Autre (personne externe)</option>
                         </select>
                         {selectedEmployeeId === '_external' && (
-                          <Input placeholder="Nom complet de la personne" value={externalPersonName} onChange={e => setExternalPersonName(e.target.value)} required />
+                          <>
+                            <Input placeholder="Nom complet de la personne" value={externalPersonName} onChange={e => setExternalPersonName(e.target.value)} required />
+                            {missionCategories.length > 0 && (
+                              <select
+                                value={missionCategoryId}
+                                onChange={e => setMissionCategoryId(e.target.value)}
+                                className="h-11 w-full rounded-2xl border border-input bg-background/70 px-4 text-sm outline-none ring-offset-background transition focus:border-ring focus:ring-2 focus:ring-ring/60"
+                              >
+                                <option value="">-- Catégorie mission --</option>
+                                {missionCategories.map(c => (
+                                  <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </>
                         )}
                       </div>
                     )}

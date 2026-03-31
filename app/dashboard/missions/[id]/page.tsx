@@ -44,14 +44,14 @@ import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
 import PrintMissionDocument from '@/components/print-mission-document'
 
-// Mission approval chain: Chef(dc) → RH(rp) → Dir(de)
+// Mission approval chain: RH(rp) → Chef(dc) → Dir(de) — aligned with leave pipeline
 const MISSION_PIPELINE = [
-  { status: 'PENDING', label: 'Chef de Service', role: 'CHEF_SERVICE', field: 'dc' },
-  { status: 'VALIDATED_DC', label: 'Responsable Personnel', role: 'RH', field: 'rp' },
-  { status: 'VALIDATED_RP', label: 'Directeur Exécutif', role: 'DIRECTEUR_EXECUTIF', field: 'de' },
+  { status: 'PENDING', label: 'RH Personnel', role: 'RH', field: 'rp' },
+  { status: 'VALIDATED_RP', label: 'Chef de Service', role: 'CHEF_SERVICE', field: 'dc' },
+  { status: 'VALIDATED_DC', label: 'Directeur Exécutif', role: 'DIRECTEUR_EXECUTIF', field: 'de' },
 ] as const
 
-const STATUS_ORDER = ['PENDING', 'VALIDATED_DC', 'VALIDATED_RP', 'APPROVED']
+const STATUS_ORDER = ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'APPROVED']
 
 export default function MissionDetailPage() {
   const params = useParams()
@@ -300,34 +300,34 @@ export default function MissionDetailPage() {
       minStatus: null as string | null,
     },
     {
-      key: 'dc',
-      name: 'Chef de Service',
-      done: !!mission.approved_at_dc,
+      key: 'rp',
+      name: 'RH Personnel',
+      done: !!mission.approved_at_rp,
       active: mission.status === 'PENDING',
-      approver: mission.approver_dc?.full_name,
-      date: mission.approved_at_dc,
+      approver: mission.approver_rp?.full_name,
+      date: mission.approved_at_rp,
       icon: User,
       minStatus: 'PENDING',
     },
     {
-      key: 'rp',
-      name: 'Responsable Personnel (RH)',
-      done: !!mission.approved_at_rp,
-      active: mission.status === 'VALIDATED_DC',
-      approver: mission.approver_rp?.full_name,
-      date: mission.approved_at_rp,
+      key: 'dc',
+      name: 'Chef de Service',
+      done: !!mission.approved_at_dc,
+      active: mission.status === 'VALIDATED_RP',
+      approver: mission.approver_dc?.full_name,
+      date: mission.approved_at_dc,
       icon: User,
-      minStatus: 'VALIDATED_DC',
+      minStatus: 'VALIDATED_RP',
     },
     {
       key: 'de',
       name: 'Directeur Exécutif',
       done: !!mission.approved_at_de,
-      active: mission.status === 'VALIDATED_RP',
+      active: mission.status === 'VALIDATED_DC',
       approver: mission.approver_de?.full_name,
       date: mission.approved_at_de,
       icon: User,
-      minStatus: 'VALIDATED_RP',
+      minStatus: 'VALIDATED_DC',
     },
   ]
 

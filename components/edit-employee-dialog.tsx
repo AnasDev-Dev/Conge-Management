@@ -57,6 +57,8 @@ interface EditEmployeeDialogProps {
     address?: string | null
     city?: string | null
     category_id?: number | null
+    mission_category_id?: number | null
+    date_anciennete?: string | null
     balance_conge: number
     balance_recuperation: number
   }
@@ -67,7 +69,8 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([])
+  const [categories, setCategories] = useState<{ id: number; name: string; company_id: number | null }[]>([])
+  const [missionCategories, setMissionCategories] = useState<{ id: number; name: string }[]>([])
   const [saving, setSaving] = useState(false)
 
   // Form fields
@@ -88,6 +91,8 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
   const [city, setCity] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
+  const [missionCategoryId, setMissionCategoryId] = useState<string>('')
+  const [dateAnciennete, setDateAnciennete] = useState('')
 
   // Multi-company assignments
   const [companyAssignments, setCompanyAssignments] = useState<CompanyAssignment[]>([])
@@ -98,20 +103,27 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
     [departments, companyId]
   )
 
+  const filteredCategories = useMemo(
+    () => (companyId ? categories.filter((c) => String(c.company_id) === companyId) : categories),
+    [categories, companyId]
+  )
+
   const getDepartmentsForCompany = useCallback(
     (cId: number) => departments.filter((d) => d.company_id === cId),
     [departments]
   )
 
   const loadReferenceData = useCallback(async () => {
-    const [{ data: companyData }, { data: deptData }, { data: catData }] = await Promise.all([
+    const [{ data: companyData }, { data: deptData }, { data: catData }, { data: missionCatData }] = await Promise.all([
       supabase.from('companies').select('*').order('name'),
       supabase.from('departments').select('*').order('name'),
-      supabase.from('personnel_categories').select('id, name').order('name'),
+      supabase.from('personnel_categories').select('id, name, company_id').order('name'),
+      supabase.from('mission_personnel_categories').select('id, name').eq('is_active', true).order('sort_order'),
     ])
     setCompanies((companyData || []) as Company[])
     setDepartments((deptData || []) as Department[])
-    setCategories((catData || []) as { id: number; name: string }[])
+    setCategories((catData || []) as { id: number; name: string; company_id: number | null }[])
+    setMissionCategories((missionCatData || []) as { id: number; name: string }[])
   }, [supabase])
 
   const loadCompanyAssignments = useCallback(async () => {
@@ -161,6 +173,8 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
       setCity(employee.city || '')
       setNewPassword('')
       setCategoryId(employee.category_id ? String(employee.category_id) : '')
+      setMissionCategoryId(employee.mission_category_id ? String(employee.mission_category_id) : '')
+      setDateAnciennete(employee.date_anciennete || '')
       loadReferenceData()
       loadCompanyAssignments()
     }
@@ -250,6 +264,8 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
         address: address.trim() || null,
         city: city.trim() || null,
         category_id: categoryId || null,
+        mission_category_id: missionCategoryId ? parseInt(missionCategoryId) : null,
+        date_anciennete: dateAnciennete || null,
       }
 
       if (newPassword) {
@@ -407,7 +423,7 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
                   <SelectValue placeholder="Sélectionner" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((c) => (
+                  {filteredCategories.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
                       {c.name}
                     </SelectItem>
@@ -421,13 +437,36 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
             </div>
           </div>
 
-          {/* Matricule */}
+          {/* Mission Category */}
+          {missionCategories.length > 0 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-missionCategory">Catégorie mission (indemnités)</Label>
+              <Select value={missionCategoryId} onValueChange={setMissionCategoryId}>
+                <SelectTrigger id="edit-missionCategory" className="w-full">
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  {missionCategories.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Date d'ancienneté & Matricule */}
           <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-dateAnciennete">Date d&apos;anciennete</Label>
+              <Input id="edit-dateAnciennete" type="date" value={dateAnciennete} onChange={(e) => setDateAnciennete(e.target.value)} />
+              <p className="text-muted-foreground text-xs">Si differente de la date d&apos;embauche</p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-matricule">Matricule</Label>
               <Input id="edit-matricule" value={matricule} onChange={(e) => setMatricule(e.target.value)} />
             </div>
-            <div className="space-y-1.5" />
           </div>
 
           {/* Administrative */}

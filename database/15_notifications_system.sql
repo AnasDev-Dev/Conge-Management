@@ -247,19 +247,21 @@ BEGIN
   v_object_text := LEFT(COALESCE(NEW.mission_object, ''), 60);
 
   CASE
-    WHEN NEW.status = 'VALIDATED_DC'::leave_status AND OLD.status = 'PENDING'::leave_status THEN
-      SELECT full_name INTO v_approver_name FROM utilisateurs WHERE id = NEW.approved_by_dc;
-      v_title := 'Mission validee par Chef de Service';
-      v_message := format('Votre ordre de mission "%s" du %s a ete valide par %s. En attente du RH.',
-        v_object_text, v_dates_text, COALESCE(v_approver_name, 'Chef de Service'));
-      v_type := 'MISSION_VALIDATED_DC';
-
-    WHEN NEW.status = 'VALIDATED_RP'::leave_status AND OLD.status = 'VALIDATED_DC'::leave_status THEN
+    -- Stage 1: RH validates (PENDING → VALIDATED_RP)
+    WHEN NEW.status = 'VALIDATED_RP'::leave_status AND OLD.status = 'PENDING'::leave_status THEN
       SELECT full_name INTO v_approver_name FROM utilisateurs WHERE id = NEW.approved_by_rp;
       v_title := 'Mission validee par RH';
-      v_message := format('Votre ordre de mission "%s" du %s a ete valide par %s. En attente du Directeur.',
+      v_message := format('Votre ordre de mission "%s" du %s a ete valide par %s. En attente du Chef de Service.',
         v_object_text, v_dates_text, COALESCE(v_approver_name, 'RH'));
       v_type := 'MISSION_VALIDATED_RP';
+
+    -- Stage 2: Chef validates (VALIDATED_RP → VALIDATED_DC)
+    WHEN NEW.status = 'VALIDATED_DC'::leave_status AND OLD.status = 'VALIDATED_RP'::leave_status THEN
+      SELECT full_name INTO v_approver_name FROM utilisateurs WHERE id = NEW.approved_by_dc;
+      v_title := 'Mission validee par Chef de Service';
+      v_message := format('Votre ordre de mission "%s" du %s a ete valide par %s. En attente du Directeur.',
+        v_object_text, v_dates_text, COALESCE(v_approver_name, 'Chef de Service'));
+      v_type := 'MISSION_VALIDATED_DC';
 
     WHEN NEW.status = 'APPROVED'::leave_status THEN
       SELECT full_name INTO v_approver_name FROM utilisateurs WHERE id = NEW.approved_by_de;
@@ -278,23 +280,11 @@ BEGIN
       v_type := 'MISSION_REJECTED';
 
     -- Undo / Restore cases
-    WHEN NEW.status = 'PENDING'::leave_status AND OLD.status IN ('VALIDATED_DC'::leave_status, 'REJECTED'::leave_status) THEN
+    -- Undo: RH validation cancelled (VALIDATED_RP → PENDING)
+    WHEN NEW.status = 'PENDING'::leave_status AND OLD.status IN ('VALIDATED_RP'::leave_status, 'REJECTED'::leave_status) THEN
       IF OLD.status = 'REJECTED'::leave_status THEN
         v_title := 'Mission restauree';
         v_message := format('Votre ordre de mission "%s" du %s a ete restaure.',
-          v_object_text, v_dates_text);
-        v_type := 'MISSION_RESTORED';
-      ELSE
-        v_title := 'Validation Chef de Service annulee';
-        v_message := format('La validation de votre ordre de mission "%s" du %s a ete annulee.',
-          v_object_text, v_dates_text);
-        v_type := 'MISSION_UNDO';
-      END IF;
-
-    WHEN NEW.status = 'VALIDATED_DC'::leave_status AND OLD.status IN ('VALIDATED_RP'::leave_status, 'REJECTED'::leave_status) THEN
-      IF OLD.status = 'REJECTED'::leave_status THEN
-        v_title := 'Mission restauree';
-        v_message := format('Votre ordre de mission "%s" du %s a ete restaure au stade RH.',
           v_object_text, v_dates_text);
         v_type := 'MISSION_RESTORED';
       ELSE
@@ -304,7 +294,22 @@ BEGIN
         v_type := 'MISSION_UNDO';
       END IF;
 
-    WHEN NEW.status = 'VALIDATED_RP'::leave_status AND OLD.status IN ('APPROVED'::leave_status, 'REJECTED'::leave_status) THEN
+    -- Undo: Chef validation cancelled (VALIDATED_DC → VALIDATED_RP)
+    WHEN NEW.status = 'VALIDATED_RP'::leave_status AND OLD.status IN ('VALIDATED_DC'::leave_status, 'REJECTED'::leave_status) THEN
+      IF OLD.status = 'REJECTED'::leave_status THEN
+        v_title := 'Mission restauree';
+        v_message := format('Votre ordre de mission "%s" du %s a ete restaure au stade Chef de Service.',
+          v_object_text, v_dates_text);
+        v_type := 'MISSION_RESTORED';
+      ELSE
+        v_title := 'Validation Chef de Service annulee';
+        v_message := format('La validation du Chef de Service de votre ordre de mission "%s" du %s a ete annulee.',
+          v_object_text, v_dates_text);
+        v_type := 'MISSION_UNDO';
+      END IF;
+
+    -- Undo: Director approval cancelled (APPROVED → VALIDATED_DC)
+    WHEN NEW.status = 'VALIDATED_DC'::leave_status AND OLD.status IN ('APPROVED'::leave_status, 'REJECTED'::leave_status) THEN
       IF OLD.status = 'REJECTED'::leave_status THEN
         v_title := 'Mission restauree';
         v_message := format('Votre ordre de mission "%s" du %s a ete restaure au stade Directeur.',
@@ -324,9 +329,9 @@ BEGIN
   INSERT INTO notifications (user_id, title, message, type, related_mission_id)
   VALUES (NEW.user_id, v_title, v_message, v_type, NEW.id);
 
-  -- === NOTIFY NEXT VALIDATORS ===
-  IF NEW.status = 'VALIDATED_DC'::leave_status AND OLD.status = 'PENDING'::leave_status THEN
-    -- Next: RH
+  -- === NOTIFY NEXT VALIDATORS (aligned with leave pipeline: RH → Chef → Dir) ===
+  -- After RH validates (VALIDATED_RP), notify Chef de Service
+  IF NEW.status = 'VALIDATED_RP'::leave_status AND OLD.status = 'PENDING'::leave_status THEN
     INSERT INTO notifications (user_id, title, message, type, related_mission_id)
     SELECT u.id,
       'Ordre de mission a valider',
@@ -335,13 +340,14 @@ BEGIN
       'MISSION_TO_VALIDATE',
       NEW.id
     FROM utilisateurs u
-    WHERE u.role::TEXT IN ('RH', 'ADMIN')
+    WHERE u.role::TEXT = 'CHEF_SERVICE'
       AND u.is_active = true
       AND u.company_id = v_requester_company
+      AND u.department_id = v_requester_dept
       AND u.id != NEW.user_id;
 
-  ELSIF NEW.status = 'VALIDATED_RP'::leave_status AND OLD.status = 'VALIDATED_DC'::leave_status THEN
-    -- Next: DIRECTEUR_EXECUTIF
+  -- After Chef validates (VALIDATED_DC), notify Director
+  ELSIF NEW.status = 'VALIDATED_DC'::leave_status AND OLD.status = 'VALIDATED_RP'::leave_status THEN
     INSERT INTO notifications (user_id, title, message, type, related_mission_id)
     SELECT u.id,
       'Ordre de mission a approuver',
@@ -390,7 +396,7 @@ BEGIN
   v_dates_text := to_char(NEW.start_date, 'DD/MM/YYYY') || ' au ' || to_char(NEW.end_date, 'DD/MM/YYYY');
   v_object_text := LEFT(COALESCE(NEW.mission_object, ''), 60);
 
-  -- Notify CHEF_SERVICE in same department (first stage for missions)
+  -- Notify RH (first stage for missions — aligned with leave pipeline)
   INSERT INTO notifications (user_id, title, message, type, related_mission_id)
   SELECT u.id,
     'Nouvel ordre de mission',
@@ -399,10 +405,9 @@ BEGIN
     'NEW_MISSION_TO_VALIDATE',
     NEW.id
   FROM utilisateurs u
-  WHERE u.role::TEXT IN ('CHEF_SERVICE', 'ADMIN')
+  WHERE u.role::TEXT IN ('RH', 'ADMIN')
     AND u.is_active = true
     AND u.company_id = v_requester_company
-    AND (u.role::TEXT = 'ADMIN' OR u.department_id = v_requester_dept)
     AND u.id != NEW.user_id;
 
   RETURN NEW;
