@@ -18,7 +18,7 @@ import { DeleteEmployeeDialog } from '@/components/delete-employee-dialog'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
-import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
+import { useEmployeeBalance } from '@/lib/hooks/use-employee-balance'
 import Image from 'next/image'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { getCompanyLogo } from '@/lib/company-logos'
@@ -59,6 +59,7 @@ export default function EmployeeDetailsPage() {
   const [missionCategories, setMissionCategories] = useState<MissionPersonnelCategory[]>([])
   const [missionCatSaving, setMissionCatSaving] = useState(false)
   const supabase = useMemo(() => createClient(), [])
+  const { balance: bal } = useEmployeeBalance(employee?.id)
 
   const loadData = useCallback(async (employeeId: string) => {
     try {
@@ -167,24 +168,6 @@ export default function EmployeeDetailsPage() {
     )
   }
 
-  const deptDays = Array.isArray(employee.departments)
-    ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-    : employee.departments?.annual_leave_days
-  const seniority = calculateSeniority(employee.hire_date ?? null, deptDays, employee.annual_leave_days, employee.date_anciennete)
-  const currentYear = new Date().getFullYear()
-  // Use balance_conge_used (actual congé portion) to handle mixed requests correctly
-  const congeUsed = requests
-    .filter(r => r.status === 'APPROVED' && new Date(r.start_date).getFullYear() === currentYear)
-    .reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0)
-  const congePending = requests
-    .filter(r => pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
-    .reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0)
-  const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, congeUsed, congePending)
-  const recupPending = requests
-    .filter(r => pendingStatuses.has(r.status) && new Date(r.start_date).getFullYear() === currentYear)
-    .reduce((sum, r) => sum + (r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0), 0)
-  const availableRecup = roundHalf(Math.max(employee.balance_recuperation - recupPending, 0))
-
   return (
     <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employee-detail">
     <div className="mx-auto max-w-5xl space-y-7">
@@ -268,16 +251,16 @@ export default function EmployeeDetailsPage() {
               <div className="space-y-3">
                 <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
                   <p className="text-xs text-muted-foreground">Solde congé</p>
-                  <p className={`mt-1 text-2xl font-bold ${accrual.availableNow < 0 ? 'text-red-500' : 'text-primary'}`}>{accrual.availableNow}j</p>
-                  {(congeUsed > 0 || congePending > 0) && (
+                  <p className={`mt-1 text-2xl font-bold ${(bal?.available_now ?? 0) < 0 ? 'text-red-500' : 'text-primary'}`}>{bal?.available_now ?? 0}j</p>
+                  {((bal?.days_used ?? 0) + (bal?.days_pending ?? 0)) > 0 && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Consommé: {roundHalf(congeUsed + congePending)}j
+                      Consommé: {(bal?.days_used ?? 0) + (bal?.days_pending ?? 0)}j
                     </p>
                   )}
                 </div>
                 <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
                   <p className="text-xs text-muted-foreground">Récupération</p>
-                  <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{availableRecup}j</p>
+                  <p className="mt-1 text-2xl font-bold text-[var(--status-success-text)]">{bal?.available_recup ?? 0}j</p>
                 </div>
               </div>
             )}
@@ -353,10 +336,10 @@ export default function EmployeeDetailsPage() {
               {employee.hire_date && (
                 <div>
                   <p className="text-sm text-muted-foreground">Ancienneté</p>
-                  <p className="font-medium mt-1">{Math.floor(seniority.yearsOfService)} an(s)</p>
+                  <p className="font-medium mt-1">{Math.floor(bal?.years_of_service ?? 0)} an(s)</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Dotation annuelle: {seniority.totalEntitlement} jours
-                    {seniority.bonusDays > 0 && ` (dont ${seniority.bonusDays} bonus ancienneté)`}
+                    Dotation annuelle: {bal?.annual_entitlement ?? 0} jours
+                    {(bal?.bonus_days ?? 0) > 0 && ` (dont ${bal?.bonus_days ?? 0} bonus ancienneté)`}
                   </p>
                 </div>
               )}

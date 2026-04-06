@@ -29,12 +29,12 @@ import {
   fetchWorkingDays,
   getHolidaysInRange,
   nextWorkingDay,
-  calculateMonthlyAccrual,
-  calculateSeniority,
   roundHalf,
   validateSegments,
+  MAX_CONGE_BALANCE,
 } from '@/lib/leave-utils'
 import { SignatureDialog } from '@/components/signature-dialog'
+import { useEmployeeBalance, useAllEmployeeBalances } from '@/lib/hooks/use-employee-balance'
 
 type EmployeeOption = Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'balance_conge' | 'balance_recuperation' | 'hire_date' | 'department_id' | 'date_anciennete' | 'annual_leave_days'> & {
   dept_annual_leave_days?: number
@@ -165,15 +165,8 @@ export default function NewRequestPage() {
     sunday_morning: false, sunday_afternoon: false,
   })
 
-  // Monthly accrual: track used/pending days for the target employee
-  const [congeUsedDays, setCongeUsedDays] = useState(0)
-  const [congePendingDays, setCongePendingDays] = useState(0)
-  const [recupUsedDays, setRecupUsedDays] = useState(0)
-  const [recupPendingDays, setRecupPendingDays] = useState(0)
-
   // Recovery/Congé split (legacy — now derived from segments)
   const [recupDaysToUse, setRecupDaysToUse] = useState(0)
-  const [recoveryLots, setRecoveryLots] = useState<RecoveryBalanceLot[]>([])
 
   // Segment builder state
   const [segments, setSegments] = useState<LeaveSegment[]>([])
@@ -181,9 +174,6 @@ export default function NewRequestPage() {
   // Derogation: allow submit when balance is insufficient (CPA override)
   const [isDerogation, setIsDerogation] = useState(false)
   const [showDerogationDialog, setShowDerogationDialog] = useState(false)
-
-  // Department annual leave days for current user (for self-service requests)
-  const [userDeptDays, setUserDeptDays] = useState<number | null>(null)
 
   const router = useRouter()
   const supabase = createClient()
@@ -208,7 +198,6 @@ export default function NewRequestPage() {
         date_anciennete: user.date_anciennete,
         annual_leave_days: user.annual_leave_days,
         department_id: user.department_id,
-        dept_annual_leave_days: userDeptDays ?? undefined,
       }
     }
     return null
@@ -216,20 +205,35 @@ export default function NewRequestPage() {
 
   const isOnBehalf = !!onBehalfOfId && onBehalfOfId !== user?.id
 
+  // Unified balance from RPC (single source of truth)
+  const { balance: bal, refresh: refreshBalance } = useEmployeeBalance(targetEmployee?.id)
+  const { balances: allBalances } = useAllEmployeeBalances(activeCompany?.id)
+
+  // Derived values from RPC balance (replaces congeAccrual, availableRecup, recoveryLots)
+  const congeAccrual = useMemo(() => ({
+    availableNow: bal?.available_now ?? 0,
+    annualEntitlement: bal?.annual_entitlement ?? 0,
+    carryOver: bal?.carry_over ?? 0,
+    cumulativeEarned: bal?.cumulative_earned ?? 0,
+    monthlyRate: bal?.monthly_rate ?? 0,
+    currentMonth: bal?.current_month ?? (new Date().getMonth() + 1),
+    daysUsed: bal?.days_used ?? 0,
+    daysPending: bal?.days_pending ?? 0,
+    isMaxReached: bal?.is_max_reached ?? false,
+  }), [bal])
+  const availableRecup = bal?.available_recup ?? 0
+  const recoveryLots = bal?.recovery_lots ?? []
+  const congeUsedDays = bal?.days_used ?? 0
+  const congePendingDays = bal?.days_pending ?? 0
+  const recupPendingDays = bal?.recup_pending ?? 0
+
   useEffect(() => {
     if (user) {
       loadEmployees(user)
       loadColleagues(user.department_id)
-      // Use active company for holidays/working days (not home company)
       const companyId = activeCompany?.id || user.company_id || undefined
       fetchHolidays(companyId).then(setHolidays)
-      // Fetch working days for user's department (re-fetched when on-behalf target changes)
       fetchWorkingDays(companyId, user.department_id ?? undefined).then(setWorkingDaysConfig)
-      // Fetch dept annual_leave_days for self-service
-      if (user.department_id) {
-        supabase.from('departments').select('annual_leave_days').eq('id', user.department_id).single()
-          .then(({ data }) => { if (data) setUserDeptDays(data.annual_leave_days) })
-      }
     }
   }, [user, activeCompany?.id])
 
@@ -393,43 +397,7 @@ export default function NewRequestPage() {
     fetchSickDays()
   }, [targetEmployee?.id])
 
-  // Fetch used/pending CONGE days + recovery lots for the target employee
-  useEffect(() => {
-    if (!targetEmployee) return
-    const currentYear = new Date().getFullYear()
-    const fetchUsage = async () => {
-      const [{ data: usedData }, { data: pendingData }, { data: lotsData }] = await Promise.all([
-        supabase
-          .from('leave_requests')
-          .select('days_count, balance_conge_used, balance_recuperation_used, request_type')
-          .eq('user_id', targetEmployee.id)
-          .eq('status', 'APPROVED')
-          .gte('start_date', `${currentYear}-01-01`)
-          .lte('start_date', `${currentYear}-12-31`),
-        supabase
-          .from('leave_requests')
-          .select('days_count, balance_conge_used, balance_recuperation_used, request_type')
-          .eq('user_id', targetEmployee.id)
-          .in('status', ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'])
-          .gte('start_date', `${currentYear}-01-01`)
-          .lte('start_date', `${currentYear}-12-31`),
-        supabase
-          .from('recovery_balance_lots')
-          .select('*')
-          .eq('user_id', targetEmployee.id)
-          .eq('expired', false)
-          .gt('remaining_days', 0)
-          .order('expires_at', { ascending: true }),
-      ])
-      // Use balance_conge_used / balance_recuperation_used (the actual split) for mixed requests
-      setCongeUsedDays((usedData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0))
-      setCongePendingDays((pendingData || []).reduce((sum, r) => sum + (r.balance_conge_used ?? (r.request_type === 'CONGE' ? r.days_count : 0) ?? 0), 0))
-      setRecupUsedDays((usedData || []).reduce((sum, r) => sum + (r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0), 0))
-      setRecupPendingDays((pendingData || []).reduce((sum, r) => sum + (r.balance_recuperation_used ?? (r.request_type === 'RECUPERATION' ? r.days_count : 0) ?? 0), 0))
-      setRecoveryLots((lotsData || []) as RecoveryBalanceLot[])
-    }
-    fetchUsage()
-  }, [targetEmployee?.id])
+  // Balance is now fetched via useEmployeeBalance(targetEmployee?.id) above
 
   const loadEmployees = async (userData: Utilisateur) => {
     try {
@@ -691,17 +659,6 @@ export default function NewRequestPage() {
   const segmentErrors = useMemo(() => validateSegments(segments), [segments])
   const allSegmentsValid = segments.length > 0 && segments.every(s => s.workingDays > 0 && s.startDate && s.endDate) && segmentErrors.length === 0
 
-  // Monthly accrual for CONGE: available = carry_over + (entitlement/12 * month) - used - pending
-  const congeAccrual = useMemo(() => {
-    const deptDays = targetEmployee?.dept_annual_leave_days
-    const seniority = calculateSeniority(targetEmployee?.hire_date ?? null, deptDays, targetEmployee?.annual_leave_days, targetEmployee?.date_anciennete)
-    const annualEntitlement = seniority.totalEntitlement
-    const carryOver = targetEmployee?.balance_conge || 0
-    return calculateMonthlyAccrual(annualEntitlement, carryOver, congeUsedDays, congePendingDays)
-  }, [targetEmployee?.balance_conge, targetEmployee?.hire_date, targetEmployee?.dept_annual_leave_days, congeUsedDays, congePendingDays])
-
-  // Available récup = stored balance - pending récup requests (mirrors congé behavior)
-  const availableRecup = roundHalf(Math.max((targetEmployee?.balance_recuperation || 0) - recupPendingDays, 0))
   const availableConge = congeAccrual.availableNow
 
   // Max recovery days in a single request: 5 or available, whichever is less
@@ -1023,7 +980,7 @@ export default function NewRequestPage() {
               Demande pour {targetEmployee.full_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j/{congeAccrual.annualEntitlement}j, Recup: {roundHalf(targetEmployee.balance_recuperation)}j
+              {targetEmployee.job_title || 'Employe'} — Conge: {congeAccrual.availableNow}j, Recup: {availableRecup}j
             </p>
           </div>
           <Button
@@ -1188,9 +1145,15 @@ export default function NewRequestPage() {
                                     <p className="text-[11px] text-muted-foreground truncate">{emp.job_title}</p>
                                   )}
                                 </div>
-                                <div className="shrink-0 text-right">
-                                  <p className="text-[10px] text-muted-foreground">C: {roundHalf(emp.balance_conge)}j</p>
-                                  <p className="text-[10px] text-muted-foreground">R: {roundHalf(emp.balance_recuperation)}j</p>
+                                <div className="shrink-0 flex items-center gap-1.5">
+                                  {(() => { const eb = allBalances.get(emp.id); return (<>
+                                    <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                                      Congé {eb?.available_now ?? 0}j
+                                    </span>
+                                    <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                      Récup {eb?.available_recup ?? 0}j
+                                    </span>
+                                  </>)})()}
                                 </div>
                                 {onBehalfOfId === emp.id && (
                                   <Check className="h-4 w-4 shrink-0 text-primary" />
@@ -1963,6 +1926,14 @@ export default function NewRequestPage() {
                                   <p className="text-[11px] text-muted-foreground truncate">{emp.job_title}</p>
                                 )}
                               </div>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                                  Congé {roundHalf(emp.balance_conge)}j
+                                </span>
+                                <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                  Récup {roundHalf(emp.balance_recuperation)}j
+                                </span>
+                              </div>
                               {onBehalfOfId === emp.id && (
                                 <Check className="h-4 w-4 shrink-0 text-primary" />
                               )}
@@ -2239,6 +2210,14 @@ export default function NewRequestPage() {
                                 {emp.job_title && (
                                   <p className="text-[11px] text-muted-foreground truncate">{emp.job_title}</p>
                                 )}
+                              </div>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                                  Congé {roundHalf(emp.balance_conge)}j
+                                </span>
+                                <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                  Récup {roundHalf(emp.balance_recuperation)}j
+                                </span>
                               </div>
                               {onBehalfOfId === emp.id && (
                                 <Check className="h-4 w-4 shrink-0 text-primary" />

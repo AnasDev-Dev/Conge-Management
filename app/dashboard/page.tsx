@@ -23,13 +23,13 @@ import {
 import Link from "next/link";
 import { Utilisateur } from "@/lib/types/database";
 import {
-  MAX_LEAVE_BALANCE,
   PENDING_STATUSES,
   getStatusClass,
   getStatusLabel,
 } from "@/lib/constants";
 import { usePermissions } from "@/lib/hooks/use-permissions";
-import { calculateSeniority, calculateMonthlyAccrual, roundHalf, type MonthlyAccrualInfo } from "@/lib/leave-utils";
+import { useEmployeeBalance } from "@/lib/hooks/use-employee-balance";
+import { roundHalf } from "@/lib/leave-utils";
 import {
   format,
   startOfMonth,
@@ -110,18 +110,11 @@ export default function DashboardPage() {
   const { user } = useCurrentUser();
   const { isHome, activeCompany } = useCompanyContext();
   const { can, isManager: isManagerView } = usePermissions(user?.role || 'EMPLOYEE');
+  const { balance: bal } = useEmployeeBalance(user?.id);
   const [requests, setRequests] = useState<DashboardRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-  const [congeAccrual, setCongeAccrual] = useState<MonthlyAccrualInfo | null>(null);
-  const [recupPendingDays, setRecupPendingDays] = useState(0);
-  const [deptAnnualDays, setDeptAnnualDays] = useState<number | undefined>(undefined);
-  const [expiringRecoveryLots, setExpiringRecoveryLots] = useState<{
-    remaining_days: number;
-    year_acquired: number;
-    expires_at: string;
-  }[]>([]);
 
   // New state — manager features
   const [teamRecoveryLots, setTeamRecoveryLots] = useState<TeamRecoveryLot[]>([]);
@@ -129,53 +122,15 @@ export default function DashboardPage() {
 
   const supabase = createClient();
 
+  // Derive personal expiring recovery lots from the balance hook
+  const expiringRecoveryLots = useMemo(() =>
+    (bal?.recovery_lots ?? []).filter(lot => lot.is_expiring_soon),
+    [bal],
+  );
+
   useEffect(() => {
     if (!user) return;
     loadRequests(user);
-    const currentYear = new Date().getFullYear();
-
-    // Fetch department annual_leave_days
-    if (user.department_id) {
-      supabase.from("departments").select("annual_leave_days").eq("id", user.department_id).single()
-        .then(({ data }) => { if (data) setDeptAnnualDays(data.annual_leave_days); });
-    }
-
-    // Fetch used/pending days for balance calculation
-    supabase
-      .from("leave_requests")
-      .select("days_count, balance_conge_used, balance_recuperation_used, request_type, status")
-      .eq("user_id", user.id)
-      .gte("start_date", `${currentYear}-01-01`)
-      .lte("start_date", `${currentYear}-12-31`)
-      .then(({ data }) => {
-        if (!data) return;
-        let cUsed = 0, cPending = 0, rPending = 0;
-        for (const r of data) {
-          const congeAmt = r.balance_conge_used ?? (r.request_type === "CONGE" ? r.days_count : 0) ?? 0;
-          const recupAmt = r.balance_recuperation_used ?? (r.request_type === "RECUPERATION" ? r.days_count : 0) ?? 0;
-          if (r.status === "APPROVED") cUsed += congeAmt;
-          if (["PENDING", "VALIDATED_RP", "VALIDATED_DC"].includes(r.status)) {
-            cPending += congeAmt;
-            rPending += recupAmt;
-          }
-        }
-        const seniority = calculateSeniority(user.hire_date, deptAnnualDays, user.annual_leave_days, user.date_anciennete);
-        setCongeAccrual(calculateMonthlyAccrual(seniority.totalEntitlement, user.balance_conge, cUsed, cPending));
-        setRecupPendingDays(rPending);
-      });
-
-    // Fetch recovery lots expiring within 60 days (personal)
-    supabase
-      .from("recovery_balance_lots")
-      .select("remaining_days, year_acquired, expires_at")
-      .eq("user_id", user.id)
-      .eq("expired", false)
-      .gt("remaining_days", 0)
-      .lte("expires_at", format(addDays(new Date(), 60), "yyyy-MM-dd"))
-      .order("expires_at", { ascending: true })
-      .then(({ data }) => {
-        if (data) setExpiringRecoveryLots(data);
-      });
 
     // Manager-only fetches
     if (isManagerView) {
@@ -212,7 +167,7 @@ export default function DashboardPage() {
           setPendingValidations(prev => ({ ...prev, missions: count || 0 }));
         });
     }
-  }, [user, activeCompany, deptAnnualDays]);
+  }, [user, activeCompany]);
 
   const loadRequests = async (userData: Utilisateur) => {
     try {
@@ -359,7 +314,7 @@ export default function DashboardPage() {
             </div>
             <div className="min-w-0">
               {(() => {
-                if (!congeAccrual) {
+                if (!bal) {
                   return (
                     <>
                       <div className="h-5 w-12 animate-pulse rounded bg-muted sm:h-6" />
@@ -367,13 +322,15 @@ export default function DashboardPage() {
                     </>
                   )
                 }
+                const availableNow = bal.available_now ?? 0;
+                const carryOver = bal.carry_over ?? 0;
                 return (
                   <>
-                    <p className={`text-lg font-bold leading-tight sm:text-xl ${congeAccrual.availableNow < 0 ? 'text-red-500' : ''}`}>
-                      {congeAccrual.availableNow}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
+                    <p className={`text-lg font-bold leading-tight sm:text-xl ${availableNow < 0 ? 'text-red-500' : ''}`}>
+                      {availableNow}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
                     </p>
                     <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
-                      Solde congé{congeAccrual.carryOver > 0 && ` · ${congeAccrual.carryOver}j report`}
+                      Solde congé{carryOver > 0 && ` · ${carryOver}j report`}
                     </p>
                   </>
                 )
@@ -389,7 +346,7 @@ export default function DashboardPage() {
             </div>
             <div className="min-w-0">
               <p className="text-lg font-bold leading-tight sm:text-xl">
-                {roundHalf(Math.max(user.balance_recuperation - recupPendingDays, 0))}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
+                {bal?.available_recup ?? 0}<span className="ml-0.5 text-[10px] font-normal text-muted-foreground sm:text-xs">j</span>
               </p>
               <p className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">Récupération</p>
             </div>

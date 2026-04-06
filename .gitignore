@@ -45,3 +45,6 @@ next-env.d.ts
 /private/
 .claude/
 context/
+
+# database migrations (managed separately)
+/database/

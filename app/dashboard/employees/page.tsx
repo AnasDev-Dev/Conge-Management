@@ -5,9 +5,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { LeaveRequest, Utilisateur } from '@/lib/types/database'
+import { Utilisateur } from '@/lib/types/database'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChevronRight, LayoutGrid, List, Search, User, UserPlus, Users } from 'lucide-react'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
@@ -15,7 +14,7 @@ import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { PageGuard } from '@/components/role-gate'
 import { AddEmployeeDialog } from '@/components/add-employee-dialog'
-import { calculateSeniority, calculateMonthlyAccrual, roundHalf } from '@/lib/leave-utils'
+import { useAllEmployeeBalances } from '@/lib/hooks/use-employee-balance'
 
 type EmployeeRow = Pick<
   Utilisateur,
@@ -23,17 +22,6 @@ type EmployeeRow = Pick<
 > & {
   departments?: { annual_leave_days: number }[] | { annual_leave_days: number } | null
 }
-
-type LeaveRow = Pick<LeaveRequest, 'id' | 'user_id' | 'status' | 'days_count' | 'created_at' | 'request_type' | 'start_date'>
-
-type EmployeeSummary = {
-  totalRequests: number
-  approvedDays: number
-  pendingRequests: number
-}
-
-const approvedStatuses = new Set(['APPROVED'])
-const pendingStatuses = new Set(['PENDING', 'VALIDATED_DC', 'VALIDATED_RP'])
 
 const roleKeywords: Record<string, string[]> = {
   EMPLOYEE: ['employe', 'employee', 'collaborateur', 'staff'],
@@ -60,14 +48,11 @@ function normalizeText(value: string | null | undefined): string {
     .trim()
 }
 
-function buildSearchIndex(employee: EmployeeRow, summary: EmployeeSummary): string {
+function buildSearchIndex(employee: EmployeeRow): string {
   const activeWords = employee.is_active ? ['actif', 'active'] : ['inactif', 'inactive', 'disabled']
   const metrics = [
     String(employee.balance_conge),
     String(employee.balance_recuperation),
-    String(summary.totalRequests),
-    String(summary.approvedDays),
-    String(summary.pendingRequests),
     'conge',
     'conges',
     'recuperation',
@@ -95,7 +80,6 @@ function getRoleChipClasses(role: Utilisateur['role']) {
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
-  const [requests, setRequests] = useState<LeaveRow[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
@@ -103,6 +87,7 @@ export default function EmployeesPage() {
   const supabase = useMemo(() => createClient(), [])
   const { user: currentUser } = useCurrentUser()
   const { activeCompany } = useCompanyContext()
+  const { balances: balanceMap } = useAllEmployeeBalances(activeCompany?.id)
   const { can } = usePermissions(currentUser?.role || 'EMPLOYEE')
   const canCreateEmployee = currentUser && can('employees.create')
   const canViewBalances = can('employees.viewBalances')
@@ -119,28 +104,10 @@ export default function EmployeesPage() {
         empQuery = empQuery.eq('company_id', activeCompany.id)
       }
 
-      // First fetch employees, then fetch only their leave requests
       const { data: employeeData, error: employeeError } = await empQuery
       if (employeeError) throw employeeError
 
-      const empIds = (employeeData || []).map((e: { id: string }) => e.id)
-      let requestData: LeaveRow[] = []
-      let requestError = null
-
-      if (empIds.length > 0) {
-        const result = await supabase
-          .from('leave_requests')
-          .select('id, user_id, status, days_count, created_at, request_type, start_date, balance_conge_used, balance_recuperation_used')
-          .in('user_id', empIds)
-        requestData = (result.data || []) as LeaveRow[]
-        requestError = result.error
-      }
-
-      if (employeeError) throw employeeError
-      if (requestError) throw requestError
-
       setEmployees((employeeData || []) as EmployeeRow[])
-      setRequests((requestData || []) as LeaveRow[])
     } catch (error) {
       console.error('Error loading employees data:', error)
     } finally {
@@ -152,76 +119,15 @@ export default function EmployeesPage() {
     loadData()
   }, [loadData])
 
-  const summaryByUser = useMemo(() => {
-    const summary = new Map<string, EmployeeSummary>()
-
-    for (const request of requests) {
-      const current = summary.get(request.user_id) || { totalRequests: 0, approvedDays: 0, pendingRequests: 0 }
-      current.totalRequests += 1
-      if (approvedStatuses.has(request.status)) {
-        current.approvedDays += request.days_count || 0
-      }
-      if (pendingStatuses.has(request.status)) {
-        current.pendingRequests += 1
-      }
-      summary.set(request.user_id, current)
-    }
-
-    return summary
-  }, [requests])
-
-  // CONGE usage per user for current year (for accurate balance display)
-  // Uses balance_conge_used (actual congé portion) to handle mixed requests correctly
-  const congeUsageByUser = useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    const usage = new Map<string, { used: number; pending: number }>()
-
-    for (const request of requests) {
-      if (new Date(request.start_date).getFullYear() !== currentYear) continue
-      // Use balance_conge_used if available (handles mixed requests), otherwise days_count for pure CONGE
-      const congeAmount = (request as Record<string, unknown>).balance_conge_used as number | null
-      const amount = congeAmount ?? (request.request_type === 'CONGE' ? request.days_count : 0)
-      if (amount <= 0) continue
-
-      const current = usage.get(request.user_id) || { used: 0, pending: 0 }
-      if (approvedStatuses.has(request.status)) {
-        current.used += amount
-      }
-      if (pendingStatuses.has(request.status)) {
-        current.pending += amount
-      }
-      usage.set(request.user_id, current)
-    }
-
-    return usage
-  }, [requests])
-
-  // RECUPERATION pending usage per user (to subtract from displayed balance)
-  const recupPendingByUser = useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    const pending = new Map<string, number>()
-
-    for (const request of requests) {
-      if (new Date(request.start_date).getFullYear() !== currentYear) continue
-      if (!pendingStatuses.has(request.status)) continue
-      const recupAmount = (request as Record<string, unknown>).balance_recuperation_used as number | null
-      const amount = recupAmount ?? (request.request_type === 'RECUPERATION' ? request.days_count : 0)
-      if (amount <= 0) continue
-      pending.set(request.user_id, (pending.get(request.user_id) || 0) + amount)
-    }
-    return pending
-  }, [requests])
-
   const filteredEmployees = useMemo(() => {
     const tokens = normalizeText(searchTerm).split(/\s+/).filter(Boolean)
     if (tokens.length === 0) return employees
 
     return employees.filter((employee) => {
-      const summary = summaryByUser.get(employee.id) || { totalRequests: 0, approvedDays: 0, pendingRequests: 0 }
-      const index = buildSearchIndex(employee, summary)
+      const index = buildSearchIndex(employee)
       return tokens.every((token) => index.includes(token))
     })
-  }, [employees, searchTerm, summaryByUser])
+  }, [employees, searchTerm])
 
   return (
     <PageGuard userRole={currentUser?.role || 'EMPLOYEE'} page="employees">
@@ -314,11 +220,7 @@ export default function EmployeesPage() {
             </thead>
             <tbody>
               {filteredEmployees.map((employee) => {
-                const employeeSummary = summaryByUser.get(employee.id) || {
-                  totalRequests: 0,
-                  approvedDays: 0,
-                  pendingRequests: 0,
-                }
+                const bal = balanceMap.get(employee.id)
                 const isFemale = employee.gender === 'F'
 
                 return (
@@ -341,27 +243,17 @@ export default function EmployeesPage() {
                     </td>
                     {canViewBalances && (
                       <td className="border-b border-border/45 px-4 py-3 text-sm text-muted-foreground align-middle">
-                        {(() => {
-                          const deptDays = Array.isArray(employee.departments)
-                            ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-                            : employee.departments?.annual_leave_days
-                          const seniority = calculateSeniority(employee.hire_date ?? null, deptDays, (employee as Record<string, unknown>).annual_leave_days as number | null, (employee as Record<string, unknown>).date_anciennete as string | null)
-                          const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
-                          const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
-                          return (
-                            <p className="text-sm">
-                              <span className="font-semibold text-foreground">{accrual.availableNow}j</span>
-                              <span className="text-muted-foreground"> congé · {roundHalf(Math.max(employee.balance_recuperation - (recupPendingByUser.get(employee.id) || 0), 0))}j récup</span>
-                            </p>
-                          )
-                        })()}
+                        <p className="text-sm">
+                          <span className="font-semibold text-foreground">{bal?.available_now ?? 0}j</span>
+                          <span className="text-muted-foreground"> congé · {bal?.available_recup ?? 0}j récup</span>
+                        </p>
                       </td>
                     )}
                     <td className="whitespace-nowrap border-b border-border/45 px-4 py-3 align-middle">
-                      <span className="font-semibold text-primary">{employeeSummary.approvedDays} jours</span>
+                      <span className="font-semibold text-primary">{bal?.days_used ?? 0} jours</span>
                     </td>
                     <td className="whitespace-nowrap border-b border-border/45 px-4 py-3 align-middle">
-                      <span className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</span>
+                      <span className="font-semibold text-[var(--status-pending-text)]">{bal?.days_pending ?? 0}</span>
                     </td>
                     <td className="border-b border-border/45 px-4 py-3 text-right align-middle">
                       <Link href={`/dashboard/employees/${employee.id}`}>
@@ -381,24 +273,15 @@ export default function EmployeesPage() {
         /* ── CARDS VIEW ── */
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredEmployees.map((employee) => {
-            const employeeSummary = summaryByUser.get(employee.id) || {
-              totalRequests: 0,
-              approvedDays: 0,
-              pendingRequests: 0,
-            }
+            const bal = balanceMap.get(employee.id)
 
-            // Balance calculations
-            const deptDays = Array.isArray(employee.departments)
-              ? (employee.departments as unknown as { annual_leave_days: number }[])[0]?.annual_leave_days
-              : employee.departments?.annual_leave_days
-            const seniority = calculateSeniority(employee.hire_date ?? null, deptDays, (employee as Record<string, unknown>).annual_leave_days as number | null, (employee as Record<string, unknown>).date_anciennete as string | null)
-            const empUsage = congeUsageByUser.get(employee.id) || { used: 0, pending: 0 }
-            const accrual = calculateMonthlyAccrual(seniority.totalEntitlement, employee.balance_conge, empUsage.used, empUsage.pending)
-            const recup = roundHalf(Math.max(employee.balance_recuperation - (recupPendingByUser.get(employee.id) || 0), 0))
+            // Balance values from hook
+            const availableNow = bal?.available_now ?? 0
+            const availableRecup = bal?.available_recup ?? 0
 
             // Progress bar percentages
-            const congeTotal = accrual.carryOver + accrual.cumulativeEarned
-            const congePct = congeTotal > 0 ? Math.min((accrual.availableNow / congeTotal) * 100, 100) : 0
+            const congeTotal = (bal?.carry_over ?? 0) + (bal?.cumulative_earned ?? 0)
+            const congePct = congeTotal > 0 ? Math.min((availableNow / congeTotal) * 100, 100) : 0
 
             // Avatar styling by gender
             const isFemale = employee.gender === 'F'
@@ -430,7 +313,7 @@ export default function EmployeesPage() {
                     <div>
                       <div className="flex items-baseline justify-between">
                         <span className="text-[11px] text-muted-foreground">Congé</span>
-                        <span className="text-sm font-bold text-foreground">{accrual.availableNow}j</span>
+                        <span className="text-sm font-bold text-foreground">{availableNow}j</span>
                       </div>
                       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                         <div
@@ -442,12 +325,12 @@ export default function EmployeesPage() {
                     <div>
                       <div className="flex items-baseline justify-between">
                         <span className="text-[11px] text-muted-foreground">Récup</span>
-                        <span className="text-sm font-bold text-foreground">{recup}j</span>
+                        <span className="text-sm font-bold text-foreground">{availableRecup}j</span>
                       </div>
                       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                         <div
                           className="h-full rounded-full bg-blue-500 transition-all"
-                          style={{ width: `${recup > 0 ? Math.min(recup * 10, 100) : 0}%` }}
+                          style={{ width: `${availableRecup > 0 ? Math.min(availableRecup * 10, 100) : 0}%` }}
                         />
                       </div>
                     </div>
@@ -458,12 +341,12 @@ export default function EmployeesPage() {
                 <div className="mt-3 flex items-center justify-between rounded-xl bg-secondary/50 px-3 py-2 text-xs">
                   <div>
                     <span className="text-muted-foreground">Pris </span>
-                    <span className="font-semibold text-primary">{employeeSummary.approvedDays}j</span>
+                    <span className="font-semibold text-primary">{bal?.days_used ?? 0}j</span>
                   </div>
                   <div className="h-3 w-px bg-border" />
                   <div>
                     <span className="text-muted-foreground">En attente </span>
-                    <span className="font-semibold text-[var(--status-pending-text)]">{employeeSummary.pendingRequests}</span>
+                    <span className="font-semibold text-[var(--status-pending-text)]">{bal?.days_pending ?? 0}</span>
                   </div>
                 </div>
 

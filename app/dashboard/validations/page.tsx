@@ -51,6 +51,7 @@ import {
   groupDetailsIntoSegments,
   SegmentSummary,
 } from '@/lib/leave-utils'
+import { useAllEmployeeBalances } from '@/lib/hooks/use-employee-balance'
 import { cn } from '@/lib/utils'
 import { SignatureDialog } from '@/components/signature-dialog'
 
@@ -124,7 +125,7 @@ export default function ValidationsPage() {
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
 
   // Balance info per user (from RPC)
-  const [userBalances, setUserBalances] = useState<Map<string, number>>(new Map())
+  const { balances: balanceMap } = useAllEmployeeBalances(activeCompany?.id)
 
   const supabase = createClient()
 
@@ -138,23 +139,7 @@ export default function ValidationsPage() {
     }
   }, [user, activeCompany])
 
-  // Fetch available balance for each unique user in the validation queue
-  useEffect(() => {
-    const userIds = [...new Set(allRequests.map(r => r.user_id))]
-    if (userIds.length === 0) return
-
-    const fetchBalances = async () => {
-      const balances = new Map<string, number>()
-      await Promise.all(
-        userIds.map(async (uid) => {
-          const { data } = await supabase.rpc('calculate_leave_balance', { p_user_id: uid })
-          if (data) balances.set(uid, data.available_now ?? 0)
-        })
-      )
-      setUserBalances(balances)
-    }
-    fetchBalances()
-  }, [allRequests])
+  // Balance data now comes from useAllEmployeeBalances hook above
 
   const loadAllRequests = async (currentUserId?: string) => {
     try {
@@ -654,9 +639,10 @@ export default function ValidationsPage() {
     const isDateEditExpanded = expandedDateEdit === request.id
     const isProcessing = actionLoading === request.id
     const canEditDates = (isRh || isAdmin) && request.status === 'PENDING'
+    const empBal = balanceMap.get(request.user_id)
     const balance = request.request_type === 'CONGE'
-      ? (userBalances.get(request.user_id) ?? request.user?.balance_conge)
-      : request.user?.balance_recuperation
+      ? (empBal?.available_now ?? request.user?.balance_conge)
+      : (empBal?.available_recup ?? request.user?.balance_recuperation)
     const isDragged = draggedId === request.id
     const showUndo = !rejected && canUndoApprove(request) && !isActive
 

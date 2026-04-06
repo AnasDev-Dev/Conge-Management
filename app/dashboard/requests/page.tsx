@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { FileText, Search, Calendar, Clock, ChevronRight, Users, Gift, Heart, X, ExternalLink, User } from 'lucide-react'
+import { FileText, Search, Calendar, Clock, ChevronRight, Users, Gift, Heart, X, ExternalLink, User, Hash, Briefcase, MessageSquare, Stethoscope } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
@@ -551,166 +551,248 @@ export default function RequestsPage() {
       )}
       {/* ============ EXCEPTIONAL DETAIL DIALOG ============ */}
       <Dialog open={!!selectedExceptional} onOpenChange={() => setSelectedExceptional(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Gift className="h-5 w-5 text-primary" />
-              Congé exceptionnel
-            </DialogTitle>
-          </DialogHeader>
-          {selectedExceptional && (
-            <div className="space-y-4">
-              {/* Employee info */}
-              {selectedExceptional.user && (
-                <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <User className="h-5 w-5 text-primary" />
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
+          {selectedExceptional && (<>
+            {/* Header with accent bar */}
+            <div className="relative border-b border-border/50 bg-gradient-to-r from-amber-50/80 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/10 px-6 pt-6 pb-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30">
+                    <Gift className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{selectedExceptional.user.full_name}</p>
-                    {selectedExceptional.user.job_title && (
-                      <p className="text-xs text-muted-foreground">{selectedExceptional.user.job_title}</p>
-                    )}
+                    <h3 className="text-base font-semibold text-foreground">Congé exceptionnel</h3>
+                    <p className="text-xs text-muted-foreground">Demande #{selectedExceptional.id}</p>
                   </div>
                 </div>
-              )}
-
-              {/* Type */}
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</p>
-                <Badge variant="secondary" className="border border-[#d4c5a0] bg-[#faf5e8] text-[#7a6832]">
+                <Badge variant="secondary" className="border border-[#d4c5a0] bg-[#faf5e8] text-[#7a6832] shrink-0">
                   {getExceptionalTypeName(selectedExceptional)}
                 </Badge>
               </div>
+            </div>
 
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Date debut</p>
-                  <p className="text-sm font-medium text-foreground">
+            {/* Employee header */}
+            {selectedExceptional.user && (
+              <div className="flex items-center gap-3 border-b border-border/50 px-6 py-3.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-border bg-muted/40">
+                  <User className="h-4.5 w-4.5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">{selectedExceptional.user.full_name}</p>
+                  {selectedExceptional.user.job_title && (
+                    <p className="text-xs text-muted-foreground">{selectedExceptional.user.job_title}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Quick stats strip */}
+            <div className="grid grid-cols-3 divide-x divide-border/50 border-b border-border/50">
+              <div className="flex flex-col items-center gap-1 py-3.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Hash className="h-3 w-3" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Durée</span>
+                </div>
+                <p className="text-sm font-bold text-foreground">
+                  {selectedExceptional.days_count ?? selectedExceptional.days_granted} jour{(selectedExceptional.days_count ?? selectedExceptional.days_granted) > 1 ? 's' : ''}
+                </p>
+              </div>
+              <div className="flex flex-col items-center gap-1 py-3.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Début</span>
+                </div>
+                <p className="text-sm font-semibold text-foreground">
+                  {selectedExceptional.start_date
+                    ? format(new Date(selectedExceptional.start_date + 'T00:00:00'), 'd MMM yyyy', { locale: fr })
+                    : format(new Date(selectedExceptional.claim_date + 'T00:00:00'), 'd MMM yyyy', { locale: fr })}
+                </p>
+              </div>
+              <div className="flex flex-col items-center gap-1 py-3.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Fin</span>
+                </div>
+                <p className="text-sm font-semibold text-foreground">
+                  {selectedExceptional.end_date
+                    ? format(new Date(selectedExceptional.end_date + 'T00:00:00'), 'd MMM yyyy', { locale: fr })
+                    : '—'}
+                </p>
+              </div>
+            </div>
+
+            {/* Content body */}
+            <div className="space-y-4 px-6 py-5">
+              {/* Full dates */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Date de début</p>
+                  <p className="mt-1 text-sm font-medium capitalize">
                     {selectedExceptional.start_date
-                      ? format(new Date(selectedExceptional.start_date + 'T00:00:00'), 'dd MMMM yyyy', { locale: fr })
-                      : format(new Date(selectedExceptional.claim_date + 'T00:00:00'), 'dd MMMM yyyy', { locale: fr })}
+                      ? format(new Date(selectedExceptional.start_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })
+                      : format(new Date(selectedExceptional.claim_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Date fin</p>
-                  <p className="text-sm font-medium text-foreground">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Date de fin</p>
+                  <p className="mt-1 text-sm font-medium capitalize">
                     {selectedExceptional.end_date
-                      ? format(new Date(selectedExceptional.end_date + 'T00:00:00'), 'dd MMMM yyyy', { locale: fr })
+                      ? format(new Date(selectedExceptional.end_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })
                       : '—'}
                   </p>
                 </div>
               </div>
 
-              {/* Days */}
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Duree</p>
-                <p className="text-lg font-bold text-foreground">
-                  {selectedExceptional.days_count ?? selectedExceptional.days_granted} jour{(selectedExceptional.days_count ?? selectedExceptional.days_granted) > 1 ? 's' : ''}
-                </p>
-              </div>
-
               {/* Notes */}
               {selectedExceptional.notes && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
-                  <div className="rounded-xl bg-secondary/40 p-3">
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{selectedExceptional.notes}</p>
+                <div>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                    <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{selectedExceptional.notes}</p>
                   </div>
                 </div>
               )}
+            </div>
 
+            {/* Footer */}
+            <div className="border-t border-border/50 bg-muted/20 px-6 py-3">
               <p className="text-xs text-muted-foreground">
-                Soumis le {format(new Date(selectedExceptional.created_at), 'd MMMM yyyy a HH:mm', { locale: fr })}
+                Soumis le {format(new Date(selectedExceptional.created_at), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr })}
               </p>
             </div>
-          )}
+          </>)}
         </DialogContent>
       </Dialog>
 
       {/* ============ SICK LEAVE DETAIL DIALOG ============ */}
       <Dialog open={!!selectedSickLeave} onOpenChange={() => setSelectedSickLeave(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Heart className="h-5 w-5 text-primary" />
-              Congé maladie
-            </DialogTitle>
-          </DialogHeader>
-          {selectedSickLeave && (
-            <div className="space-y-4">
-              {/* Employee info */}
-              {selectedSickLeave.user && (
-                <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <User className="h-5 w-5 text-primary" />
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
+          {selectedSickLeave && (<>
+            {/* Header with accent bar */}
+            <div className="relative border-b border-border/50 bg-gradient-to-r from-rose-50/80 to-pink-50/50 dark:from-rose-950/20 dark:to-pink-950/10 px-6 pt-6 pb-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-900/30">
+                    <Stethoscope className="h-4.5 w-4.5 text-rose-600 dark:text-rose-400" />
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{selectedSickLeave.user.full_name}</p>
-                    {selectedSickLeave.user.job_title && (
-                      <p className="text-xs text-muted-foreground">{selectedSickLeave.user.job_title}</p>
-                    )}
+                    <h3 className="text-base font-semibold text-foreground">Congé maladie</h3>
+                    <p className="text-xs text-muted-foreground">Déclaration #{selectedSickLeave.id}</p>
                   </div>
                 </div>
-              )}
+                <Badge variant="secondary" className="border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 shrink-0">
+                  {selectedSickLeave.year}
+                </Badge>
+              </div>
+            </div>
 
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Date debut</p>
-                  <p className="text-sm font-medium text-foreground">
-                    {format(new Date(selectedSickLeave.start_date + 'T00:00:00'), 'dd MMMM yyyy', { locale: fr })}
-                  </p>
+            {/* Employee header */}
+            {selectedSickLeave.user && (
+              <div className="flex items-center gap-3 border-b border-border/50 px-6 py-3.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-border bg-muted/40">
+                  <User className="h-4.5 w-4.5 text-muted-foreground" />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Date fin</p>
-                  <p className="text-sm font-medium text-foreground">
-                    {format(new Date(selectedSickLeave.end_date + 'T00:00:00'), 'dd MMMM yyyy', { locale: fr })}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">{selectedSickLeave.user.full_name}</p>
+                  {selectedSickLeave.user.job_title && (
+                    <p className="text-xs text-muted-foreground">{selectedSickLeave.user.job_title}</p>
+                  )}
                 </div>
               </div>
+            )}
 
-              {/* Days */}
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Duree</p>
-                <p className="text-lg font-bold text-foreground">
+            {/* Quick stats strip */}
+            <div className="grid grid-cols-3 divide-x divide-border/50 border-b border-border/50">
+              <div className="flex flex-col items-center gap-1 py-3.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Hash className="h-3 w-3" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Durée</span>
+                </div>
+                <p className="text-sm font-bold text-foreground">
                   {selectedSickLeave.days_count} jour{selectedSickLeave.days_count > 1 ? 's' : ''}
                 </p>
+              </div>
+              <div className="flex flex-col items-center gap-1 py-3.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Début</span>
+                </div>
+                <p className="text-sm font-semibold text-foreground">
+                  {format(new Date(selectedSickLeave.start_date + 'T00:00:00'), 'd MMM yyyy', { locale: fr })}
+                </p>
+              </div>
+              <div className="flex flex-col items-center gap-1 py-3.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Fin</span>
+                </div>
+                <p className="text-sm font-semibold text-foreground">
+                  {format(new Date(selectedSickLeave.end_date + 'T00:00:00'), 'd MMM yyyy', { locale: fr })}
+                </p>
+              </div>
+            </div>
+
+            {/* Content body */}
+            <div className="space-y-4 px-6 py-5">
+              {/* Full dates */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Date de début</p>
+                  <p className="mt-1 text-sm font-medium capitalize">
+                    {format(new Date(selectedSickLeave.start_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Date de fin</p>
+                  <p className="mt-1 text-sm font-medium capitalize">
+                    {format(new Date(selectedSickLeave.end_date + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
+                  </p>
+                </div>
               </div>
 
               {/* Reason */}
               {selectedSickLeave.reason && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Motif</p>
-                  <div className="rounded-xl bg-secondary/40 p-3">
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{selectedSickLeave.reason}</p>
+                <div>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Motif</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                    <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{selectedSickLeave.reason}</p>
                   </div>
                 </div>
               )}
 
               {/* Certificate */}
               {selectedSickLeave.certificate_url && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Certificat medical</p>
+                <div>
+                  <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Certificat médical</p>
                   <a
                     href={selectedSickLeave.certificate_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-700 hover:bg-blue-100 transition-colors"
+                    className="flex items-center gap-3 rounded-xl border border-blue-200/80 bg-blue-50/60 dark:border-blue-800 dark:bg-blue-950/30 p-3 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors"
                   >
-                    <FileText className="h-5 w-5" />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/40">
+                      <FileText className="h-4 w-4" />
+                    </div>
                     <span className="text-sm font-medium">Voir le certificat</span>
-                    <ExternalLink className="h-4 w-4 ml-auto" />
+                    <ExternalLink className="h-4 w-4 ml-auto opacity-60" />
                   </a>
                 </div>
               )}
+            </div>
 
+            {/* Footer */}
+            <div className="border-t border-border/50 bg-muted/20 px-6 py-3">
               <p className="text-xs text-muted-foreground">
-                Soumis le {format(new Date(selectedSickLeave.created_at), 'd MMMM yyyy a HH:mm', { locale: fr })}
+                Soumis le {format(new Date(selectedSickLeave.created_at), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr })}
               </p>
             </div>
-          )}
+          </>)}
         </DialogContent>
       </Dialog>
     </div>

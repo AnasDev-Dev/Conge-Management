@@ -39,7 +39,7 @@ import {
   CalendarDays,
   User as UserIcon,
 } from 'lucide-react'
-import { RecoveryRequest, Utilisateur } from '@/lib/types/database'
+import { RecoveryRequest, Utilisateur, MissionRequest } from '@/lib/types/database'
 import {
   RECOVERY_WORK_TYPE_LABELS,
   RECOVERY_PERIOD_OPTIONS,
@@ -89,10 +89,16 @@ export default function RecoveryRequestsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [formPeriod, setFormPeriod] = useState<RecoveryPeriod>('FULL')
   const [formDateWorked, setFormDateWorked] = useState<string>('')
+  const [formDateEnd, setFormDateEnd] = useState<string>('')
+  const [formStartHalfDay, setFormStartHalfDay] = useState<string>('FULL')
+  const [formEndHalfDay, setFormEndHalfDay] = useState<string>('FULL')
   const [formWorkType, setFormWorkType] = useState<string>('')
   const [formReason, setFormReason] = useState<string>('')
   const [formEmployeeId, setFormEmployeeId] = useState<string>('')
   const [employees, setEmployees] = useState<Pick<Utilisateur, 'id' | 'full_name' | 'job_title'>[]>([])
+  // Mission auto-link
+  const [pastMissions, setPastMissions] = useState<MissionRequest[]>([])
+  const [linkedMissionId, setLinkedMissionId] = useState<string>('')
 
   // Detail dialog state
   const [detailRequest, setDetailRequest] = useState<RecoveryRequestWithUser | null>(null)
@@ -109,11 +115,18 @@ export default function RecoveryRequestsPage() {
   const isManager = can('recovery.validate')
   const isEmployee = effectiveRole === 'EMPLOYEE'
 
-  // Auto-calculate days from period
+  // Auto-calculate days: all calendar days (not working days), adjusted for half-days
   const calculatedDays = useMemo(() => {
-    const opt = RECOVERY_PERIOD_OPTIONS.find((o) => o.value === formPeriod)
-    return opt?.days ?? 1
-  }, [formPeriod])
+    if (!formDateWorked) return 0
+    const end = formDateEnd || formDateWorked
+    const startMs = new Date(formDateWorked).getTime()
+    const endMs = new Date(end).getTime()
+    if (endMs < startMs) return 0
+    let days = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1
+    if (formStartHalfDay === 'AFTERNOON') days -= 0.5
+    if (formEndHalfDay === 'MORNING') days -= 0.5
+    return Math.max(days, 0.5)
+  }, [formDateWorked, formDateEnd, formStartHalfDay, formEndHalfDay])
 
   useEffect(() => {
     if (user) {
@@ -123,6 +136,42 @@ export default function RecoveryRequestsPage() {
       }
     }
   }, [user, activeCompany])
+
+  // Load past approved missions for the target employee (for auto-link)
+  const targetUserId = isManager ? formEmployeeId : user?.id
+  useEffect(() => {
+    if (!targetUserId) { setPastMissions([]); return }
+    const today = new Date().toISOString().split('T')[0]
+    supabase
+      .from('mission_requests')
+      .select('id, user_id, mission_object, departure_city, arrival_city, start_date, end_date, days_count, status')
+      .eq('user_id', targetUserId)
+      .eq('status', 'APPROVED')
+      .lte('end_date', today)
+      .order('end_date', { ascending: false })
+      .limit(20)
+      .then(({ data }) => setPastMissions((data || []) as MissionRequest[]))
+  }, [targetUserId])
+
+  // Sync dates + reason from a mission
+  const linkMission = (mission: MissionRequest | null) => {
+    if (!mission) { setLinkedMissionId(''); return }
+    setLinkedMissionId(String(mission.id))
+    setFormDateWorked(mission.start_date)
+    setFormDateEnd(mission.end_date)
+    setFormStartHalfDay('FULL')
+    setFormEndHalfDay('FULL')
+    setFormWorkType('MISSION')
+    setFormReason(`Recuperation suite a mission #${mission.id} — ${mission.mission_object} (${mission.departure_city} → ${mission.arrival_city})`)
+  }
+
+  // Auto-detect mission overlap when dates change (only if no mission is already linked)
+  useEffect(() => {
+    if (linkedMissionId || !formDateWorked || pastMissions.length === 0) return
+    const end = formDateEnd || formDateWorked
+    const match = pastMissions.find(m => m.start_date <= end && m.end_date >= formDateWorked)
+    if (match) linkMission(match)
+  }, [formDateWorked, formDateEnd, pastMissions])
 
   const loadEmployees = async () => {
     try {
@@ -164,9 +213,13 @@ export default function RecoveryRequestsPage() {
   const resetForm = () => {
     setFormPeriod('FULL')
     setFormDateWorked('')
+    setFormDateEnd('')
+    setFormStartHalfDay('FULL')
+    setFormEndHalfDay('FULL')
     setFormWorkType('')
     setFormReason('')
     setFormEmployeeId('')
+    setLinkedMissionId('')
   }
 
   const openCreateDialog = () => {
@@ -191,19 +244,24 @@ export default function RecoveryRequestsPage() {
 
     setSubmitting(true)
     try {
+      const submitTargetId = isManager ? formEmployeeId : user.id
       const { error } = await supabase.rpc('submit_recovery_request', {
-        p_user_id: targetUserId,
+        p_user_id: submitTargetId,
         p_days: calculatedDays,
         p_date_worked: formDateWorked,
         p_work_type: formWorkType,
         p_reason: formReason || null,
         p_period: formPeriod,
+        p_date_end: formDateEnd || null,
+        p_start_half_day: formStartHalfDay,
+        p_end_half_day: formEndHalfDay,
+        p_mission_request_id: linkedMissionId && linkedMissionId !== '_none' ? parseInt(linkedMissionId) : null,
       })
 
       if (error) throw error
 
       toast.success(
-        `Credit de ${calculatedDays === 1 ? '1 jour' : '0.5 jour'} soumis avec succes`
+        `Credit de ${calculatedDays} jour${calculatedDays > 1 ? 's' : ''} soumis avec succes`
       )
       setCreateDialogOpen(false)
       resetForm()
@@ -439,9 +497,10 @@ export default function RecoveryRequestsPage() {
                           </div>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(request.date_worked + 'T00:00:00'), 'dd MMMM yyyy', {
-                            locale: fr,
-                          })}
+                          {format(new Date(request.date_worked + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                          {request.date_end && request.date_end !== request.date_worked && (
+                            <> au {format(new Date(request.date_end + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}</>
+                          )}
                         </p>
                       </div>
                       <Badge className={`shrink-0 ${getRecoveryStatusClass(request.status)}`}>
@@ -519,97 +578,121 @@ export default function RecoveryRequestsPage() {
               </div>
             )}
 
-            {/* Period toggle buttons */}
-            <div className="space-y-2">
-              <Label>Periode travaillee</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {RECOVERY_PERIOD_OPTIONS.map((opt) => {
-                  const Icon = PERIOD_ICONS[opt.value]
-                  const isSelected = formPeriod === opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setFormPeriod(opt.value)}
-                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-3 py-3 text-sm font-medium transition-all ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                          : 'border-border/70 bg-background text-muted-foreground hover:border-border hover:bg-secondary/50'
-                      }`}
-                    >
-                      <Icon className={`h-5 w-5 ${isSelected ? 'text-primary' : 'text-muted-foreground/70'}`} />
-                      <span className="text-xs leading-tight">{opt.label}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                          isSelected
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-secondary text-muted-foreground'
-                        }`}
-                      >
-                        {opt.days === 1 ? '1 jour' : '0.5 jour'}
-                      </span>
-                    </button>
-                  )
-                })}
+            {/* Date range */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Date début</Label>
+                <DatePicker value={formDateWorked} onChange={setFormDateWorked} placeholder="Début" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date fin</Label>
+                <DatePicker value={formDateEnd} onChange={setFormDateEnd} min={formDateWorked} placeholder="Fin (même jour si vide)" />
               </div>
             </div>
 
-            {/* Date worked & Work type side by side */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="dialog-date-worked">Date travaillee</Label>
-                <DatePicker
-                  id="dialog-date-worked"
-                  value={formDateWorked}
-                  onChange={setFormDateWorked}
-                  placeholder="Selectionnez la date"
-                />
+            {/* Half-day selectors */}
+            {formDateWorked && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Début de journée</Label>
+                  <div className="flex gap-1.5">
+                    {(['FULL', 'AFTERNOON'] as const).map(v => (
+                      <button key={v} type="button" onClick={() => setFormStartHalfDay(v)}
+                        className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all ${formStartHalfDay === v ? 'border-primary bg-primary/10 text-primary' : 'border-border/70 text-muted-foreground hover:border-border'}`}>
+                        {v === 'FULL' ? 'Journée complète' : 'Après-midi'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {(formDateEnd && formDateEnd !== formDateWorked) && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Fin de journée</Label>
+                    <div className="flex gap-1.5">
+                      {(['FULL', 'MORNING'] as const).map(v => (
+                        <button key={v} type="button" onClick={() => setFormEndHalfDay(v)}
+                          className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all ${formEndHalfDay === v ? 'border-primary bg-primary/10 text-primary' : 'border-border/70 text-muted-foreground hover:border-border'}`}>
+                          {v === 'FULL' ? 'Journée complète' : 'Matin'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
+            )}
 
-              <div className="space-y-2">
-                <Label htmlFor="dialog-work-type">Type de jour</Label>
-                <Select value={formWorkType} onValueChange={setFormWorkType} required>
-                  <SelectTrigger id="dialog-work-type" className="w-full">
-                    <SelectValue placeholder="Selectionner..." />
+            {/* Work type */}
+            <div className="space-y-1.5">
+              <Label>Type de jour</Label>
+              <Select value={formWorkType} onValueChange={setFormWorkType} required>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selectionner..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(RECOVERY_WORK_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Mission auto-link */}
+            {pastMissions.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Mission liée (optionnel)</Label>
+                {linkedMissionId && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
+                    Mission détectée automatiquement
+                  </div>
+                )}
+                <Select value={linkedMissionId} onValueChange={(v) => {
+                  if (v === '_none') {
+                    setLinkedMissionId('')
+                  } else {
+                    const m = pastMissions.find(pm => String(pm.id) === v)
+                    linkMission(m || null)
+                  }
+                }}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Aucune mission liée" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(RECOVERY_WORK_TYPE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
+                    <SelectItem value="_none">Aucune</SelectItem>
+                    {pastMissions.map(m => (
+                      <SelectItem key={m.id} value={String(m.id)}>
+                        #{m.id} — {m.departure_city} → {m.arrival_city} ({format(new Date(m.start_date), 'dd/MM', { locale: fr })} - {format(new Date(m.end_date), 'dd/MM', { locale: fr })})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
+            )}
 
             {/* Reason */}
-            <div className="space-y-2">
-              <Label htmlFor="dialog-reason">
-                Motif <span className="text-muted-foreground font-normal">(optionnel)</span>
-              </Label>
+            <div className="space-y-1.5">
+              <Label>Motif <span className="text-muted-foreground font-normal">(optionnel)</span></Label>
               <Textarea
-                id="dialog-reason"
                 placeholder="Ex: Tournoi sportif, permanence weekend, inventaire..."
                 value={formReason}
                 onChange={(e) => setFormReason(e.target.value)}
-                className="min-h-20 resize-none"
+                className="min-h-16 resize-none"
               />
             </div>
 
             {/* Summary */}
-            <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-              <p className="text-sm font-medium text-primary">
-                Credit total : {calculatedDays === 1 ? '1 jour' : '0.5 jour'}
-              </p>
-              <p className="mt-0.5 text-xs text-primary/70">
-                {formPeriod === 'FULL'
-                  ? 'Journee complete travaillee'
-                  : formPeriod === 'MORNING'
-                    ? 'Matinee travaillee (demi-journee)'
-                    : 'Apres-midi travaillee (demi-journee)'}
-              </p>
-            </div>
+            {calculatedDays > 0 && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                <p className="text-sm font-medium text-primary">
+                  Credit total : {calculatedDays} jour{calculatedDays > 1 ? 's' : ''}
+                </p>
+                <p className="mt-0.5 text-xs text-primary/70">
+                  {formDateWorked && (formDateEnd && formDateEnd !== formDateWorked)
+                    ? `Du ${format(new Date(formDateWorked), 'dd MMM', { locale: fr })} au ${format(new Date(formDateEnd), 'dd MMM yyyy', { locale: fr })}`
+                    : formDateWorked ? format(new Date(formDateWorked), 'dd MMMM yyyy', { locale: fr }) : ''}
+                  {formStartHalfDay === 'AFTERNOON' ? ' (début après-midi)' : ''}
+                  {formEndHalfDay === 'MORNING' ? ' (fin matin)' : ''}
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
@@ -622,7 +705,7 @@ export default function RecoveryRequestsPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={submitting || !formWorkType || !formDateWorked || (isManager && !formEmployeeId)}
+                disabled={submitting || !formWorkType || !formDateWorked || calculatedDays <= 0 || (isManager && !formEmployeeId)}
               >
                 {submitting ? (
                   <>
@@ -703,9 +786,14 @@ export default function RecoveryRequestsPage() {
                       </div>
                     </div>
                     <div className="rounded-xl bg-secondary/60 p-3">
-                      <p className="text-xs text-muted-foreground">Date travaillee</p>
+                      <p className="text-xs text-muted-foreground">Période</p>
                       <p className="mt-0.5 font-medium text-foreground">
                         {format(new Date(detailRequest.date_worked + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                        {detailRequest.date_end && detailRequest.date_end !== detailRequest.date_worked && (
+                          <> au {format(new Date(detailRequest.date_end + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}</>
+                        )}
+                        {detailRequest.start_half_day === 'AFTERNOON' && ' (début après-midi)'}
+                        {detailRequest.end_half_day === 'MORNING' && ' (fin matin)'}
                       </p>
                     </div>
                     <div className="rounded-xl bg-secondary/60 p-3">

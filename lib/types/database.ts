@@ -200,7 +200,7 @@ export interface MonthlyBalanceAccrual {
 }
 
 // Req #8: Recovery Requests
-export type RecoveryWorkType = 'JOUR_FERIE' | 'JOUR_REPOS' | 'SAMEDI' | 'DIMANCHE'
+export type RecoveryWorkType = 'MISSION' | 'JOUR_FERIE' | 'JOUR_REPOS' | 'SAMEDI' | 'DIMANCHE' | 'AUTRE'
 
 export type RecoveryPeriod = 'MORNING' | 'AFTERNOON' | 'FULL'
 
@@ -209,8 +209,11 @@ export interface RecoveryRequest {
   user_id: string
   days: number
   date_worked: string
+  date_end: string | null
   work_type: RecoveryWorkType
   period: RecoveryPeriod
+  start_half_day: string
+  end_half_day: string
   reason: string | null
   mission_request_id: number | null
   status: 'PENDING' | 'VALIDATED' | 'REJECTED'
@@ -457,4 +460,47 @@ export interface SickLeave {
 
 export interface SickLeaveWithRelations extends SickLeave {
   user?: Utilisateur
+}
+
+// ─── Unified Balance (from get_employee_balance RPC) ─────────
+
+export interface EmployeeBalanceLot {
+  id: number
+  remaining_days: number
+  days: number
+  year_acquired: number
+  expires_at: string
+  is_expiring_soon: boolean
+}
+
+export interface EmployeeBalance {
+  user_id: string
+  full_name: string
+  hire_date: string | null
+  date_anciennete: string | null
+  department_id: number | null
+  // Seniority
+  seniority_date: string
+  years_of_service: number
+  seniority_periods: number
+  base_days: number
+  bonus_days: number
+  annual_entitlement: number
+  entitlement_source: 'employee' | 'department' | 'default'
+  // Accrual
+  carry_over: number
+  current_month: number
+  monthly_rate: number
+  cumulative_earned: number
+  days_used: number
+  days_pending: number
+  available_now: number
+  is_max_reached: boolean
+  max_balance: number
+  // Recovery
+  balance_recuperation: number
+  recup_used: number
+  recup_pending: number
+  available_recup: number
+  recovery_lots: EmployeeBalanceLot[]
 }

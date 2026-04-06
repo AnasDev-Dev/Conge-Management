@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAllEmployeeBalances } from '@/lib/hooks/use-employee-balance'
 import { createClient } from '@/lib/supabase/client'
 import { useCurrentUser } from '@/lib/hooks/use-current-user'
 import { Input } from '@/components/ui/input'
@@ -17,7 +18,7 @@ import { Utilisateur } from '@/lib/types/database'
 import { PageGuard } from '@/components/role-gate'
 import { useCompanyContext } from '@/lib/hooks/use-company-context'
 import { usePermissions } from '@/lib/hooks/use-permissions'
-import { calculateSeniority, calculateMonthlyAccrual, roundHalf, MAX_CONGE_BALANCE } from '@/lib/leave-utils'
+import { roundHalf, MAX_CONGE_BALANCE } from '@/lib/leave-utils'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
@@ -49,28 +50,18 @@ export default function BalanceInitPage() {
   const [saving, setSaving] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
-  // Track used/pending CONGE days per employee for monthly accrual display
-  const [usageByUser, setUsageByUser] = useState<Map<string, { used: number; pending: number }>>(new Map())
-
   const companyId = activeCompany?.id ?? user?.company_id
+  const { balances: balanceMap } = useAllEmployeeBalances(activeCompany?.id)
 
   const loadEmployees = useCallback(async () => {
     try {
-      const currentYear = new Date().getFullYear()
       let empQuery = supabase
         .from('utilisateurs')
         .select('id, full_name, job_title, hire_date, date_anciennete, balance_conge, department_id, annual_leave_days, departments(name, annual_leave_days)')
         .eq('is_active', true)
         .order('full_name')
       if (companyId) empQuery = empQuery.eq('company_id', companyId)
-      const [{ data, error }, { data: requestData }] = await Promise.all([
-        empQuery,
-        supabase
-          .from('leave_requests')
-          .select('user_id, status, days_count, balance_conge_used, request_type')
-          .gte('start_date', `${currentYear}-01-01`)
-          .lte('start_date', `${currentYear}-12-31`),
-      ])
+      const { data, error } = await empQuery
 
       if (error) throw error
       const normalized = (data || []).map((row: Record<string, unknown>) => ({
@@ -78,20 +69,6 @@ export default function BalanceInitPage() {
         departments: Array.isArray(row.departments) ? row.departments[0] || null : row.departments,
       })) as EmployeeWithDept[]
       setEmployees(normalized)
-
-      // Build usage map — use balance_conge_used (actual congé portion) instead of days_count
-      const usage = new Map<string, { used: number; pending: number }>()
-      for (const req of requestData || []) {
-        const current = usage.get(req.user_id) || { used: 0, pending: 0 }
-        const congeAmount = req.balance_conge_used ?? (req.request_type === 'CONGE' ? req.days_count : 0) ?? 0
-        if (req.status === 'APPROVED') {
-          current.used += congeAmount
-        } else if (['PENDING', 'VALIDATED_RP', 'VALIDATED_DC'].includes(req.status)) {
-          current.pending += congeAmount
-        }
-        usage.set(req.user_id, current)
-      }
-      setUsageByUser(usage)
     } catch (error) {
       console.error('Error loading employees:', error)
       toast.error('Erreur lors du chargement des employés')
@@ -163,40 +140,18 @@ export default function BalanceInitPage() {
     }
   }
 
-  const seniorityMap = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof calculateSeniority>>()
-    for (const emp of employees) {
-      const deptDays = emp.departments?.annual_leave_days
-      map.set(emp.id, calculateSeniority(emp.hire_date, deptDays, emp.annual_leave_days, emp.date_anciennete))
-    }
-    return map
-  }, [employees])
-
-  // Monthly accrual info per employee (entitlement from dept + seniority, carry-over from balance_conge)
-  const accrualMap = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof calculateMonthlyAccrual>>()
-    for (const emp of employees) {
-      const usage = usageByUser.get(emp.id) || { used: 0, pending: 0 }
-      const seniority = seniorityMap.get(emp.id)
-      const annualEntitlement = seniority?.totalEntitlement ?? 18
-      const carryOver = emp.balance_conge // now means solde antérieur
-      map.set(emp.id, calculateMonthlyAccrual(annualEntitlement, carryOver, usage.used, usage.pending))
-    }
-    return map
-  }, [employees, usageByUser, seniorityMap])
-
   const filteredEmployees = useMemo(() => {
     const tokens = normalizeText(searchTerm).split(/\s+/).filter(Boolean)
     if (tokens.length === 0) return employees
 
     return employees.filter((emp) => {
-      const seniority = seniorityMap.get(emp.id)
+      const bal = balanceMap.get(emp.id)
       const index = normalizeText(
-        [emp.full_name, emp.job_title, emp.departments?.name, emp.hire_date, String(emp.balance_conge), String(seniority?.totalEntitlement)].join(' ')
+        [emp.full_name, emp.job_title, emp.departments?.name, emp.hire_date, String(emp.balance_conge), String(bal?.annual_entitlement)].join(' ')
       )
       return tokens.every((t) => index.includes(t))
     })
-  }, [employees, searchTerm, seniorityMap])
+  }, [employees, searchTerm, balanceMap])
 
   // Shared sticky-column classes
   const stickyColBase = 'sticky left-0 z-[5] after:absolute after:-right-[6px] after:top-0 after:bottom-0 after:w-[6px] after:bg-gradient-to-r after:from-black/[0.06] after:to-transparent after:pointer-events-none dark:after:from-black/20'
@@ -268,7 +223,7 @@ export default function BalanceInitPage() {
           {/* ── Mobile cards ── */}
           <div className="flex flex-col gap-2.5 md:hidden">
             {filteredEmployees.map((emp) => {
-              const seniority = seniorityMap.get(emp.id)!
+              const bal = balanceMap.get(emp.id)
 
               return (
                 <div
@@ -289,53 +244,48 @@ export default function BalanceInitPage() {
                   </div>
 
                   {/* Stats row */}
-                  {(() => {
-                    const accrual = accrualMap.get(emp.id)!
-                    return (
-                      <div className="mt-2.5 space-y-1.5">
-                        <div className="grid grid-cols-3 gap-1.5">
-                          <div className="rounded-lg bg-blue-50/60 px-2 py-1.5 ring-1 ring-inset ring-blue-100 dark:bg-blue-950/20 dark:ring-blue-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-blue-500 dark:text-blue-400">Ancienneté</p>
-                            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
-                              {seniority.yearsOfService > 0 ? `${seniority.yearsOfService.toFixed(1)} an` : '—'}
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-violet-50/60 px-2 py-1.5 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/20 dark:ring-violet-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Dotation annuelle</p>
-                            <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">{seniority.totalEntitlement} j</p>
-                          </div>
-                          <div className="rounded-lg bg-amber-50/60 px-2 py-1.5 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/20 dark:ring-amber-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-amber-500 dark:text-amber-400">Solde antérieur</p>
-                            {canEditBalance ? (
-                              <Input
-                                type="number"
-                                step="0.5"
-                                value={balanceEdits.has(emp.id) ? balanceEdits.get(emp.id) : emp.balance_conge}
-                                onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
-                                className="h-6 w-full border-amber-200 bg-white/80 px-1.5 text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              />
-                            ) : (
-                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{roundHalf(emp.balance_conge)} j</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          <div className="rounded-lg bg-emerald-50/60 px-2 py-1.5 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/20 dark:ring-emerald-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-emerald-500 dark:text-emerald-400">/mois</p>
-                            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{accrual.monthlyRate} j</p>
-                          </div>
-                          <div className="rounded-lg bg-teal-50/60 px-2 py-1.5 ring-1 ring-inset ring-teal-100 dark:bg-teal-950/20 dark:ring-teal-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-teal-500 dark:text-teal-400">Cumulé</p>
-                            <p className="text-xs font-semibold text-teal-700 dark:text-teal-300">{accrual.cumulativeEarned} j</p>
-                          </div>
-                          <div className="rounded-lg bg-cyan-50/60 px-2 py-1.5 ring-1 ring-inset ring-cyan-100 dark:bg-cyan-950/20 dark:ring-cyan-900/30">
-                            <p className="text-[9px] uppercase tracking-wide text-cyan-500 dark:text-cyan-400">Disponible</p>
-                            <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">{accrual.availableNow} j</p>
-                          </div>
-                        </div>
+                  <div className="mt-2.5 space-y-1.5">
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div className="rounded-lg bg-blue-50/60 px-2 py-1.5 ring-1 ring-inset ring-blue-100 dark:bg-blue-950/20 dark:ring-blue-900/30">
+                        <p className="text-[9px] uppercase tracking-wide text-blue-500 dark:text-blue-400">Ancienneté</p>
+                        <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                          {bal && bal.years_of_service > 0 ? `${bal.years_of_service.toFixed(1)} an` : '—'}
+                        </p>
                       </div>
-                    )
-                  })()}
+                      <div className="rounded-lg bg-violet-50/60 px-2 py-1.5 ring-1 ring-inset ring-violet-100 dark:bg-violet-950/20 dark:ring-violet-900/30">
+                        <p className="text-[9px] uppercase tracking-wide text-violet-500 dark:text-violet-400">Dotation annuelle</p>
+                        <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">{bal?.annual_entitlement ?? '—'} j</p>
+                      </div>
+                      <div className="rounded-lg bg-amber-50/60 px-2 py-1.5 ring-1 ring-inset ring-amber-100 dark:bg-amber-950/20 dark:ring-amber-900/30">
+                        <p className="text-[9px] uppercase tracking-wide text-amber-500 dark:text-amber-400">Solde antérieur</p>
+                        {canEditBalance ? (
+                          <Input
+                            type="number"
+                            step="0.5"
+                            value={balanceEdits.has(emp.id) ? balanceEdits.get(emp.id) : emp.balance_conge}
+                            onChange={(e) => handleBalanceChange(emp.id, e.target.value)}
+                            className="h-6 w-full border-amber-200 bg-white/80 px-1.5 text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          />
+                        ) : (
+                          <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{roundHalf(emp.balance_conge)} j</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div className="rounded-lg bg-emerald-50/60 px-2 py-1.5 ring-1 ring-inset ring-emerald-100 dark:bg-emerald-950/20 dark:ring-emerald-900/30">
+                        <p className="text-[9px] uppercase tracking-wide text-emerald-500 dark:text-emerald-400">/mois</p>
+                        <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{bal?.monthly_rate ?? '—'} j</p>
+                      </div>
+                      <div className="rounded-lg bg-teal-50/60 px-2 py-1.5 ring-1 ring-inset ring-teal-100 dark:bg-teal-950/20 dark:ring-teal-900/30">
+                        <p className="text-[9px] uppercase tracking-wide text-teal-500 dark:text-teal-400">Cumulé</p>
+                        <p className="text-xs font-semibold text-teal-700 dark:text-teal-300">{bal?.cumulative_earned ?? '—'} j</p>
+                      </div>
+                      <div className="rounded-lg bg-cyan-50/60 px-2 py-1.5 ring-1 ring-inset ring-cyan-100 dark:bg-cyan-950/20 dark:ring-cyan-900/30">
+                        <p className="text-[9px] uppercase tracking-wide text-cyan-500 dark:text-cyan-400">Disponible</p>
+                        <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">{bal?.available_now ?? '—'} j</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )
             })}
@@ -362,7 +312,7 @@ export default function BalanceInitPage() {
                 </thead>
                 <tbody>
                   {filteredEmployees.map((emp, index) => {
-                    const seniority = seniorityMap.get(emp.id)!
+                    const bal = balanceMap.get(emp.id)
                     const isEven = index % 2 === 0
 
                     return (
@@ -395,10 +345,10 @@ export default function BalanceInitPage() {
                           }
                         </td>
                         <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                          {seniority.yearsOfService > 0
+                          {bal && bal.years_of_service > 0
                             ? (
                               <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-950/30 dark:text-blue-400 dark:ring-blue-500/20">
-                                {seniority.yearsOfService.toFixed(1)} an(s)
+                                {bal.years_of_service.toFixed(1)} an(s)
                               </span>
                             )
                             : <span className="text-muted-foreground">—</span>
@@ -406,7 +356,7 @@ export default function BalanceInitPage() {
                         </td>
                         <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
                           <span className="inline-flex items-center rounded-md bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-600/20 dark:bg-violet-950/30 dark:text-violet-400 dark:ring-violet-500/20">
-                            {seniority.totalEntitlement} j
+                            {bal?.annual_entitlement ?? '—'} j
                           </span>
                         </td>
                         <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
@@ -424,32 +374,25 @@ export default function BalanceInitPage() {
                             </span>
                           )}
                         </td>
-                        {(() => {
-                          const accrual = accrualMap.get(emp.id)!
-                          return (
-                            <>
-                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20">
-                                  {accrual.monthlyRate} j
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className="inline-flex items-center rounded-md bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-950/30 dark:text-teal-400 dark:ring-teal-500/20">
-                                  {accrual.cumulativeEarned} j
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
-                                <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
-                                  accrual.isMaxReached
-                                    ? 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20'
-                                    : 'bg-cyan-50 text-cyan-700 ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20'
-                                }`}>
-                                  {accrual.availableNow} j{accrual.isMaxReached ? ' (max)' : ''}
-                                </span>
-                              </td>
-                            </>
-                          )
-                        })()}
+                        <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-500/20">
+                            {bal?.monthly_rate ?? '—'} j
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                          <span className="inline-flex items-center rounded-md bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-950/30 dark:text-teal-400 dark:ring-teal-500/20">
+                            {bal?.cumulative_earned ?? '—'} j
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap border-b border-border/30 px-4 py-3 text-center align-middle">
+                          <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
+                            bal?.is_max_reached
+                              ? 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-500/20'
+                              : 'bg-cyan-50 text-cyan-700 ring-cyan-600/20 dark:bg-cyan-950/30 dark:text-cyan-400 dark:ring-cyan-500/20'
+                          }`}>
+                            {bal?.available_now ?? '—'} j{bal?.is_max_reached ? ' (max)' : ''}
+                          </span>
+                        </td>
                       </tr>
                     )
                   })}

@@ -69,10 +69,12 @@ export const MAX_CONSECUTIVE_RECOVERY_DAYS = 5
 
 // Recovery work type labels (Req #8)
 export const RECOVERY_WORK_TYPE_LABELS: Record<string, string> = {
+  MISSION: 'Mission',
   JOUR_FERIE: 'Jour férié',
   JOUR_REPOS: 'Jour de repos',
   SAMEDI: 'Samedi',
   DIMANCHE: 'Dimanche',
+  AUTRE: 'Autre',
 }
 
 // Recovery request status labels (Req #8)
