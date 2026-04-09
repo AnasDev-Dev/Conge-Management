@@ -131,6 +131,8 @@ export default function RecoveryRequestsPage() {
   useEffect(() => {
     if (user) {
       loadRequests()
+      // Trigger expiration check on page load (so expired lots are cleaned up)
+      supabase.rpc('expire_recovery_days')
       if (isManager) {
         loadEmployees()
       }
@@ -543,7 +545,7 @@ export default function RecoveryRequestsPage() {
 
       {/* ── Create Recovery Credit Dialog ── */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">

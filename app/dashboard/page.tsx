@@ -133,6 +133,11 @@ export default function DashboardPage() {
     loadRequests(user);
 
     // Manager-only fetches
+    // Trigger expiration check on every dashboard load (replaces daily cron dependency)
+    supabase.rpc('expire_recovery_days').then(({ error }) => {
+      if (error) console.error('expire_recovery_days error:', error);
+    });
+
     if (isManagerView) {
       // Team recovery lots (all active, non-expired)
       supabase
