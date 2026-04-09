@@ -107,7 +107,7 @@ export default function PrintMissionDocument({ mission, user, companyName }: Pri
             <tr>
               <td style={cellStyle}>Durée</td>
               <td style={{ ...valueCellStyle, fontWeight: 600 }}>
-                {mission.days_count} jour{mission.days_count > 1 ? 's' : ''} ouvrable{mission.days_count > 1 ? 's' : ''}
+                {mission.days_count} jour{mission.days_count > 1 ? 's' : ''}
               </td>
             </tr>
             <tr>

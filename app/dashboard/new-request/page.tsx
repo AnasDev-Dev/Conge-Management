@@ -264,8 +264,14 @@ export default function NewRequestPage() {
       })
   }, [isAssigning, selectedEmployeeId])
 
-  // Mission working days + allowance calculation
-  const missionWorkingDays = countWorkingDaysUtil(missionStartDate, missionEndDate, workingDaysConfig, holidays)
+  // Mission days: ALL calendar days (missions can be on weekends/holidays)
+  const missionWorkingDays = useMemo(() => {
+    if (!missionStartDate || !missionEndDate) return 0
+    const start = new Date(missionStartDate).getTime()
+    const end = new Date(missionEndDate).getTime()
+    if (end < start) return 0
+    return Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1
+  }, [missionStartDate, missionEndDate])
   // Client formula: duration + 0.5 (travel day half-day bonus)
   // Tariff lookup: try exact match (category+zone), fallback to zone-only (first match for that zone)
   const missionTariff = useMemo(() => {
@@ -2567,7 +2573,7 @@ export default function NewRequestPage() {
                   </div>
                   {missionStartDate && missionEndDate && missionWorkingDays > 0 && (
                     <div className="status-progress rounded-xl border px-3 py-2 text-sm">
-                      <strong>{missionWorkingDays}</strong> jour{missionWorkingDays > 1 ? 's' : ''} ouvrable{missionWorkingDays > 1 ? 's' : ''} — du {format(new Date(missionStartDate), 'dd MMM', { locale: fr })} au {format(new Date(missionEndDate), 'dd MMM yyyy', { locale: fr })}
+                      <strong>{missionWorkingDays}</strong> jour{missionWorkingDays > 1 ? 's' : ''} calendaire{missionWorkingDays > 1 ? 's' : ''} — du {format(new Date(missionStartDate), 'dd MMM', { locale: fr })} au {format(new Date(missionEndDate), 'dd MMM yyyy', { locale: fr })}
                     </div>
                   )}
 

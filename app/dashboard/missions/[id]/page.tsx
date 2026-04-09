@@ -401,7 +401,7 @@ export default function MissionDetailPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">Durée</p>
                     <p className="mt-1 text-lg font-medium">
-                      {mission.days_count} jour{mission.days_count > 1 ? 's' : ''} ouvrable{mission.days_count > 1 ? 's' : ''}
+                      {mission.days_count} jour{mission.days_count > 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
