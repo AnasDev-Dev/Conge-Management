@@ -45,7 +45,7 @@ import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
 
 interface MissionWithUser extends MissionRequest {
-  user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'gender' | 'superior_id'>
+  user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'gender'>
   assigner?: Pick<Utilisateur, 'id' | 'full_name'>
 }
 
@@ -74,9 +74,6 @@ export default function MissionValidationsPage() {
   const [activeTab, setActiveTab] = useState<string>('ALL')
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
-  // Subordinate IDs for CHEF_SERVICE filtering (N+1 approach)
-  const [subordinateIds, setSubordinateIds] = useState<string[]>([])
-
   const supabase = createClient()
 
   useEffect(() => {
@@ -86,27 +83,13 @@ export default function MissionValidationsPage() {
     }
   }, [user, activeCompany])
 
-  // Load subordinate IDs for CHEF_SERVICE (N+1 filtering)
-  useEffect(() => {
-    if (user && effectiveRole === 'CHEF_SERVICE') {
-      supabase
-        .from('utilisateurs')
-        .select('id')
-        .eq('superior_id', user.id)
-        .eq('is_active', true)
-        .then(({ data }) => setSubordinateIds((data || []).map((u: { id: string }) => u.id)))
-    } else {
-      setSubordinateIds([])
-    }
-  }, [user, effectiveRole, activeCompany])
-
   const loadMissions = async (currentUserId: string) => {
     try {
       let query = supabase
         .from('mission_requests')
         .select(`
           *,
-          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, email, gender, company_id, superior_id),
+          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, email, gender, company_id),
           assigner:utilisateurs!mission_requests_assigned_by_fkey(id, full_name)
         `)
         .in('status', ALL_MISSION_STATUSES)
@@ -134,7 +117,7 @@ export default function MissionValidationsPage() {
         .from('mission_requests')
         .select(`
           *,
-          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, email, gender, company_id, superior_id),
+          user:utilisateurs!mission_requests_user_id_fkey!inner(id, full_name, job_title, email, gender, company_id),
           assigner:utilisateurs!mission_requests_assigned_by_fkey(id, full_name)
         `)
         .eq('status', 'REJECTED')
@@ -169,13 +152,9 @@ export default function MissionValidationsPage() {
           m.mission_object?.toLowerCase().includes(term)
         if (!match) return false
       }
-      // CHEF_SERVICE only sees their subordinates' missions at the Chef stage (N+1 filtering)
-      if (effectiveRole === 'CHEF_SERVICE' && m.status === 'VALIDATED_RP' && subordinateIds.length > 0) {
-        if (!subordinateIds.includes(m.user_id)) return false
-      }
       return true
     })
-  }, [allMissions, searchTerm, scopeFilter, activeTab, effectiveRole, subordinateIds])
+  }, [allMissions, searchTerm, scopeFilter, activeTab])
 
   const displayMissions = activeTab === 'REJECTED' ? rejectedMissions : filteredMissions
 

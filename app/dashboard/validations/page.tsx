@@ -56,7 +56,7 @@ import { cn } from '@/lib/utils'
 import { SignatureDialog } from '@/components/signature-dialog'
 
 interface RequestWithUser extends LeaveRequest {
-  user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'balance_conge' | 'balance_recuperation' | 'gender' | 'superior_id'>
+  user?: Pick<Utilisateur, 'id' | 'full_name' | 'job_title' | 'email' | 'balance_conge' | 'balance_recuperation' | 'gender'>
 }
 
 // Pipeline stage definitions
@@ -120,9 +120,6 @@ export default function ValidationsPage() {
     sunday_morning: false, sunday_afternoon: false,
   })
 
-  // Subordinate IDs for CHEF_SERVICE filtering (N+1 approach)
-  const [subordinateIds, setSubordinateIds] = useState<string[]>([])
-
   // Drag and drop state
   const [draggedId, setDraggedId] = useState<number | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
@@ -142,19 +139,6 @@ export default function ValidationsPage() {
     }
   }, [user, activeCompany])
 
-  // Load subordinate IDs for CHEF_SERVICE (N+1 filtering)
-  useEffect(() => {
-    if (user && effectiveRole === 'CHEF_SERVICE') {
-      supabase
-        .from('utilisateurs')
-        .select('id')
-        .eq('superior_id', user.id)
-        .eq('is_active', true)
-        .then(({ data }) => setSubordinateIds((data || []).map((u: { id: string }) => u.id)))
-    } else {
-      setSubordinateIds([])
-    }
-  }, [user, effectiveRole, activeCompany])
 
   // Balance data now comes from useAllEmployeeBalances hook above
 
@@ -164,7 +148,7 @@ export default function ValidationsPage() {
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, email, balance_conge, balance_recuperation, gender, company_id, superior_id)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, email, balance_conge, balance_recuperation, gender, company_id)
         `)
         .in('status', ALL_KANBAN_STATUSES)
         .order('created_at', { ascending: false })
@@ -218,7 +202,7 @@ export default function ValidationsPage() {
         .from('leave_requests')
         .select(`
           *,
-          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, email, balance_conge, balance_recuperation, gender, company_id, superior_id)
+          user:utilisateurs!leave_requests_user_id_fkey!inner(id, full_name, job_title, email, balance_conge, balance_recuperation, gender, company_id)
         `)
         .eq('status', 'REJECTED')
         .order('rejected_at', { ascending: false })
@@ -252,13 +236,9 @@ export default function ValidationsPage() {
         const matchesReason = r.reason?.toLowerCase().includes(term)
         if (!matchesName && !matchesJob && !matchesReason) return false
       }
-      // CHEF_SERVICE only sees their subordinates' requests at the Chef stage (N+1 filtering)
-      if (effectiveRole === 'CHEF_SERVICE' && r.status === 'VALIDATED_RP' && subordinateIds.length > 0) {
-        if (!subordinateIds.includes(r.user_id)) return false
-      }
       return true
     })
-  }, [allRequests, searchTerm, typeFilter, effectiveRole, subordinateIds])
+  }, [allRequests, searchTerm, typeFilter])
 
   // Group requests by pipeline stage
   const requestsByStage = useMemo(() => {
@@ -311,21 +291,17 @@ export default function ValidationsPage() {
         rpcParams.p_new_days_count = edited.days_count
       }
 
-      const { data: rpcResult, error } = await supabase.rpc('approve_leave_request', rpcParams)
+      const { error } = await supabase.rpc('approve_leave_request', rpcParams)
       if (error) throw error
 
-      // Use RPC response to determine actual status (handles auto-skip of Chef stage)
-      const actualStatus = rpcResult?.status as string | undefined
+      // Move card to next stage or remove if fully approved
       setAllRequests(prev => {
-        // If fully approved or status not in Kanban columns, remove from board
-        if (actualStatus === 'APPROVED' || (actualStatus && !ALL_KANBAN_STATUSES.includes(actualStatus as typeof ALL_KANBAN_STATUSES[number]))) {
+        if (stage.setsTo === 'APPROVED') {
           return prev.filter(r => r.id !== request.id)
         }
-        // Update with actual status from RPC (may differ from expected setsTo due to auto-skip)
-        const newStatus = (actualStatus || stage.setsTo) as RequestWithUser['status']
         return prev.map(r =>
           r.id === request.id
-            ? { ...r, status: newStatus, [`approved_by_${stage.field}`]: user.id, [`approved_at_${stage.field}`]: new Date().toISOString() }
+            ? { ...r, status: stage.setsTo as RequestWithUser['status'], [`approved_by_${stage.field}`]: user.id, [`approved_at_${stage.field}`]: new Date().toISOString() }
             : r
         )
       })
