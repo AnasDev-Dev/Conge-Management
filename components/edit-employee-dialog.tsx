@@ -272,9 +272,19 @@ export function EditEmployeeDialog({ open, onOpenChange, onUpdated, employee }: 
         payload.new_password = newPassword
       }
 
-      // Include company assignments
+      // Include company assignments — sync home assignment with main form values
       if (companyAssignments.length > 0) {
-        payload.company_assignments = companyAssignments
+        payload.company_assignments = companyAssignments.map(a => {
+          if (a.is_home) {
+            return {
+              ...a,
+              company_id: companyId ? parseInt(String(companyId)) : a.company_id,
+              role: role || a.role,
+              department_id: departmentId ? parseInt(String(departmentId)) : a.department_id,
+            }
+          }
+          return a
+        })
       }
 
       const res = await fetch(`/api/employees/${employee.id}`, {
