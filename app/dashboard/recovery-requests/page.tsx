@@ -143,13 +143,11 @@ export default function RecoveryRequestsPage() {
   const targetUserId = isManager ? formEmployeeId : user?.id
   useEffect(() => {
     if (!targetUserId) { setPastMissions([]); return }
-    const today = new Date().toISOString().split('T')[0]
     supabase
       .from('mission_requests')
       .select('id, user_id, mission_object, departure_city, arrival_city, start_date, end_date, days_count, status')
       .eq('user_id', targetUserId)
       .eq('status', 'APPROVED')
-      .lte('end_date', today)
       .order('end_date', { ascending: false })
       .limit(20)
       .then(({ data }) => setPastMissions((data || []) as MissionRequest[]))
