@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus, Heart, Gift } from 'lucide-react'
+import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, RotateCcw, UserRoundSearch, MessageSquareText, ClipboardCheck, Users, Search, Briefcase, MapPin, Car, UserCheck, Globe, Home, FileText, Clock, Minus, Plus, Heart, Gift, X } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot, LeaveSegment, MissionPersonnelCategory, MissionZone, MissionTariffGridEntry } from '@/lib/types/database'
@@ -114,6 +114,8 @@ export default function NewRequestPage() {
   const [nbrDej, setNbrDej] = useState(0)
   const [nbrDiner, setNbrDiner] = useState(0)
   const [hotelAmount, setHotelAmount] = useState('')
+  // PEC segments: date ranges with PEC or non-PEC for INTERNATIONAL missions
+  const [pecSegments, setPecSegments] = useState<{ id: string; startDate: string; endDate: string; pec: boolean; hotelAmount: string; nbrPetitDej: number; nbrDej: number; nbrDiner: number }[]>([])
   const [extraExpenses, setExtraExpenses] = useState<{ label: string; amount: string }[]>([])
   const [missionCategories, setMissionCategories] = useState<MissionPersonnelCategory[]>([])
   const [missionZones, setMissionZones] = useState<MissionZone[]>([])
@@ -287,30 +289,59 @@ export default function NewRequestPage() {
     return tariffGrid.find(g => g.zone_id === zid) || null
   }, [missionCategoryId, missionZoneId, tariffGrid])
 
+  // Calculate per-segment totals for INTERNATIONAL PEC segments
+  const pecSegmentTotals = useMemo(() => {
+    if (missionScope !== 'INTERNATIONAL' || pecSegments.length === 0) return []
+    const t = missionTariff || { petit_dej: 0, dej: 0, diner: 0, indem_avec_pec: 0, indem_sans_pec: 0 }
+    return pecSegments.map(seg => {
+      const start = new Date(seg.startDate).getTime()
+      const end = new Date(seg.endDate).getTime()
+      const nights = start && end && end >= start ? Math.round((end - start) / (1000 * 60 * 60 * 24)) : 0
+      const dwt = nights > 0 ? nights + 0.5 : 0
+      const hn = parseFloat(seg.hotelAmount) || 0
+      if (!seg.pec) {
+        const daily = t.indem_sans_pec + hn
+        return { ...seg, nights, dwt, total: Math.round(daily * dwt * 100) / 100, daily: Math.round(daily * 100) / 100 }
+      } else {
+        const mealsTotal = (t.petit_dej * seg.nbrPetitDej) + (t.dej * seg.nbrDej) + (t.diner * seg.nbrDiner)
+        const lodgingTotal = (hn + t.indem_avec_pec) * dwt
+        const total = mealsTotal + lodgingTotal
+        const daily = dwt > 0 ? total / dwt : 0
+        return { ...seg, nights, dwt, total: Math.round(total * 100) / 100, daily: Math.round(daily * 100) / 100 }
+      }
+    })
+  }, [pecSegments, missionTariff, missionScope])
+
+  const useSegments = missionScope === 'INTERNATIONAL' && pecSegments.length > 0
+
   const { computedDailyAllowance, computedTotalAllowance } = useMemo(() => {
+    // If using PEC segments, sum segment totals
+    if (useSegments && pecSegmentTotals.length > 0) {
+      const total = pecSegmentTotals.reduce((s, seg) => s + seg.total, 0)
+      const totalNights = pecSegmentTotals.reduce((s, seg) => s + seg.dwt, 0)
+      const daily = totalNights > 0 ? total / totalNights : 0
+      return { computedDailyAllowance: Math.round(daily * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
+    }
+    // Fallback: single period calculation
     const dwt = missionWorkingDays > 0 ? missionWorkingDays + 0.5 : 0
     const hn = parseFloat(hotelAmount) || 0
     if (missionScope === 'LOCAL') {
-      // LOCAL: dotation = hotel × days (no tariff grid, no PEC)
       const total = hn * dwt
       return { computedDailyAllowance: Math.round(hn * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
     }
-    // Use tariff rates if available, otherwise 0
     const t = missionTariff || { petit_dej: 0, dej: 0, diner: 0, indem_avec_pec: 0, indem_sans_pec: 0 }
     if (!missionPec) {
-      // Sans PEC: daily = indem_sans_pec + hotel/night, total = daily × (days + 0.5)
       const daily = t.indem_sans_pec + hn
       const total = daily * dwt
       return { computedDailyAllowance: Math.round(daily * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
     } else {
-      // Avec PEC: total = meals + (hotel + indem_avec_pec) × (days + 0.5)
       const mealsTotal = (t.petit_dej * nbrPetitDej) + (t.dej * nbrDej) + (t.diner * nbrDiner)
       const lodgingTotal = (hn + t.indem_avec_pec) * dwt
       const total = mealsTotal + lodgingTotal
       const daily = dwt > 0 ? total / dwt : 0
       return { computedDailyAllowance: Math.round(daily * 100) / 100, computedTotalAllowance: Math.round(total * 100) / 100 }
     }
-  }, [missionTariff, missionPec, missionScope, hotelAmount, nbrPetitDej, nbrDej, nbrDiner, missionWorkingDays])
+  }, [missionTariff, missionPec, missionScope, hotelAmount, nbrPetitDej, nbrDej, nbrDiner, missionWorkingDays, useSegments, pecSegmentTotals])
 
   const hotelPerNight = parseFloat(hotelAmount) || 0
   const missionDurationWithTravel = missionWorkingDays > 0 ? missionWorkingDays + 0.5 : 0
@@ -623,14 +654,16 @@ export default function NewRequestPage() {
           country: missionCountry.trim() || null,
           venue: missionVenue.trim() || null,
           currency: missionCurrency || 'MAD',
-          pec: missionPec,
+          pec: useSegments ? pecSegments.some(s => s.pec) : missionPec,
           petit_dej_included: missionPetitDejIncl,
-          nbr_petit_dej: nbrPetitDej,
-          nbr_dej: nbrDej,
-          nbr_diner: nbrDiner,
+          nbr_petit_dej: useSegments ? pecSegments.reduce((s, seg) => s + seg.nbrPetitDej, 0) : nbrPetitDej,
+          nbr_dej: useSegments ? pecSegments.reduce((s, seg) => s + seg.nbrDej, 0) : nbrDej,
+          nbr_diner: useSegments ? pecSegments.reduce((s, seg) => s + seg.nbrDiner, 0) : nbrDiner,
           daily_allowance: computedDailyAllowance,
           total_allowance: computedTotalAllowance,
-          hotel_amount: parseFloat(hotelAmount) || 0,
+          hotel_amount: useSegments
+            ? Math.max(...pecSegments.map(s => parseFloat(s.hotelAmount) || 0))
+            : (parseFloat(hotelAmount) || 0),
           extra_expenses: extraExpenses.filter(e => e.label.trim() && e.amount).map(e => ({
             label: e.label.trim(), amount: parseFloat(e.amount) || 0,
           })),
@@ -2686,76 +2719,145 @@ export default function NewRequestPage() {
                 </Card>
               )}
 
-              {/* Financial — LOCAL: hotel only | INTERNATIONAL: PEC choice + conditional meals */}
+              {/* Financial — LOCAL: hotel only | INTERNATIONAL: PEC segments */}
               <Card className="border-border/70">
                 <CardContent className="space-y-4 pt-5">
                   {missionScope === 'LOCAL' ? (
                     <>
-                      <Label className="text-sm font-medium">Hébergement</Label>
+                      <Label className="text-sm font-medium">Hebergement</Label>
                       <div className="space-y-1.5">
-                        <Label className="text-sm">Montant hôtel / nuit</Label>
+                        <Label className="text-sm">Montant hotel / nuit</Label>
                         <Input type="number" min="0" step="0.01" placeholder="0.00" value={hotelAmount} onChange={e => setHotelAmount(e.target.value)} />
                       </div>
                       {computedTotalAllowance > 0 && (
                         <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-                          <div className="flex justify-between text-xs text-muted-foreground"><span>Hôtel {hotelPerNight} × {missionWorkingDays}j</span><span>{computedTotalAllowance} MAD</span></div>
+                          <div className="flex justify-between text-xs text-muted-foreground"><span>Hotel {hotelPerNight} x {missionWorkingDays}n</span><span>{computedTotalAllowance} MAD</span></div>
                           <div className="flex justify-between text-sm mt-1"><span className="font-medium text-foreground">Dotation totale</span><span className="font-bold text-primary">{computedTotalAllowance} MAD</span></div>
                         </div>
                       )}
                     </>
                   ) : (
                     <>
-                      <Label className="text-sm font-medium">Prise en charge</Label>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setMissionPec(true)}
-                          className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${missionPec ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20' : 'border-border/70 bg-card text-muted-foreground hover:border-border'}`}>
-                          Avec PEC<p className="mt-0.5 text-[10px] font-normal opacity-70">Repas séparés</p>
-                        </button>
-                        <button type="button" onClick={() => setMissionPec(false)}
-                          className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${!missionPec ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/20' : 'border-border/70 bg-card text-muted-foreground hover:border-border'}`}>
-                          Sans PEC<p className="mt-0.5 text-[10px] font-normal opacity-70">Hôtel tout inclus</p>
-                        </button>
+                      {/* PEC Segment Builder */}
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Periodes PEC / Sans PEC</Label>
+                        <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
+                          onClick={() => setPecSegments(prev => [...prev, {
+                            id: crypto.randomUUID(),
+                            startDate: prev.length > 0 ? prev[prev.length - 1].endDate : missionStartDate,
+                            endDate: missionEndDate,
+                            pec: true,
+                            hotelAmount: '',
+                            nbrPetitDej: 0,
+                            nbrDej: 0,
+                            nbrDiner: 0,
+                          }])}>
+                          + Ajouter une periode
+                        </Button>
                       </div>
 
-                      {/* Avec PEC: meal counts */}
-                      {missionPec && (
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="space-y-1"><Label className="text-[10px]">Nb. P.déj</Label><Input type="number" min="0" value={nbrPetitDej} onChange={e => setNbrPetitDej(parseInt(e.target.value) || 0)} className="h-8 text-sm" /></div>
-                          <div className="space-y-1"><Label className="text-[10px]">Nb. Déj</Label><Input type="number" min="0" value={nbrDej} onChange={e => setNbrDej(parseInt(e.target.value) || 0)} className="h-8 text-sm" /></div>
-                          <div className="space-y-1"><Label className="text-[10px]">Nb. Dîners</Label><Input type="number" min="0" value={nbrDiner} onChange={e => setNbrDiner(parseInt(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                      {pecSegments.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-center text-xs text-muted-foreground">
+                          Ajoutez au moins une periode pour definir les tranches PEC et sans PEC
                         </div>
                       )}
 
-                      {/* Hotel */}
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Montant hôtel / nuit {!missionPec && <span className="text-xs text-muted-foreground">(repas inclus)</span>}</Label>
-                        <Input type="number" min="0" step="0.01" placeholder="0.00" value={hotelAmount} onChange={e => setHotelAmount(e.target.value)} />
-                      </div>
-
-                      {/* Calculation breakdown — always visible */}
-                      {(() => {
-                        const t = missionTariff || { petit_dej: 0, dej: 0, diner: 0, indem_avec_pec: 0, indem_sans_pec: 0 }
+                      {pecSegments.map((seg, idx) => {
+                        const segTotal = pecSegmentTotals[idx]
                         return (
-                          <div className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-1.5">
-                            {missionPec ? (
-                              <div className="space-y-1 text-xs text-muted-foreground">
-                                <div className="flex justify-between"><span>P.déj: {t.petit_dej} × {nbrPetitDej}</span><span>{(t.petit_dej * nbrPetitDej).toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span>Déj: {t.dej} × {nbrDej}</span><span>{(t.dej * nbrDej).toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span>Dîner: {t.diner} × {nbrDiner}</span><span>{(t.diner * nbrDiner).toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span>(Hôtel {hotelPerNight} + Indemnité {t.indem_avec_pec}) × {missionWorkingDays}j</span><span>{((hotelPerNight + t.indem_avec_pec) * missionDurationWithTravel).toFixed(2)}</span></div>
+                          <div key={seg.id} className="rounded-xl border border-border/70 bg-card p-3 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-muted-foreground">Periode {idx + 1}</span>
+                              <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => setPecSegments(prev => prev.filter((_, i) => i !== idx))}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+
+                            {/* Dates */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">Du</Label>
+                                <Input type="date" value={seg.startDate} className="h-8 text-xs"
+                                  min={missionStartDate} max={missionEndDate}
+                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, startDate: e.target.value } : s))} />
                               </div>
-                            ) : (
-                              <div className="space-y-1 text-xs text-muted-foreground">
-                                <div className="flex justify-between"><span>(Indemnité {t.indem_sans_pec} + Hôtel {hotelPerNight}) × {missionWorkingDays}j</span><span>{computedTotalAllowance.toFixed(2)}</span></div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">Au</Label>
+                                <Input type="date" value={seg.endDate} className="h-8 text-xs"
+                                  min={seg.startDate || missionStartDate} max={missionEndDate}
+                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, endDate: e.target.value } : s))} />
+                              </div>
+                            </div>
+
+                            {/* PEC toggle */}
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, pec: true } : s))}
+                                className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all ${seg.pec ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/70 text-muted-foreground hover:border-border'}`}>
+                                Avec PEC
+                              </button>
+                              <button type="button" onClick={() => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, pec: false } : s))}
+                                className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all ${!seg.pec ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/70 text-muted-foreground hover:border-border'}`}>
+                                Sans PEC
+                              </button>
+                            </div>
+
+                            {/* PEC meals */}
+                            {seg.pec && (
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="space-y-1"><Label className="text-[10px]">P.dej</Label><Input type="number" min="0" value={seg.nbrPetitDej} className="h-7 text-xs"
+                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, nbrPetitDej: parseInt(e.target.value) || 0 } : s))} /></div>
+                                <div className="space-y-1"><Label className="text-[10px]">Dej</Label><Input type="number" min="0" value={seg.nbrDej} className="h-7 text-xs"
+                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, nbrDej: parseInt(e.target.value) || 0 } : s))} /></div>
+                                <div className="space-y-1"><Label className="text-[10px]">Diners</Label><Input type="number" min="0" value={seg.nbrDiner} className="h-7 text-xs"
+                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, nbrDiner: parseInt(e.target.value) || 0 } : s))} /></div>
                               </div>
                             )}
-                            <div className="border-t border-border/50 pt-1.5 mt-1.5">
-                              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Dotation journalière</span><span className="font-medium">{computedDailyAllowance} {missionCurrency}</span></div>
-                              <div className="flex justify-between text-sm mt-0.5"><span className="font-medium text-foreground">Dotation totale</span><span className="font-bold text-primary">{computedTotalAllowance} {missionCurrency}</span></div>
+
+                            {/* Hotel per segment */}
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Hotel / nuit {!seg.pec && <span className="text-muted-foreground">(tout inclus)</span>}</Label>
+                              <Input type="number" min="0" step="0.01" placeholder="0.00" value={seg.hotelAmount} className="h-8 text-xs"
+                                onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, hotelAmount: e.target.value } : s))} />
                             </div>
+
+                            {/* Segment subtotal */}
+                            {segTotal && segTotal.nights > 0 && (
+                              <div className="rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs">
+                                <div className="flex justify-between text-muted-foreground">
+                                  <span>{segTotal.nights} nuitee{segTotal.nights > 1 ? 's' : ''} — {seg.pec ? 'Avec PEC' : 'Sans PEC'}</span>
+                                  <span className="font-semibold text-foreground">{segTotal.total} {missionCurrency}</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )
-                      })()}
+                      })}
+
+                      {/* Grand total from segments */}
+                      {pecSegments.length > 0 && computedTotalAllowance > 0 && (
+                        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                          {pecSegmentTotals.map((seg, i) => (
+                            <div key={seg.id} className="flex justify-between text-xs text-muted-foreground">
+                              <span>Periode {i + 1}: {seg.nights}n {seg.pec ? '(PEC)' : '(sans PEC)'}</span>
+                              <span>{seg.total} {missionCurrency}</span>
+                            </div>
+                          ))}
+                          <div className="border-t border-primary/20 pt-1.5 mt-1.5">
+                            <div className="flex justify-between text-sm">
+                              <span className="font-medium text-foreground">Dotation totale</span>
+                              <span className="font-bold text-primary">{computedTotalAllowance} {missionCurrency}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fallback: no segments yet, show old single-PEC UI for backward compat */}
+                      {pecSegments.length === 0 && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Utilisez le bouton ci-dessus pour definir les periodes avec et sans prise en charge.
+                        </p>
+                      )}
                     </>
                   )}
                 </CardContent>
