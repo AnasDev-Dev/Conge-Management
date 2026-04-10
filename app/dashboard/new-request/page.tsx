@@ -17,7 +17,7 @@ import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, Rota
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot, LeaveSegment, MissionPersonnelCategory, MissionZone, MissionTariffGridEntry } from '@/lib/types/database'
-import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS, CURRENCY_OPTIONS } from '@/lib/constants'
+import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS, MAX_DEROGATION_DAYS, CURRENCY_OPTIONS } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -699,8 +699,11 @@ export default function NewRequestPage() {
 
   // Balance checks derived from segments
   const segBalanceOkNatural = totalCongeDays <= availableConge && totalRecupDays <= availableRecup
-  const segBalanceOk = segBalanceOkNatural || isDerogation
   const segCongeInsufficient = totalCongeDays > availableConge
+  const segCongeShortage = roundHalf(Math.max(totalCongeDays - availableConge, 0))
+  // Derogation: auto-allow if shortage <= MAX_DEROGATION_DAYS (3 days)
+  const canDerogation = segCongeInsufficient && segCongeShortage <= MAX_DEROGATION_DAYS && totalRecupDays <= availableRecup
+  const segBalanceOk = segBalanceOkNatural || (canDerogation && isDerogation)
   const segBalanceAfterConge = roundHalf(availableConge - totalCongeDays)
   const segBalanceAfterRecup = roundHalf(availableRecup - totalRecupDays)
 
@@ -713,8 +716,10 @@ export default function NewRequestPage() {
       case 2:
         // Step 2 (segments): at least 1 valid segment, balance ok, no validation errors
         if (!allSegmentsValid) return false
-        if (!segBalanceOkNatural && !isDerogation && segCongeInsufficient) return false
         if (recupPastExpiration) return false
+        // Congé insufficient: block if shortage > 3 days OR derogation not accepted
+        if (segCongeInsufficient && !canDerogation) return false
+        if (segCongeInsufficient && canDerogation && !isDerogation) return false
         return segBalanceOk
       case 3:
         return true
@@ -745,8 +750,12 @@ export default function NewRequestPage() {
       toast.error('Ajoutez au moins un segment de dates')
       return
     }
-    if (!segBalanceOk && !isDerogation) {
-      toast.error('Solde insuffisant. Veuillez ajuster la repartition ou les dates.')
+    if (!segBalanceOk) {
+      if (segCongeInsufficient && !canDerogation) {
+        toast.error(`Solde insuffisant — depassement de ${segCongeShortage}j (max ${MAX_DEROGATION_DAYS}j en derogation)`)
+      } else {
+        toast.error('Solde insuffisant. Veuillez ajuster la repartition ou les dates.')
+      }
       return
     }
     if (segmentErrors.length > 0) {
@@ -1510,17 +1519,17 @@ export default function NewRequestPage() {
                   </div>
                 </div>
 
-                {/* Derogation */}
-                {!segBalanceOkNatural && segCongeInsufficient && !isDerogation && (
+                {/* Derogation — auto-allowed when shortage <= 3 days */}
+                {segCongeInsufficient && canDerogation && !isDerogation && (
                   <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
                     <div className="flex items-start gap-2">
                       <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-xs font-medium text-amber-800">
-                          Solde congé insuffisant ({roundHalf(totalCongeDays - availableConge)}j en dépassement)
+                          Demande derogation — {roundHalf(totalCongeDays)}j demandes, {segCongeShortage}j indisponible{segCongeShortage > 1 ? 's' : ''}
                         </p>
                         <p className="text-[11px] text-amber-700 mt-0.5">
-                          Vous pouvez demander une dérogation.
+                          Le solde passera a -{segCongeShortage}j apres validation. Le prochain cumul mensuel absorbera ce deficit.
                         </p>
                       </div>
                     </div>
@@ -1531,19 +1540,41 @@ export default function NewRequestPage() {
                       className="w-full border-amber-400 text-amber-800 hover:bg-amber-100 text-xs h-8"
                       onClick={() => setIsDerogation(true)}
                     >
-                      Demander une dérogation
+                      Accepter la derogation (-{segCongeShortage}j)
                     </Button>
                   </div>
                 )}
-                {isDerogation && (
-                  <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50/50 p-3">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4 text-amber-600" />
-                      <p className="text-xs font-medium text-amber-800">Dérogation demandée</p>
+                {segCongeInsufficient && !canDerogation && (
+                  <div className="rounded-xl border border-red-300 bg-red-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-red-800">
+                          Solde insuffisant — {segCongeShortage}j en depassement (max {MAX_DEROGATION_DAYS}j en derogation)
+                        </p>
+                        <p className="text-[11px] text-red-700 mt-0.5">
+                          Veuillez reduire le nombre de jours ou ajuster la repartition conge/recuperation.
+                        </p>
+                      </div>
                     </div>
-                    <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-amber-700" onClick={() => setIsDerogation(false)}>
-                      Annuler
-                    </Button>
+                  </div>
+                )}
+                {isDerogation && canDerogation && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-amber-800">
+                          Derogation acceptee — {roundHalf(totalCongeDays)}j, {segCongeShortage}j indisponible{segCongeShortage > 1 ? 's' : ''}
+                        </p>
+                        <p className="text-[11px] text-amber-700 mt-0.5">
+                          Solde apres validation : -{segCongeShortage}j
+                        </p>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-amber-700 shrink-0" onClick={() => setIsDerogation(false)}>
+                        Annuler
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1817,7 +1848,7 @@ export default function NewRequestPage() {
             <Button
               type="button"
               className="h-11 w-full"
-              disabled={isSubmitting || (!segBalanceOkNatural && !isDerogation) || totalWorkingDays <= 0}
+              disabled={isSubmitting || !segBalanceOk || totalWorkingDays <= 0}
               onClick={() => setSignatureDialogOpen(true)}
             >
               {isSubmitting ? (

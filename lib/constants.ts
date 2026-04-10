@@ -67,6 +67,9 @@ export const MAX_LEAVE_BALANCE = 52
 // Maximum consecutive recovery days (Req #9)
 export const MAX_CONSECUTIVE_RECOVERY_DAYS = 5
 
+// Maximum derogation (negative balance) days allowed (Req #5 client V2)
+export const MAX_DEROGATION_DAYS = 3
+
 // Recovery work type labels (Req #8)
 export const RECOVERY_WORK_TYPE_LABELS: Record<string, string> = {
   MISSION: 'Mission',
