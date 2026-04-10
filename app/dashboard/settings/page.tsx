@@ -496,12 +496,24 @@ export default function SettingsPage() {
         .single()
       if (error) throw error
       if (data) setHolidays(prev => [...prev, data].sort((a, b) => a.date.localeCompare(b.date)))
+
+      // Recalculate active leave requests that span this holiday
+      const { data: recalcResult } = await supabase.rpc('recalculate_leave_for_holiday', {
+        p_holiday_date: newHolidayDate,
+        p_company_id: companyId || null,
+      })
+      const updated = recalcResult?.requests_updated ?? 0
+
       setNewHolidayName('')
       setNewHolidayDate('')
       setNewHolidayRecurring(true)
       setAddHolidayOpen(false)
       clearCaches()
-      toast.success('Jour férié ajouté')
+      if (updated > 0) {
+        toast.success(`Jour ferie ajoute — ${updated} demande${updated > 1 ? 's' : ''} de conge recalculee${updated > 1 ? 's' : ''}`)
+      } else {
+        toast.success('Jour ferie ajoute')
+      }
     } catch (error) {
       console.error('Error adding holiday:', error)
       toast.error("Erreur lors de l'ajout")
@@ -551,9 +563,26 @@ export default function SettingsPage() {
           prev.map(h => h.id === data.id ? data : h).sort((a, b) => a.date.localeCompare(b.date))
         )
       }
+
+      // Recalculate leave requests for both old and new dates
+      const datesToRecalc = new Set([editHolidayDate])
+      if (editingHoliday.date !== editHolidayDate) datesToRecalc.add(editingHoliday.date)
+      let totalUpdated = 0
+      for (const d of datesToRecalc) {
+        const { data: r } = await supabase.rpc('recalculate_leave_for_holiday', {
+          p_holiday_date: d,
+          p_company_id: companyId || null,
+        })
+        totalUpdated += r?.requests_updated ?? 0
+      }
+
       setEditingHoliday(null)
       clearCaches()
-      toast.success('Jour férié modifié')
+      if (totalUpdated > 0) {
+        toast.success(`Jour ferie modifie — ${totalUpdated} demande${totalUpdated > 1 ? 's' : ''} recalculee${totalUpdated > 1 ? 's' : ''}`)
+      } else {
+        toast.success('Jour ferie modifie')
+      }
     } catch (error) {
       console.error('Error updating holiday:', error)
       toast.error('Erreur lors de la modification')
@@ -563,13 +592,29 @@ export default function SettingsPage() {
   }
 
   const deleteHoliday = async (id: number) => {
+    const deletedHoliday = holidays.find(h => h.id === id)
     setDeletingHolidayId(id)
     try {
       const { error } = await supabase.from('holidays').delete().eq('id', id).select()
       if (error) throw error
       setHolidays(prev => prev.filter(h => h.id !== id))
       clearCaches()
-      toast.success('Jour férié supprimé')
+
+      // Recalculate leave requests that spanned this holiday (they lose a free day)
+      if (deletedHoliday) {
+        const { data: r } = await supabase.rpc('recalculate_leave_for_holiday', {
+          p_holiday_date: deletedHoliday.date,
+          p_company_id: companyId || null,
+        })
+        const updated = r?.requests_updated ?? 0
+        if (updated > 0) {
+          toast.success(`Jour ferie supprime — ${updated} demande${updated > 1 ? 's' : ''} recalculee${updated > 1 ? 's' : ''}`)
+        } else {
+          toast.success('Jour ferie supprime')
+        }
+      } else {
+        toast.success('Jour ferie supprime')
+      }
     } catch (error) {
       console.error('Error deleting holiday:', error)
       toast.error('Erreur lors de la suppression')
