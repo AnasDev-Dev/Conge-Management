@@ -475,67 +475,75 @@ export default function RecoveryRequestsPage() {
               </p>
             </div>
           ) : (
-            <div className="grid gap-3 pt-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredRequests.map((request) => {
-                const PeriodIcon = PERIOD_ICONS[request.period as RecoveryPeriod] ?? CalendarDays
-                return (
-                  <button
-                    key={request.id}
-                    type="button"
-                    onClick={() => setDetailRequest(request)}
-                    className="group rounded-2xl border border-border/70 bg-background/80 p-4 text-left transition-all hover:border-primary/30 hover:shadow-md"
-                  >
-                    {/* Top row: employee/date + status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        {isManager && request.user && (
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <UserIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <p className="truncate font-medium text-foreground text-sm">
-                              {request.user.full_name}
-                            </p>
-                          </div>
+            <div className="overflow-x-auto pt-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    {isManager && <th className="pb-2 pr-4 font-medium">Employe</th>}
+                    <th className="pb-2 pr-4 font-medium">Periode</th>
+                    <th className="pb-2 pr-4 font-medium">Jours</th>
+                    <th className="pb-2 pr-4 font-medium">Horaire</th>
+                    <th className="pb-2 pr-4 font-medium">Type</th>
+                    <th className="pb-2 pr-4 font-medium">Motif</th>
+                    <th className="pb-2 pr-4 font-medium">Soumis le</th>
+                    <th className="pb-2 font-medium">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRequests.map((request) => {
+                    const PeriodIcon = PERIOD_ICONS[request.period as RecoveryPeriod] ?? CalendarDays
+                    return (
+                      <tr
+                        key={request.id}
+                        onClick={() => setDetailRequest(request)}
+                        className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/50"
+                      >
+                        {isManager && (
+                          <td className="py-3 pr-4">
+                            <div className="flex items-center gap-1.5">
+                              <UserIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="font-medium truncate max-w-[150px]">{request.user?.full_name ?? '—'}</span>
+                            </div>
+                          </td>
                         )}
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(request.date_worked + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                        <td className="py-3 pr-4 whitespace-nowrap">
+                          {format(new Date(request.date_worked + 'T00:00:00'), 'dd/MM/yy', { locale: fr })}
                           {request.date_end && request.date_end !== request.date_worked && (
-                            <> au {format(new Date(request.date_end + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}</>
+                            <> — {format(new Date(request.date_end + 'T00:00:00'), 'dd/MM/yy', { locale: fr })}</>
                           )}
-                        </p>
-                      </div>
-                      <Badge className={`shrink-0 ${getRecoveryStatusClass(request.status)}`}>
-                        {getRecoveryStatusLabel(request.status)}
-                      </Badge>
-                    </div>
-
-                    {/* Info chips */}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                        {request.days} jour{request.days > 1 ? 's' : ''}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-secondary px-2 py-1 text-xs font-medium text-foreground">
-                        <PeriodIcon className="h-3 w-3" />
-                        {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journee'}
-                      </span>
-                      <Badge variant="secondary" className="border border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84] text-[11px]">
-                        {RECOVERY_WORK_TYPE_LABELS[request.work_type] ?? request.work_type}
-                      </Badge>
-                    </div>
-
-                    {/* Reason preview */}
-                    {request.reason && (
-                      <p className="mt-2.5 line-clamp-1 text-xs text-muted-foreground">
-                        {request.reason}
-                      </p>
-                    )}
-
-                    {/* Submitted date */}
-                    <p className="mt-2 text-[11px] text-muted-foreground/70">
-                      Soumis le {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}
-                    </p>
-                  </button>
-                )
-              })}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                            {request.days}j
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <PeriodIcon className="h-3 w-3" />
+                            {PERIOD_DISPLAY_LABELS[request.period] ?? 'Journee'}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <Badge variant="secondary" className="border border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84] text-[11px]">
+                            {RECOVERY_WORK_TYPE_LABELS[request.work_type] ?? request.work_type}
+                          </Badge>
+                        </td>
+                        <td className="py-3 pr-4 max-w-[180px]">
+                          <span className="line-clamp-1 text-xs text-muted-foreground">{request.reason || '—'}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}
+                        </td>
+                        <td className="py-3">
+                          <Badge className={`${getRecoveryStatusClass(request.status)}`}>
+                            {getRecoveryStatusLabel(request.status)}
+                          </Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

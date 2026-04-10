@@ -367,6 +367,33 @@ export default function ProfilePage() {
                   </div>
                   <Calendar className="h-12 w-12 text-[var(--status-success-text)]/35" />
                 </div>
+
+                {/* Recovery lots breakdown */}
+                {bal.recovery_lots && bal.recovery_lots.length > 0 && (
+                  <div className="mt-4 border-t border-[var(--status-success-border)] pt-3">
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Detail par lot</p>
+                    <div className="space-y-1.5">
+                      {bal.recovery_lots.map((lot) => (
+                        <div key={lot.id} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{lot.remaining_days}j</span>
+                            <span className="text-muted-foreground">/ {lot.days}j ({lot.year_acquired})</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {lot.is_expiring_soon && (
+                              <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0">
+                                Expire bientot
+                              </Badge>
+                            )}
+                            <span className="text-muted-foreground">
+                              exp. {format(new Date(lot.expires_at + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr })}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -264,14 +264,16 @@ export default function NewRequestPage() {
       })
   }, [isAssigning, selectedEmployeeId])
 
-  // Mission days: ALL calendar days (missions can be on weekends/holidays)
-  const missionWorkingDays = useMemo(() => {
+  // Mission nights (nuitees): du 1 au 5 = 4 nuits. Financial calc uses nights + 0.5
+  const missionNights = useMemo(() => {
     if (!missionStartDate || !missionEndDate) return 0
     const start = new Date(missionStartDate).getTime()
     const end = new Date(missionEndDate).getTime()
     if (end < start) return 0
-    return Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1
+    return Math.round((end - start) / (1000 * 60 * 60 * 24))
   }, [missionStartDate, missionEndDate])
+  // Keep alias for backward compat in submit/display
+  const missionWorkingDays = missionNights
   // Client formula: duration + 0.5 (travel day half-day bonus)
   // Tariff lookup: try exact match (category+zone), fallback to zone-only (first match for that zone)
   const missionTariff = useMemo(() => {
@@ -687,8 +689,13 @@ export default function NewRequestPage() {
   const balanceAfterConge = roundHalf(availableConge - congeDaysToUse)
   const balanceAfterRecup = roundHalf(availableRecup - recupDaysToUse)
 
-  // Nearest recovery expiration
+  // Recovery expiration checks
   const nearestExpiration = recoveryLots.length > 0 ? recoveryLots[0].expires_at : null
+  const expiringLots = recoveryLots.filter(l => l.is_expiring_soon)
+  // Block if any RECUPERATION segment ends after the earliest lot expiration
+  const recupPastExpiration = totalRecupDays > 0 && nearestExpiration
+    ? segments.some(s => s.type === 'RECUPERATION' && s.endDate > nearestExpiration)
+    : false
 
   // Balance checks derived from segments
   const segBalanceOkNatural = totalCongeDays <= availableConge && totalRecupDays <= availableRecup
@@ -707,6 +714,7 @@ export default function NewRequestPage() {
         // Step 2 (segments): at least 1 valid segment, balance ok, no validation errors
         if (!allSegmentsValid) return false
         if (!segBalanceOkNatural && !isDerogation && segCongeInsufficient) return false
+        if (recupPastExpiration) return false
         return segBalanceOk
       case 3:
         return true
@@ -1219,6 +1227,19 @@ export default function NewRequestPage() {
                       {roundHalf(lot.remaining_days)}j (acquis {lot.year_acquired}) — exp. {format(new Date(lot.expires_at + 'T00:00:00'), 'dd/MM/yy')}
                     </span>
                   ))}
+                </div>
+              )}
+              {/* Expiration alert */}
+              {expiringLots.length > 0 && (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                  Attention : {expiringLots.reduce((s, l) => s + l.remaining_days, 0)}j de recuperation expirent bientot
+                  {nearestExpiration && <> (avant le {format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yyyy')})</>}
+                </div>
+              )}
+              {/* Block: recup segment past expiration */}
+              {recupPastExpiration && nearestExpiration && (
+                <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
+                  La date de fin de recuperation depasse la date d&apos;expiration ({format(new Date(nearestExpiration + 'T00:00:00'), 'dd/MM/yyyy')}). Veuillez ajuster les dates.
                 </div>
               )}
             </div>
@@ -2571,9 +2592,10 @@ export default function NewRequestPage() {
                       <DatePicker id="missionEndDate" value={missionEndDate} onChange={setMissionEndDate} min={missionStartDate || format(new Date(), 'yyyy-MM-dd')} placeholder="Fin" />
                     </div>
                   </div>
-                  {missionStartDate && missionEndDate && missionWorkingDays > 0 && (
+                  {missionStartDate && missionEndDate && missionNights > 0 && (
                     <div className="status-progress rounded-xl border px-3 py-2 text-sm">
-                      <strong>{missionWorkingDays}</strong> jour{missionWorkingDays > 1 ? 's' : ''} calendaire{missionWorkingDays > 1 ? 's' : ''} — du {format(new Date(missionStartDate), 'dd MMM', { locale: fr })} au {format(new Date(missionEndDate), 'dd MMM yyyy', { locale: fr })}
+                      <strong>{missionNights}</strong> nuitee{missionNights > 1 ? 's' : ''} — du {format(new Date(missionStartDate), 'dd MMM', { locale: fr })} au {format(new Date(missionEndDate), 'dd MMM yyyy', { locale: fr })}
+                      <span className="ml-1 text-xs text-muted-foreground">({missionNights + 0.5} avec deplacement)</span>
                     </div>
                   )}
 

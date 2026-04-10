@@ -25,7 +25,7 @@ import {
 import { Company, Department, UserRole } from '@/lib/types/database'
 import { getRoleLabel } from '@/lib/constants'
 
-const ROLE_OPTIONS: UserRole[] = ['EMPLOYEE', 'CHEF_SERVICE', 'RH', 'DIRECTEUR_EXECUTIF', 'ADMIN']
+const ROLE_OPTIONS: UserRole[] = ['EMPLOYEE', 'CHEF_SERVICE', 'RH', 'DIRECTEUR_EXECUTIF']
 
 interface CompanyAssignment {
   company_id: number
