@@ -2778,15 +2778,13 @@ export default function NewRequestPage() {
                             <div className="grid grid-cols-2 gap-2">
                               <div className="space-y-1">
                                 <Label className="text-[10px]">Du</Label>
-                                <Input type="date" value={seg.startDate} className="h-8 text-xs"
-                                  min={missionStartDate} max={missionEndDate}
-                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, startDate: e.target.value } : s))} />
+                                <DatePicker value={seg.startDate} onChange={(v) => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, startDate: v } : s))}
+                                  min={missionStartDate} max={missionEndDate} placeholder="Debut" />
                               </div>
                               <div className="space-y-1">
                                 <Label className="text-[10px]">Au</Label>
-                                <Input type="date" value={seg.endDate} className="h-8 text-xs"
-                                  min={seg.startDate || missionStartDate} max={missionEndDate}
-                                  onChange={e => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, endDate: e.target.value } : s))} />
+                                <DatePicker value={seg.endDate} onChange={(v) => setPecSegments(prev => prev.map((s, i) => i === idx ? { ...s, endDate: v } : s))}
+                                  min={seg.startDate || missionStartDate} max={missionEndDate} placeholder="Fin" />
                               </div>
                             </div>
 
