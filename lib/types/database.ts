@@ -2,6 +2,7 @@ export type UserRole =
   | 'EMPLOYEE'
   | 'CHEF_SERVICE'
   | 'RH'
+  | 'RESPONSABLE_ADMIN'
   | 'DIRECTEUR_EXECUTIF'
   | 'ADMIN'
 

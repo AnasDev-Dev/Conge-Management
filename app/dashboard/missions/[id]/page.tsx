@@ -44,14 +44,13 @@ import { fr } from 'date-fns/locale'
 import { toast } from 'sonner'
 import PrintMissionDocument from '@/components/print-mission-document'
 
-// Mission approval chain: RH(rp) → Chef(dc) → Dir(de) — aligned with leave pipeline
+// Mission approval chain: Resp.Admin(dc) → Dir(de) — 2-stage pipeline
 const MISSION_PIPELINE = [
-  { status: 'PENDING', label: 'RH Personnel', role: 'RH', field: 'rp' },
-  { status: 'VALIDATED_RP', label: 'Chef de Service', role: 'CHEF_SERVICE', field: 'dc' },
-  { status: 'VALIDATED_DC', label: 'Directeur Exécutif', role: 'DIRECTEUR_EXECUTIF', field: 'de' },
+  { status: 'PENDING', label: 'Resp. Administratif', role: 'RESPONSABLE_ADMIN', field: 'dc' },
+  { status: 'VALIDATED_DC', label: 'Directeur Executif', role: 'DIRECTEUR_EXECUTIF', field: 'de' },
 ] as const
 
-const STATUS_ORDER = ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'APPROVED']
+const STATUS_ORDER = ['PENDING', 'VALIDATED_DC', 'APPROVED']
 
 export default function MissionDetailPage() {
   const params = useParams()
@@ -240,7 +239,7 @@ export default function MissionDetailPage() {
 
     // Can undo approve from APPROVED (Director)
     if (status === 'APPROVED' && mission.approved_by_de === currentUser.id) {
-      return { canUndoApprove: true, prevStage: MISSION_PIPELINE[2] }
+      return { canUndoApprove: true, prevStage: MISSION_PIPELINE[1] }
     }
 
     // Can undo reject

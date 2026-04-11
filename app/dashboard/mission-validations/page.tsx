@@ -49,11 +49,10 @@ interface MissionWithUser extends MissionRequest {
   assigner?: Pick<Utilisateur, 'id' | 'full_name'>
 }
 
-// Mission approval chain: RH(rp) → Chef(dc) → Dir(de) — aligned with leave pipeline
+// Mission approval chain: Resp.Admin(dc) → Dir(de) — 2-stage pipeline
 const MISSION_PIPELINE = [
-  { status: 'PENDING', label: 'RH Personnel', shortLabel: 'RH', role: 'RH', setsTo: 'VALIDATED_RP', field: 'rp' },
-  { status: 'VALIDATED_RP', label: 'Chef de Service', shortLabel: 'Chef', role: 'CHEF_SERVICE', setsTo: 'VALIDATED_DC', field: 'dc' },
-  { status: 'VALIDATED_DC', label: 'Directeur Exécutif', shortLabel: 'Dir.', role: 'DIRECTEUR_EXECUTIF', setsTo: 'APPROVED', field: 'de' },
+  { status: 'PENDING', label: 'Resp. Administratif', shortLabel: 'R.A.', role: 'RESPONSABLE_ADMIN', setsTo: 'VALIDATED_DC', field: 'dc' },
+  { status: 'VALIDATED_DC', label: 'Directeur Executif', shortLabel: 'Dir.', role: 'DIRECTEUR_EXECUTIF', setsTo: 'APPROVED', field: 'de' },
 ] as const
 
 const ALL_MISSION_STATUSES: string[] = MISSION_PIPELINE.map(s => s.status)

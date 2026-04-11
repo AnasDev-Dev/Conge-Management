@@ -20,12 +20,13 @@ import { Save, RotateCcw, Loader2, Shield, Check, X, Lock } from 'lucide-react'
 
 // ─── Constants ──────────────────────────────────────────────
 
-const ALL_ROLES: UserRole[] = ['EMPLOYEE', 'CHEF_SERVICE', 'RH', 'DIRECTEUR_EXECUTIF', 'ADMIN']
+const ALL_ROLES: UserRole[] = ['EMPLOYEE', 'CHEF_SERVICE', 'RH', 'RESPONSABLE_ADMIN', 'DIRECTEUR_EXECUTIF', 'ADMIN']
 
 const ROLE_LABELS: Record<UserRole, string> = {
   EMPLOYEE: 'Employe',
   CHEF_SERVICE: 'Chef de Service',
   RH: 'Ressources Humaines',
+  RESPONSABLE_ADMIN: 'Responsable Administratif',
   DIRECTEUR_EXECUTIF: 'Directeur Executif',
   ADMIN: 'Administrateur',
 }
@@ -131,9 +132,8 @@ const ACTION_GROUPS: { label: string; actions: { key: Action; label: string }[] 
   {
     label: 'Approbation missions',
     actions: [
-      { key: 'approval.missionStage1', label: 'Etape 1 (Chef de Service)' },
-      { key: 'approval.missionStage2', label: 'Etape 2 (RH)' },
-      { key: 'approval.missionStage3', label: 'Etape 3 (Directeur Executif)' },
+      { key: 'approval.missionStage1', label: 'Etape 1 (Responsable Administratif)' },
+      { key: 'approval.missionStage3', label: 'Etape 2 (Directeur Executif)' },
     ],
   },
 ]

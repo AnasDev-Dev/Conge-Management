@@ -1,5 +1,5 @@
 // Roles that have manager-level access (can validate, see all requests, etc.)
-export const MANAGER_ROLES: readonly string[] = ['CHEF_SERVICE', 'RH', 'DIRECTEUR_EXECUTIF', 'ADMIN']
+export const MANAGER_ROLES: readonly string[] = ['CHEF_SERVICE', 'RH', 'RESPONSABLE_ADMIN', 'DIRECTEUR_EXECUTIF', 'ADMIN']
 
 export function isManagerRole(role: string): boolean {
   return MANAGER_ROLES.includes(role)
@@ -129,6 +129,7 @@ export function getRoleLabel(role: string): string {
     case 'EMPLOYEE': return 'Employé'
     case 'RH': return 'Ressources Humaines'
     case 'CHEF_SERVICE': return 'Chef de Service'
+    case 'RESPONSABLE_ADMIN': return 'Responsable Administratif'
     case 'DIRECTEUR_EXECUTIF': return 'Directeur Exécutif'
     case 'ADMIN': return 'Administrateur'
     default: return role

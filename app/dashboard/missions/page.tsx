@@ -36,14 +36,13 @@ interface MissionWithUser extends MissionRequest {
   assigner?: Pick<Utilisateur, 'id' | 'full_name'>
 }
 
-// Pipeline stages aligned with leave pipeline: RH → Chef → Dir
+// Pipeline stages: Resp.Admin → Dir (2-stage)
 const PIPELINE_STAGES = [
-  { key: 'rp', label: 'RH', status: 'VALIDATED_RP' },
-  { key: 'dc', label: 'Chef', status: 'VALIDATED_DC' },
+  { key: 'dc', label: 'R.A.', status: 'VALIDATED_DC' },
   { key: 'de', label: 'Dir.', status: 'APPROVED' },
 ] as const
 
-const STATUS_ORDER = ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'APPROVED']
+const STATUS_ORDER = ['PENDING', 'VALIDATED_DC', 'APPROVED']
 
 function getPipelineProgress(status: string): number {
   const idx = STATUS_ORDER.indexOf(status)
