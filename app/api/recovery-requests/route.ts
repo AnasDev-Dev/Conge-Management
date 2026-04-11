@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
         .single()
 
       const effectiveRole = ucr?.role || userData?.role
-      isManager = ['ADMIN', 'RH', 'DIRECTEUR_EXECUTIF', 'CHEF_SERVICE'].includes(effectiveRole)
+      isManager = ['ADMIN', 'RH', 'DIRECTEUR_EXECUTIF', 'CHEF_SERVICE', 'RESPONSABLE_ADMIN'].includes(effectiveRole)
     } else {
       isManager = ['ADMIN', 'RH', 'DIRECTEUR_EXECUTIF', 'CHEF_SERVICE'].includes(userData?.role)
     }

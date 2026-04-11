@@ -451,8 +451,8 @@ export default function NewRequestPage() {
         query = query.eq('company_id', activeCompany.id)
       }
 
-      // CHEF_SERVICE can only create on behalf of their department
-      if (effectiveRole === 'CHEF_SERVICE' && userData.department_id) {
+      // CHEF_SERVICE / RESPONSABLE_ADMIN can only create on behalf of their department
+      if ((effectiveRole === 'CHEF_SERVICE' || effectiveRole === 'RESPONSABLE_ADMIN') && userData.department_id) {
         query = query.eq('department_id', userData.department_id)
       }
 

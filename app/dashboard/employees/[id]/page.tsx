@@ -89,7 +89,7 @@ export default function EmployeeDetailsPage() {
           .from('utilisateurs')
           .select('full_name, job_title')
           .eq('department_id', employeeData.department_id)
-          .eq('role', 'CHEF_SERVICE')
+          .in('role', ['CHEF_SERVICE', 'RESPONSABLE_ADMIN'])
           .eq('is_active', true)
           .neq('id', employeeId)
           .limit(1)
