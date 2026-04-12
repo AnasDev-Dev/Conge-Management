@@ -223,21 +223,21 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-2 h-[calc(100vh-5rem)]">
       {/* Page title */}
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+      <div className="shrink-0">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {isManager ? "Calendrier d\u2019\u00e9quipe" : 'Mon calendrier'}
         </h1>
-        <p className="mt-1 text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {isManager
             ? 'Vue globale des absences de tous les collaborateurs'
             : 'Visualisez vos cong\u00e9s et r\u00e9cup\u00e9rations'}
         </p>
       </div>
 
-      {/* Calendar Card — contains everything */}
-      <Card className="border-border/70">
+      {/* Calendar Card — fills remaining height */}
+      <Card className="border-border/70 flex-1 flex flex-col overflow-hidden">
         {/* Calendar header: month nav + stats */}
         <CardHeader className="pb-2">
           {/* Row 1: Month navigation */}
@@ -302,7 +302,7 @@ export default function CalendarPage() {
             })}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1 flex flex-col overflow-hidden pb-2">
           {loading ? (
             <div className="space-y-4">
               <div className="flex justify-between">
@@ -316,7 +316,7 @@ export default function CalendarPage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1 flex-1 auto-rows-fr">
               {/* Weekday headers */}
               {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day, i) => (
                 <div
@@ -332,7 +332,7 @@ export default function CalendarPage() {
               {/* Calendar cells */}
               {calendarGrid.map((day, index) => {
                 if (!day) {
-                  return <div key={`empty-${index}`} className="min-h-[5.5rem]" />
+                  return <div key={`empty-${index}`} className="min-h-[3.5rem]" />
                 }
 
                 const dayRequests = getDayRequests(day)
@@ -353,7 +353,7 @@ export default function CalendarPage() {
                   <button
                     key={day.toISOString()}
                     onClick={() => hasLeaves || holiday ? setSelectedDay(day) : undefined}
-                    className={`group relative min-h-[5.5rem] rounded-2xl border p-2 text-left transition-all ${
+                    className={`group relative min-h-[3.5rem] rounded-2xl border p-2 text-left transition-all ${
                       hasLeaves || holiday ? 'cursor-pointer' : 'cursor-default'
                     } ${
                       isTodayDay
