@@ -175,6 +175,7 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
 
   const navStructure: (NavItem | NavGroup)[] = [
     { name: 'Tableau de bord', href: '/dashboard', icon: LayoutDashboard, key: 'dashboard' },
+    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
     { name: 'Employes', href: '/dashboard/employees', icon: Users, key: 'employees' },
     { name: 'Init. Soldes', href: '/dashboard/balance-init', icon: BadgeCheck, key: 'balance-init' },
     {
@@ -194,7 +195,6 @@ function DashboardShell({ user, onLogout, children }: { user: Utilisateur; onLog
         { name: 'Valid. Missions', href: '/dashboard/mission-validations', icon: ClipboardList, key: 'mission-validations' },
       ]
     },
-    { name: 'Calendrier', href: '/dashboard/calendar', icon: Calendar, key: 'calendar' },
     { name: 'Parametres', href: '/dashboard/settings', icon: Settings, key: 'settings' },
     { name: 'Profil', href: '/dashboard/profile', icon: User, key: 'profile' },
     { name: 'Notifications', href: '/dashboard/notifications', icon: Bell, key: 'notifications' },
