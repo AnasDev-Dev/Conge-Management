@@ -227,12 +227,12 @@ export default function CalendarPage() {
       {/* Page title */}
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {isManager ? "Calendrier d\u2019\u00e9quipe" : 'Mon calendrier'}
+          {isManager ? "Calendrier d'equipe" : 'Mon calendrier'}
         </h1>
         <p className="text-sm text-muted-foreground">
           {isManager
             ? 'Vue globale des absences de tous les collaborateurs'
-            : 'Visualisez vos cong\u00e9s et r\u00e9cup\u00e9rations'}
+            : 'Visualisez vos conges et recuperations'}
         </p>
       </div>
 
@@ -246,7 +246,7 @@ export default function CalendarPage() {
               <button
                 onClick={goToPreviousMonth}
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/70 bg-background/80 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                aria-label="Mois pr\u00e9c\u00e9dent"
+                aria-label="Mois precedent"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -427,8 +427,8 @@ export default function CalendarPage() {
                                 {isManager
                                   ? req.user?.full_name?.split(' ')[0] || '?'
                                   : req.request_type === 'CONGE'
-                                  ? 'Cong\u00e9'
-                                  : 'R\u00e9cup.'}
+                                  ? 'Conge'
+                                  : 'Recup.'}
                               </span>
                             </div>
                           )
@@ -446,14 +446,14 @@ export default function CalendarPage() {
             </div>
           )}
           {/* Legend (inside calendar card) */}
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/50 pt-4 text-xs text-muted-foreground">
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/50 pt-3 text-xs text-muted-foreground shrink-0">
             <div className="flex items-center gap-1.5">
               <span className={`h-2.5 w-2.5 rounded-full ${TYPE_COLORS.CONGE.dot}`} />
-              <span>Cong\u00e9</span>
+              <span>Conge</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className={`h-2.5 w-2.5 rounded-full ${TYPE_COLORS.RECUPERATION.dot}`} />
-              <span>R\u00e9cup\u00e9ration</span>
+              <span>Recuperation</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--status-pending-text)]" />
@@ -469,7 +469,7 @@ export default function CalendarPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <Palmtree className="h-2.5 w-2.5 text-[var(--status-alert-text)]" />
-              <span>Jour f\u00e9ri\u00e9</span>
+              <span>Jour ferie</span>
             </div>
           </div>
         </CardContent>
@@ -487,7 +487,7 @@ export default function CalendarPage() {
               {selectedDayRequests.length > 0
                 ? `${selectedDayRequests.length} absence${selectedDayRequests.length > 1 ? 's' : ''} ce jour`
                 : selectedDayHoliday
-                ? 'Jour f\u00e9ri\u00e9'
+                ? 'Jour ferie'
                 : 'Aucune absence'}
             </DialogDescription>
           </DialogHeader>
