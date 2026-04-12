@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { FileText, Search, Calendar, Clock, ChevronRight, Users, Gift, Heart, X, ExternalLink, User, Hash, Briefcase, MessageSquare, Stethoscope } from 'lucide-react'
+import { FileText, Search, Calendar, Clock, ChevronRight, Users, Gift, Heart, X, ExternalLink, User, Hash, Briefcase, MessageSquare, Stethoscope, LayoutGrid, List } from 'lucide-react'
 import { Utilisateur } from '@/lib/types/database'
 import { getStatusClass, getStatusLabel } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
@@ -83,6 +83,7 @@ export default function RequestsPage() {
   const supabase = useMemo(() => createClient(), [])
 
   const [mainTab, setMainTab] = useState<MainTab>('conge')
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
 
   // --- Congé/Récup state ---
   const [requests, setRequests] = useState<RequestWithUser[]>([])
@@ -348,11 +349,21 @@ export default function RequestsPage() {
             </div>
           </div>
 
-          {/* Search + filters */}
+          {/* Search + filters + view toggle */}
           <div className="shrink-0 flex flex-col gap-3">
-            <div className="relative w-full">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
-              <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Rechercher: nom, type, motif..." className="pl-11" />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+                <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Rechercher: nom, type, motif..." className="pl-11" />
+              </div>
+              <div className="flex rounded-lg border border-border/70 p-0.5">
+                <button onClick={() => setViewMode('table')} className={cn('rounded-md p-2 transition-colors', viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+                  <List className="h-4 w-4" />
+                </button>
+                <button onClick={() => setViewMode('cards')} className={cn('rounded-md p-2 transition-colors', viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <div className="flex gap-1 overflow-x-auto">
               {STATUS_TABS.map((tab) => (
@@ -380,54 +391,108 @@ export default function RequestsPage() {
               <h3 className="mb-1 text-base font-medium text-foreground">Aucune demande</h3>
               <p className="text-sm text-muted-foreground">{searchTerm || statusFilter !== 'ALL' ? 'Essayez de modifier vos filtres' : 'Aucune demande de congé trouvée'}</p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredRequests.map((request) => (
-                <Link key={request.id} href={`/dashboard/requests/${request.id}`} className="block">
-                  <div className="rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        {isManagerView && request.user && (
-                          <p className="font-medium text-foreground">{request.user.full_name}</p>
+          ) : viewMode === 'table' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      {isManagerView && <th className="pb-2 pr-4 font-medium">Employe</th>}
+                      <th className="pb-2 pr-4 font-medium">Periode</th>
+                      <th className="pb-2 pr-4 font-medium">Jours</th>
+                      <th className="pb-2 pr-4 font-medium">Type</th>
+                      <th className="pb-2 pr-4 font-medium">Motif</th>
+                      <th className="pb-2 pr-4 font-medium">Soumis le</th>
+                      <th className="pb-2 font-medium">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRequests.map((request) => (
+                      <tr key={request.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                        {isManagerView && (
+                          <td className="py-3 pr-4">
+                            <Link href={`/dashboard/requests/${request.id}`} className="font-medium hover:text-primary truncate max-w-[150px] block">
+                              {request.user?.full_name ?? '—'}
+                            </Link>
+                            {request.user?.job_title && <p className="text-[11px] text-muted-foreground">{request.user.job_title}</p>}
+                          </td>
                         )}
-                        {isManagerView && request.user?.job_title && (
-                          <p className="text-xs text-muted-foreground">{request.user.job_title}</p>
-                        )}
-                        <p className={cn('text-sm text-muted-foreground', isManagerView && 'mt-1')}>
-                          {format(new Date(request.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – {format(new Date(request.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
-                        </p>
-                      </div>
-                      <Badge className={getStatusClass(request.status)}>
-                        {getStatusLabel(request.status)}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2 flex-wrap">
-                      <Badge variant="secondary" className={`border ${request.request_type === 'CONGE' ? 'border-[#cfdacb] bg-[#ecf3e8] text-[#46604a]' : 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]'}`}>
-                        {typeLabel(request.request_type)}
-                      </Badge>
-                      <span className="text-sm font-semibold text-foreground">{request.days_count} jour{request.days_count > 1 ? 's' : ''}</span>
-                      {request.is_derogation && (
-                        <Badge variant="secondary" className="border border-amber-300 bg-amber-50 text-amber-700 text-[10px]">
-                          Dérogation · {request.balance_conge_used != null && request.balance_before != null
-                            ? `${Math.max(request.balance_conge_used - request.balance_before, 0)}j`
-                            : `${request.days_count}j`}
+                        <td className="py-3 pr-4 whitespace-nowrap">
+                          <Link href={`/dashboard/requests/${request.id}`} className="hover:text-primary">
+                            {format(new Date(request.start_date + 'T00:00:00'), 'dd/MM/yy', { locale: fr })} — {format(new Date(request.end_date + 'T00:00:00'), 'dd/MM/yy', { locale: fr })}
+                          </Link>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">{request.days_count}j</span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <Badge variant="secondary" className={`border text-[11px] ${request.request_type === 'CONGE' ? 'border-[#cfdacb] bg-[#ecf3e8] text-[#46604a]' : 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]'}`}>
+                            {typeLabel(request.request_type)}
+                          </Badge>
+                          {request.is_derogation && (
+                            <Badge variant="secondary" className="ml-1 border border-amber-300 bg-amber-50 text-amber-700 text-[10px]">Derog.</Badge>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4 max-w-[180px]">
+                          <span className="line-clamp-1 text-xs text-muted-foreground">{request.reason || '—'}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}
+                        </td>
+                        <td className="py-3">
+                          <Badge className={getStatusClass(request.status)}>{getStatusLabel(request.status)}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredRequests.map((request) => (
+                  <Link key={request.id} href={`/dashboard/requests/${request.id}`} className="block">
+                    <div className="rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          {isManagerView && request.user && (
+                            <p className="font-medium text-foreground">{request.user.full_name}</p>
+                          )}
+                          {isManagerView && request.user?.job_title && (
+                            <p className="text-xs text-muted-foreground">{request.user.job_title}</p>
+                          )}
+                          <p className={cn('text-sm text-muted-foreground', isManagerView && 'mt-1')}>
+                            {format(new Date(request.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – {format(new Date(request.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                          </p>
+                        </div>
+                        <Badge className={getStatusClass(request.status)}>
+                          {getStatusLabel(request.status)}
                         </Badge>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        <Badge variant="secondary" className={`border ${request.request_type === 'CONGE' ? 'border-[#cfdacb] bg-[#ecf3e8] text-[#46604a]' : 'border-[#d9d0e9] bg-[#f2ecfa] text-[#5f4a84]'}`}>
+                          {typeLabel(request.request_type)}
+                        </Badge>
+                        <span className="text-sm font-semibold text-foreground">{request.days_count} jour{request.days_count > 1 ? 's' : ''}</span>
+                        {request.is_derogation && (
+                          <Badge variant="secondary" className="border border-amber-300 bg-amber-50 text-amber-700 text-[10px]">
+                            Derogation
+                          </Badge>
+                        )}
+                      </div>
+                      {request.reason && (
+                        <p className="mt-2 line-clamp-1 text-xs text-muted-foreground">{request.reason}</p>
                       )}
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className="text-[11px] text-muted-foreground/70">Soumis le {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}</p>
+                        <span className="flex items-center gap-1 text-xs font-medium text-primary">
+                          Voir details <ChevronRight className="h-3.5 w-3.5" />
+                        </span>
+                      </div>
                     </div>
-                    {request.reason && (
-                      <p className="mt-2 line-clamp-1 text-xs text-muted-foreground">{request.reason}</p>
-                    )}
-                    <div className="mt-3 flex items-center justify-between">
-                      <p className="text-[11px] text-muted-foreground/70">Soumis le {format(new Date(request.created_at), 'dd/MM/yyyy', { locale: fr })}</p>
-                      <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                        Voir détails <ChevronRight className="h-3.5 w-3.5" />
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+                  </Link>
+                ))}
+              </div>
+            )
+          }
         </>
       )}
 
@@ -455,37 +520,76 @@ export default function RequestsPage() {
               <h3 className="mb-1 text-base font-medium text-foreground">Aucune demande exceptionnelle</h3>
               <p className="text-sm text-muted-foreground">Les demandes de congé exceptionnel apparaitront ici</p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredExceptional.map((claim) => (
-                <div key={claim.id} onClick={() => setSelectedExceptional(claim)} className="cursor-pointer rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                  <div>
-                    {canViewAllExceptional && claim.user && (
-                      <p className="font-medium text-foreground">{claim.user.full_name}</p>
-                    )}
-                    {canViewAllExceptional && claim.user?.job_title && (
-                      <p className="text-xs text-muted-foreground">{claim.user.job_title}</p>
-                    )}
-                    <p className={cn('text-sm text-muted-foreground', canViewAllExceptional && 'mt-1')}>
-                      {claim.start_date && claim.end_date
-                        ? `${format(new Date(claim.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – ${format(new Date(claim.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}`
-                        : format(new Date(claim.claim_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
-                    </p>
+          ) : viewMode === 'table' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      {canViewAllExceptional && <th className="pb-2 pr-4 font-medium">Employe</th>}
+                      <th className="pb-2 pr-4 font-medium">Type</th>
+                      <th className="pb-2 pr-4 font-medium">Periode</th>
+                      <th className="pb-2 pr-4 font-medium">Jours</th>
+                      <th className="pb-2 pr-4 font-medium">Soumis le</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredExceptional.map((claim) => (
+                      <tr key={claim.id} onClick={() => setSelectedExceptional(claim)} className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/50">
+                        {canViewAllExceptional && (
+                          <td className="py-3 pr-4">
+                            <span className="font-medium">{claim.user?.full_name ?? '—'}</span>
+                            {claim.user?.job_title && <p className="text-[11px] text-muted-foreground">{claim.user.job_title}</p>}
+                          </td>
+                        )}
+                        <td className="py-3 pr-4">
+                          <Badge variant="secondary" className="border border-[#d4c5a0] bg-[#faf5e8] text-[#7a6832] text-[11px]">{getExceptionalTypeName(claim)}</Badge>
+                        </td>
+                        <td className="py-3 pr-4 whitespace-nowrap text-xs text-muted-foreground">
+                          {claim.start_date && claim.end_date
+                            ? `${format(new Date(claim.start_date + 'T00:00:00'), 'dd/MM/yy', { locale: fr })} — ${format(new Date(claim.end_date + 'T00:00:00'), 'dd/MM/yy', { locale: fr })}`
+                            : format(new Date(claim.claim_date + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr })}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">{claim.days_count ?? claim.days_granted}j</span>
+                        </td>
+                        <td className="py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(claim.created_at), 'dd/MM/yyyy', { locale: fr })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredExceptional.map((claim) => (
+                  <div key={claim.id} onClick={() => setSelectedExceptional(claim)} className="cursor-pointer rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                    <div>
+                      {canViewAllExceptional && claim.user && (
+                        <p className="font-medium text-foreground">{claim.user.full_name}</p>
+                      )}
+                      {canViewAllExceptional && claim.user?.job_title && (
+                        <p className="text-xs text-muted-foreground">{claim.user.job_title}</p>
+                      )}
+                      <p className={cn('text-sm text-muted-foreground', canViewAllExceptional && 'mt-1')}>
+                        {claim.start_date && claim.end_date
+                          ? `${format(new Date(claim.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – ${format(new Date(claim.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}`
+                          : format(new Date(claim.claim_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="border border-[#d4c5a0] bg-[#faf5e8] text-[#7a6832]">{getExceptionalTypeName(claim)}</Badge>
+                      <span className="text-sm font-semibold text-foreground">{claim.days_count ?? claim.days_granted} jour{(claim.days_count ?? claim.days_granted) > 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground/70">Soumis le {format(new Date(claim.created_at), 'dd/MM/yyyy', { locale: fr })}</p>
+                      <span className="flex items-center gap-1 text-xs font-medium text-primary">Voir details <ChevronRight className="h-3.5 w-3.5" /></span>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <Badge variant="secondary" className="border border-[#d4c5a0] bg-[#faf5e8] text-[#7a6832]">
-                      {getExceptionalTypeName(claim)}
-                    </Badge>
-                    <span className="text-sm font-semibold text-foreground">{claim.days_count ?? claim.days_granted} jour{(claim.days_count ?? claim.days_granted) > 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-[11px] text-muted-foreground/70">Soumis le {format(new Date(claim.created_at), 'dd/MM/yyyy', { locale: fr })}</p>
-                    <span className="flex items-center gap-1 text-xs font-medium text-primary">Voir détails <ChevronRight className="h-3.5 w-3.5" /></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )
+          }
         </>
       )}
 
@@ -513,40 +617,83 @@ export default function RequestsPage() {
               <h3 className="mb-1 text-base font-medium text-foreground">Aucune absence maladie</h3>
               <p className="text-sm text-muted-foreground">Les declarations de maladie apparaitront ici</p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredSickLeaves.map((sl) => (
-                <div key={sl.id} onClick={() => setSelectedSickLeave(sl)} className="cursor-pointer rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
-                  <div>
-                    {canViewAllMaladie && sl.user && (
-                      <p className="font-medium text-foreground">{sl.user.full_name}</p>
-                    )}
-                    {canViewAllMaladie && sl.user?.job_title && (
-                      <p className="text-xs text-muted-foreground">{sl.user.job_title}</p>
-                    )}
-                    <p className={cn('text-sm text-muted-foreground', canViewAllMaladie && 'mt-1')}>
-                      {format(new Date(sl.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – {format(new Date(sl.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
-                    </p>
+          ) : viewMode === 'table' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      {canViewAllMaladie && <th className="pb-2 pr-4 font-medium">Employe</th>}
+                      <th className="pb-2 pr-4 font-medium">Periode</th>
+                      <th className="pb-2 pr-4 font-medium">Jours</th>
+                      <th className="pb-2 pr-4 font-medium">Motif</th>
+                      <th className="pb-2 pr-4 font-medium">Certificat</th>
+                      <th className="pb-2 font-medium">Soumis le</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSickLeaves.map((sl) => (
+                      <tr key={sl.id} onClick={() => setSelectedSickLeave(sl)} className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/50">
+                        {canViewAllMaladie && (
+                          <td className="py-3 pr-4">
+                            <span className="font-medium">{sl.user?.full_name ?? '—'}</span>
+                            {sl.user?.job_title && <p className="text-[11px] text-muted-foreground">{sl.user.job_title}</p>}
+                          </td>
+                        )}
+                        <td className="py-3 pr-4 whitespace-nowrap text-xs">
+                          {format(new Date(sl.start_date + 'T00:00:00'), 'dd/MM/yy', { locale: fr })} — {format(new Date(sl.end_date + 'T00:00:00'), 'dd/MM/yy', { locale: fr })}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">{sl.days_count}j</span>
+                        </td>
+                        <td className="py-3 pr-4 max-w-[180px]">
+                          <span className="line-clamp-1 text-xs text-muted-foreground">{sl.reason || '—'}</span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          {sl.certificate_url ? (
+                            <Badge variant="secondary" className="border border-blue-200 bg-blue-50 text-blue-700 text-[10px]">Oui</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(sl.created_at), 'dd/MM/yyyy', { locale: fr })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredSickLeaves.map((sl) => (
+                  <div key={sl.id} onClick={() => setSelectedSickLeave(sl)} className="cursor-pointer rounded-2xl border border-border/70 bg-background/80 p-4 hover:border-primary/30 hover:shadow-sm transition-all">
+                    <div>
+                      {canViewAllMaladie && sl.user && (
+                        <p className="font-medium text-foreground">{sl.user.full_name}</p>
+                      )}
+                      {canViewAllMaladie && sl.user?.job_title && (
+                        <p className="text-xs text-muted-foreground">{sl.user.job_title}</p>
+                      )}
+                      <p className={cn('text-sm text-muted-foreground', canViewAllMaladie && 'mt-1')}>
+                        {format(new Date(sl.start_date + 'T00:00:00'), 'dd MMM', { locale: fr })} – {format(new Date(sl.end_date + 'T00:00:00'), 'dd MMM yyyy', { locale: fr })}
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="border border-rose-200 bg-rose-50 text-rose-700">Maladie</Badge>
+                      <span className="text-sm font-semibold text-foreground">{sl.days_count} jour{sl.days_count > 1 ? 's' : ''}</span>
+                      {sl.certificate_url && (
+                        <Badge variant="secondary" className="border border-blue-200 bg-blue-50 text-blue-700">Certificat</Badge>
+                      )}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground/70">Soumis le {format(new Date(sl.created_at), 'dd/MM/yyyy', { locale: fr })}</p>
+                      <span className="flex items-center gap-1 text-xs font-medium text-primary">Voir details <ChevronRight className="h-3.5 w-3.5" /></span>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <Badge variant="secondary" className="border border-rose-200 bg-rose-50 text-rose-700">
-                      Maladie
-                    </Badge>
-                    <span className="text-sm font-semibold text-foreground">{sl.days_count} jour{sl.days_count > 1 ? 's' : ''}</span>
-                    {sl.certificate_url && (
-                      <Badge variant="secondary" className="border border-blue-200 bg-blue-50 text-blue-700">
-                        Certificat
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <p className="text-[11px] text-muted-foreground/70">Soumis le {format(new Date(sl.created_at), 'dd/MM/yyyy', { locale: fr })}</p>
-                    <span className="flex items-center gap-1 text-xs font-medium text-primary">Voir détails <ChevronRight className="h-3.5 w-3.5" /></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )
+          }
         </>
       )}
       {/* ============ EXCEPTIONAL DETAIL DIALOG ============ */}
