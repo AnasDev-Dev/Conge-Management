@@ -315,6 +315,18 @@ export interface MissionExtraExpense {
   amount: number
 }
 
+export interface MissionPecSegment {
+  startDate: string
+  endDate: string
+  pec: boolean
+  hotelAmount: number
+  nbrPetitDej: number
+  nbrDej: number
+  nbrDiner: number
+  nights: number
+  total: number
+}
+
 export interface MissionRequest {
   id: number
   user_id: string
@@ -376,6 +388,8 @@ export interface MissionRequest {
   persons_transported: string | null
   persons_other: string | null
   external_person_name: string | null
+  // PEC segments for INTERNATIONAL missions
+  pec_segments: MissionPecSegment[] | null
   // Per-stage signatures (data URLs or storage URLs)
   signature_employee: string | null
   signature_rp: string | null

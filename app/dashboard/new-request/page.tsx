@@ -664,6 +664,19 @@ export default function NewRequestPage() {
           hotel_amount: useSegments
             ? Math.max(...pecSegments.map(s => parseFloat(s.hotelAmount) || 0))
             : (parseFloat(hotelAmount) || 0),
+          pec_segments: useSegments && pecSegmentTotals.length > 0
+            ? pecSegmentTotals.map(seg => ({
+                startDate: seg.startDate,
+                endDate: seg.endDate,
+                pec: seg.pec,
+                hotelAmount: parseFloat(seg.hotelAmount) || 0,
+                nbrPetitDej: seg.nbrPetitDej,
+                nbrDej: seg.nbrDej,
+                nbrDiner: seg.nbrDiner,
+                nights: seg.nights,
+                total: seg.total,
+              }))
+            : null,
           extra_expenses: extraExpenses.filter(e => e.label.trim() && e.amount).map(e => ({
             label: e.label.trim(), amount: parseFloat(e.amount) || 0,
           })),

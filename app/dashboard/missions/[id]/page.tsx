@@ -398,10 +398,11 @@ export default function MissionDetailPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Durée</p>
+                    <p className="text-sm text-muted-foreground">Duree</p>
                     <p className="mt-1 text-lg font-medium">
-                      {mission.days_count} jour{mission.days_count > 1 ? 's' : ''}
+                      {mission.days_count} nuitee{mission.days_count > 1 ? 's' : ''}
                     </p>
+                    <p className="text-xs text-muted-foreground">{mission.days_count + 0.5} avec deplacement</p>
                   </div>
                 </div>
 
@@ -602,6 +603,66 @@ export default function MissionDetailPage() {
                       </div>
                     </>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* PEC Segments Breakdown */}
+            {mission.pec_segments && mission.pec_segments.length > 0 && (
+              <Card className="border-border/70">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Periodes PEC / Sans PEC
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {mission.pec_segments.map((seg, idx) => (
+                      <div key={idx} className="rounded-xl border border-border/70 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-muted-foreground">Periode {idx + 1}</span>
+                          <Badge variant={seg.pec ? 'default' : 'secondary'} className="text-[10px]">
+                            {seg.pec ? 'Avec PEC' : 'Sans PEC'}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Dates</p>
+                            <p className="font-medium">
+                              {format(new Date(seg.startDate), 'dd/MM/yyyy')} — {format(new Date(seg.endDate), 'dd/MM/yyyy')}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Nuitees</p>
+                            <p className="font-medium">{seg.nights}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Hotel / nuit</p>
+                            <p className="font-medium">{seg.hotelAmount} {mission.currency || 'MAD'}</p>
+                          </div>
+                          {seg.pec && (seg.nbrPetitDej > 0 || seg.nbrDej > 0 || seg.nbrDiner > 0) && (
+                            <div>
+                              <p className="text-xs text-muted-foreground">Repas</p>
+                              <p className="font-medium text-xs">
+                                {seg.nbrPetitDej > 0 && `${seg.nbrPetitDej} p.dej`}
+                                {seg.nbrDej > 0 && `${seg.nbrPetitDej > 0 ? ', ' : ''}${seg.nbrDej} dej`}
+                                {seg.nbrDiner > 0 && `${(seg.nbrPetitDej > 0 || seg.nbrDej > 0) ? ', ' : ''}${seg.nbrDiner} diners`}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-border/50 flex justify-between text-sm">
+                          <span className="text-muted-foreground">Sous-total</span>
+                          <span className="font-bold text-primary">{seg.total} {mission.currency || 'MAD'}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex justify-between">
+                      <span className="font-medium">Total toutes periodes</span>
+                      <span className="font-bold text-primary text-lg">{mission.total_allowance} {mission.currency || 'MAD'}</span>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}

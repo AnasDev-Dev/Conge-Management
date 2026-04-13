@@ -370,7 +370,7 @@ export default function MissionsPage() {
                                 <MapPin className="h-3.5 w-3.5" />
                                 {format(new Date(mission.start_date), 'dd MMM', { locale: fr })} – {format(new Date(mission.end_date), 'dd MMM', { locale: fr })}
                               </span>
-                              <span className="font-medium text-foreground">{mission.days_count}j</span>
+                              <span className="font-medium text-foreground">{mission.days_count}n</span>
                               <span className="inline-flex items-center gap-1">
                                 <Clock className="h-3.5 w-3.5" />
                                 {formatDistanceToNow(createdDate, { locale: fr, addSuffix: true })}
