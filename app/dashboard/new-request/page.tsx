@@ -1568,11 +1568,11 @@ export default function NewRequestPage() {
                 type="button"
                 onClick={() => {
                   const lastSeg = segments[segments.length - 1]
+                  // Always alternate: if last is RECUP → new is CONGE, and vice versa
                   const defaultType: 'CONGE' | 'RECUPERATION' =
                     availableRecup <= 0 ? 'CONGE'
                     : !lastSeg ? 'RECUPERATION'
-                    : lastSeg.type === 'RECUPERATION' && lastSeg.workingDays >= MAX_CONSECUTIVE_RECOVERY_DAYS ? 'CONGE'
-                    : lastSeg.type === 'CONGE' ? 'RECUPERATION'
+                    : lastSeg.type === 'RECUPERATION' ? 'CONGE'
                     : 'RECUPERATION'
 
                   const defaultStart = lastSeg?.endDate
