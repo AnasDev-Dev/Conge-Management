@@ -17,7 +17,7 @@ import { Calendar, Loader2, AlertCircle, ArrowLeft, ArrowRight, Check, Sun, Rota
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Utilisateur, Holiday, WorkingDays, MissionScope, RecoveryBalanceLot, LeaveSegment, MissionPersonnelCategory, MissionZone, MissionTariffGridEntry } from '@/lib/types/database'
-import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS, MAX_DEROGATION_DAYS, CURRENCY_OPTIONS } from '@/lib/constants'
+import { TRANSPORT_OPTIONS, HALF_DAY_LABELS, MAX_CONSECUTIVE_RECOVERY_DAYS, MAX_DEROGATION_DAYS, CURRENCY_OPTIONS, getStatusLabel } from '@/lib/constants'
 import { usePermissions } from '@/lib/hooks/use-permissions'
 import { format, addDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
@@ -152,6 +152,9 @@ export default function NewRequestPage() {
   const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
   const [maladieSickDaysUsed, setMaladieSickDaysUsed] = useState(0)
   const [isSubmittingMaladie, setIsSubmittingMaladie] = useState(false)
+
+  // Existing leave requests for overlap detection
+  const [existingRequests, setExistingRequests] = useState<{ start_date: string; end_date: string; status: string }[]>([])
 
   // Holiday-aware day counting
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -436,6 +439,17 @@ export default function NewRequestPage() {
     fetchSickDays()
   }, [targetEmployee?.id])
 
+  // Fetch existing active leave requests for overlap detection
+  useEffect(() => {
+    if (!targetEmployee) { setExistingRequests([]); return }
+    supabase
+      .from('leave_requests')
+      .select('start_date, end_date, status')
+      .eq('user_id', targetEmployee.id)
+      .in('status', ['PENDING', 'VALIDATED_RP', 'VALIDATED_DC', 'APPROVED'])
+      .then(({ data }) => setExistingRequests(data || []))
+  }, [targetEmployee?.id])
+
   // Balance is now fetched via useEmployeeBalance(targetEmployee?.id) above
 
   const loadEmployees = async (userData: Utilisateur) => {
@@ -711,7 +725,28 @@ export default function NewRequestPage() {
   const totalRecupDays = useMemo(() => segments.filter(s => s.type === 'RECUPERATION').reduce((s, seg) => s + seg.workingDays, 0), [segments])
   const totalCongeDays = useMemo(() => segments.filter(s => s.type === 'CONGE').reduce((s, seg) => s + seg.workingDays, 0), [segments])
   const segmentErrors = useMemo(() => validateSegments(segments), [segments])
-  const allSegmentsValid = segments.length > 0 && segments.every(s => s.workingDays > 0 && s.startDate && s.endDate) && segmentErrors.length === 0
+  // Per-segment date warnings: overlap with existing requests + 0 working days
+  const segmentWarnings = useMemo(() => {
+    return segments.map(seg => {
+      const warnings: string[] = []
+      if (seg.startDate && seg.endDate && seg.workingDays === 0) {
+        warnings.push('Cette periode ne contient aucun jour ouvrable (week-ends / jours feries)')
+      }
+      if (seg.startDate && seg.endDate && existingRequests.length > 0) {
+        const overlap = existingRequests.find(r =>
+          r.start_date <= seg.endDate && r.end_date >= seg.startDate
+        )
+        if (overlap) {
+          warnings.push(`Chevauchement avec une demande existante (${overlap.start_date} — ${overlap.end_date}, ${getStatusLabel(overlap.status)})`)
+        }
+      }
+      return warnings
+    })
+  }, [segments, existingRequests])
+
+  const hasOverlapWarning = segmentWarnings.some(w => w.some(m => m.includes('Chevauchement')))
+
+  const allSegmentsValid = segments.length > 0 && segments.every(s => s.workingDays > 0 && s.startDate && s.endDate) && segmentErrors.length === 0 && !hasOverlapWarning
 
   const availableConge = congeAccrual.availableNow
 
@@ -806,6 +841,10 @@ export default function NewRequestPage() {
     }
     if (segmentErrors.length > 0) {
       toast.error(segmentErrors[0])
+      return
+    }
+    if (hasOverlapWarning) {
+      toast.error('Les dates chevauchent une demande existante. Veuillez ajuster les dates.')
       return
     }
 
@@ -1331,7 +1370,11 @@ export default function NewRequestPage() {
                 return (
                   <Card key={seg.id} className={cn(
                     'border-border/70 transition-all',
-                    hasError || consecutiveError ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/20' : ''
+                    hasError || consecutiveError || segmentWarnings[index]?.some(w => w.includes('Chevauchement'))
+                      ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/20'
+                      : segmentWarnings[index]?.length
+                        ? 'border-amber-300 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/20'
+                        : ''
                   )}>
                     <CardContent className="pt-5 pb-4 space-y-4">
                       {/* Header: segment number + type toggle + delete */}
@@ -1496,15 +1539,25 @@ export default function NewRequestPage() {
                       {hasError && (
                         <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          Maximum {MAX_CONSECUTIVE_RECOVERY_DAYS} jours consécutifs de récupération
+                          Maximum {MAX_CONSECUTIVE_RECOVERY_DAYS} jours consecutifs de recuperation
                         </div>
                       )}
                       {consecutiveError && (
                         <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          Insérez au moins 1 jour de congé entre deux blocs de récupération
+                          Inserez au moins 1 jour de conge entre deux blocs de recuperation
                         </div>
                       )}
+                      {/* Date warnings: 0 working days, overlap with existing */}
+                      {segmentWarnings[index]?.map((warning, wi) => (
+                        <div key={wi} className={cn(
+                          'flex items-center gap-2 text-xs',
+                          warning.includes('Chevauchement') ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'
+                        )}>
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          {warning}
+                        </div>
+                      ))}
                     </CardContent>
                   </Card>
                 )
@@ -2130,6 +2183,7 @@ export default function NewRequestPage() {
                   <DatePicker
                     value={exceptionalStartDate}
                     onChange={setExceptionalStartDate}
+                    min={format(new Date(), 'yyyy-MM-dd')}
                     placeholder="Date de debut"
                   />
                 </div>
